@@ -1,0 +1,34 @@
+{
+  "author" : "ddio",
+  "status" : "Planning",
+  "name": "tw-rental-house-data",
+  "name_zh": "開放台灣民間租屋資料",
+  "description": "g\Collection of Taiwan Rental House Data from Public Website ",
+  "description_zh": "長期收集各租屋網站、品牌公寓的可公開資訊，清洗後整理成格式統一的資料，供後續有需要的人使用。",
+  "homepage" : "TBD",
+  "thumbnail" : "",
+  "document": "https://g0v.hackpad.tw/Ih7Jp4pUD5y",
+  "repository" : {
+    "type": "git",
+    "url": "https://github.com/g0v/tw-rental-house-data.git"
+  },
+  "licenses": ["MIT"],
+  "keywords": [
+    "data",
+    "rental house"
+  ],
+  "audience": [
+    "public"
+  ],
+  "products" :[],
+  "partOf": "",
+  "contributors" :[
+    "ddio"
+  ],
+  "needs" : [
+    "data sciencist",
+    "activist",
+    "programmer",
+    "designer"
+  ]
+}
