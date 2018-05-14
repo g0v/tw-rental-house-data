@@ -13,7 +13,7 @@
 1. Python3 + pip
 
 ### 使用方式
-```
+```sh
 # 安裝相關套件
 virtualenv -p python3 .
 pip install -r requirements.txt
