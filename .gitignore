@@ -1,0 +1,10 @@
+bin
+lib
+include
+logs
+pip-selfcheck.json
+backup
+.env
+*.db*
+*.sqlite3
+*.tgz
