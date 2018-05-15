@@ -393,6 +393,9 @@ class Detail591Spider(HouseSpider):
             if floor_info[0] == '頂樓加蓋':
                 ret['is_rooftop'] = True
                 ret['floor'] = ret['total_floor'] + 1
+            elif 'B' in floor_info[0] and floor:
+                # basement
+                ret['floor'] = -floor
             elif floor:
                 ret['floor'] = floor
 

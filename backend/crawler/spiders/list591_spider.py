@@ -2,6 +2,7 @@ import json
 from ..items import RawHouseItem, GenericHouseItem
 from backend.db.enums import PropertyTypeField, TopRegionField, SubRegionField
 from .house_spider import HouseSpider
+from .all_591_cities import all_591_cities
 
 
 class List591Spider(HouseSpider):
@@ -33,10 +34,8 @@ class List591Spider(HouseSpider):
         }
 
     def start_requests(self):
-        cityList = json.load(open('./city_id.json'))
-
         if not self.has_request() and not self.has_record():
-            for region in cityList:
+            for region in all_591_cities:
                 # let's do DFS
                 self.gen_persist_request({
                     'region': region,
