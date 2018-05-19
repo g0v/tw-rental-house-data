@@ -11,3 +11,4 @@ sleep 30
 echo '===== DETAIL ====='
 scrapy crawl detail591 -L INFO
 mv scrapy.log ../logs/$now.detail.log
+gzip ../logs/*.log
