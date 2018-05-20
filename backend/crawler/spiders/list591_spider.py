@@ -93,7 +93,17 @@ class List591Spider(HouseSpider):
                 })
                 cur_page += 1
 
+        for house in data['data']['topData']:
+            house['is_vip'] = True
+            yield RawHouseItem(
+                house_id=house['post_id'],
+                vendor=self.vendor,
+                is_list=True,
+                raw=json.dumps(house, ensure_ascii=False)
+            )
+
         for house in data['data']['data']:
+            house['is_vip'] = False
             yield RawHouseItem(
                 house_id=house['id'],
                 vendor=self.vendor,

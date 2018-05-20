@@ -189,7 +189,6 @@ def print_body(writer, page=1, print_enum=True):
         House.imgs,
         House.facilities,
         HouseEtc.detail_dict,
-        HouseEtc.list_raw
     ).join(
         HouseEtc
     ).where(
