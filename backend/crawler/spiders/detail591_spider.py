@@ -1,9 +1,8 @@
 import re
 from functools import partial
-from datetime import timedelta, datetime
+from datetime import datetime
 from ..items import GenericHouseItem, RawHouseItem
-from backend.db.models import House, tw_tz, db
-from backend.db import models
+from backend.db.models import House, db
 from backend.db import enums
 from .house_spider import HouseSpider
 import traceback
@@ -58,11 +57,8 @@ class Detail591Spider(HouseSpider):
     def start_requests(self):
 
         if not self.has_request():
-            # find last 2 day's opened houses and crawl all of them
-            # TODO: filter out done and 404 url
-            two_days_ago = datetime.now(tz=tw_tz) - timedelta(days=2)
+            # find all opened houses and crawl all of them
             houses = House.select(House.vendor_house_id).where(
-                House.updated >= two_days_ago,
                 House.deal_status == enums.DealStatusField.enums.OPENED
             )
 
