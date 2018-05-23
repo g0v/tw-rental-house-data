@@ -1,4 +1,5 @@
-from .models import Vendor
+from .models import Vendor, SubRegion
+from .enums import SubRegionField
 
 
 def create_seed():
@@ -16,6 +17,15 @@ def create_seed():
         name='蟹居網',
         site_url='https://rent.tmm.org.tw'
     )
+
+    sub_region = SubRegionField()
+    for name in sub_region.enum_to_int:
+        row, created = SubRegion.get_or_create(
+            id=sub_region.enum_to_int[name],
+        )
+        if not created:
+            row.name = name.replace('台', '臺')
+            row.save()
 
 
 if __name__ == '__main__':

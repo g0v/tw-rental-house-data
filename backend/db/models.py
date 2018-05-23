@@ -65,6 +65,17 @@ class Vendor(BaseModel):
     site_url = CharField()
 
 
+class SubRegion(BaseModel):
+    id = IntegerField(primary_key=True)
+    name = CharField(null=True)
+
+    class Meta:
+        indexes = (
+            (('name', ), True),
+        )
+        table_name = 'sub_region'
+
+
 class BaseHouse(BaseModel):
     top_region = enums.TopRegionField(null=True)
     sub_region = enums.SubRegionField(null=True)
@@ -192,4 +203,5 @@ class HouseTS(BaseTSModel, BaseHouse):
 
 
 db.connect()
-db.create_tables([RegionTS, HouseTS, RequestTS, House, HouseEtc, Vendor])
+db.create_tables([
+    RegionTS, HouseTS, RequestTS, House, HouseEtc, Vendor, SubRegion])
