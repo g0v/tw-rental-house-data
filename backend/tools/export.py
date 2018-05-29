@@ -315,7 +315,7 @@ if __name__ == '__main__':
     to_date += timedelta(days=1)
 
     writer = print_header(print_enum, args.outfile)
-    print(from_date, to_date)
+    print('===== Export all houses from {} to {} ====='.format(from_date, to_date))
     while True:
         ret = print_body(writer, from_date, to_date, page, print_enum)
         total += ret
