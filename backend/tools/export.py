@@ -111,10 +111,11 @@ for facility in facilities:
     structured_headers.append(gen_facility_header(facility))
 
 
-def print_header(print_enum=True):
+def print_header(print_enum=True, file_name='rental_house'):
     global structured_headers
+    # looks like no one need en version XD
     # en_csv = open('rental_house.en.csv', 'w')
-    zh_csv = open('rental_house.zh.csv', 'w')
+    zh_csv = open('{}.csv'.format(file_name), 'w')
 
     # en_writer = csv.writer(en_csv)
     zh_writer = csv.writer(zh_csv)
@@ -287,6 +288,13 @@ arg_parser.add_argument(
     help='to date, format: YYYYMMDD, default today'
 )
 
+arg_parser.add_argument(
+    '-o',
+    '--outfile',
+    default='rental_house',
+    help='output file name, without postfix(.csv)'
+)
+
 if __name__ == '__main__':
 
     args = arg_parser.parse_args()
@@ -306,7 +314,7 @@ if __name__ == '__main__':
 
     to_date += timedelta(days=1)
 
-    writer = print_header(print_enum)
+    writer = print_header(print_enum, args.outfile)
     print(from_date, to_date)
     while True:
         ret = print_body(writer, from_date, to_date, page, print_enum)
