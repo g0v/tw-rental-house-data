@@ -195,12 +195,12 @@ def print_body(writer, from_date, to_date, page=1, print_enum=True):
     # ).join(
     #     HouseEtc
     ).where(
-        House.building_type != enums.BuildingTypeField.enums.倉庫,
-        House.building_type != getattr(enums.BuildingTypeField.enums, '店面（店鋪）'),
-        House.building_type != enums.BuildingTypeField.enums.辦公商業大樓,
-        House.property_type != enums.PropertyTypeField.enums.車位,
-        House.property_type != enums.PropertyTypeField.enums.倉庫,
-        House.property_type != enums.PropertyTypeField.enums.場地,
+        # House.building_type != enums.BuildingTypeField.enums.倉庫,
+        # House.building_type != getattr(enums.BuildingTypeField.enums, '店面（店鋪）'),
+        # House.building_type != enums.BuildingTypeField.enums.辦公商業大樓,
+        # House.property_type != enums.PropertyTypeField.enums.車位,
+        # House.property_type != enums.PropertyTypeField.enums.倉庫,
+        # House.property_type != enums.PropertyTypeField.enums.場地,
         House.additional_fee != None,
         House.created <= to_date,
         House.updated >= from_date
