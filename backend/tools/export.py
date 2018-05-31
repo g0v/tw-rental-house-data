@@ -2,6 +2,7 @@ import sys
 import os
 import csv
 import argparse
+import json
 from datetime import datetime, timedelta
 # import logging
 sys.path.append('{}/../..'.format(
@@ -15,6 +16,7 @@ from backend.db import enums
 #     level=logging.DEBUG
 # )
 
+vendor_stats = {'_total': 0}
 
 structured_headers = [
     {'en': 'vendor_house_id', 'zh': '物件編號'},
@@ -143,6 +145,7 @@ def print_header(print_enum=True, file_name='rental_house'):
 
 def print_body(writer, from_date, to_date, page=1, print_enum=True):
     global structured_headers
+    global vendor_stats
     houses = House.select(
         House.vendor_house_id,
         House.vendor,
@@ -215,6 +218,12 @@ def print_body(writer, from_date, to_date, page=1, print_enum=True):
         return 0
 
     for house in houses:
+        if house.vendor.name not in vendor_stats:
+            vendor_stats[house.vendor.name] = 0
+
+        vendor_stats[house.vendor.name] += 1
+        vendor_stats['_total'] += 1
+
         row = []
         for header in structured_headers:
             if not hasattr(house, header['en']):
@@ -257,7 +266,7 @@ def print_body(writer, from_date, to_date, page=1, print_enum=True):
 
 def parse_date(input):
     try: 
-        return datetime.strptime(input, '%Y%m%d')
+        return datetime.strptime(input, '%Y%m%d').replace(tzinfo=tw_tz)
     except ValueError:
         raise argparse.ArgumentTypeError('Invalid date string: {}'.format(input))
 
@@ -323,3 +332,8 @@ if __name__ == '__main__':
         if not ret:
             break
         print('[{}] we have {} rows'.format(datetime.now(), total))
+
+    with open('{}.json'.format(args.outfile), 'w') as file:
+        json.dump(vendor_stats, file, ensure_ascii=False)
+
+    print('===== Export done =====\nData: {}.csv\nStatistics: {}.json\n'.format(args.outfile, args.outfile))
