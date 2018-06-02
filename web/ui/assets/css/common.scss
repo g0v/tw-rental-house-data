@@ -1,0 +1,9 @@
+a {
+    color: #555;
+    text-decoration-style: dashed;
+    outline: none;
+
+    &:hover {
+        text-decoration: none;
+    }
+}
