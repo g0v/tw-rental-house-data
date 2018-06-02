@@ -3,7 +3,7 @@
     div.mw7.center.lh-copy
       p.mv2
         | 「開放民間租屋資料」希望提供對租屋議題有興趣的單位，一份長期、開放，而且詳細的租屋資料集，
-        | 去除有著作權與隱私疑慮的資料後，以
+        | 去除有著作權與隱私疑慮的資料後，以 
         a(href='https://creativecommons.org/publicdomain/zero/1.0/deed.zh_TW') CC0
         |  釋出，為台灣的租賃市場與居住議題建立研究的基礎資料。
       p.mv3
@@ -27,7 +27,7 @@
         nuxt-link(to="/about-data-set") 關於資料集
         | 」。
         br
-        | 如果好奇本專案的規劃、想要參與，或是發現問題，請至
+        | 如果好奇本專案的規劃、想要參與，或是發現問題，請至 
         a(href='https://github.com/g0v/tw-rental-house-data') Github
         |  開票。
         br

@@ -1,10 +1,10 @@
 <template lang="pug">
 </template>
-
 <script>
-import AppLogo from '~/components/AppLogo.vue'
-
 export default {
+  fetch ({params, redirect}) {
+    redirect(307, '/download')
+  }
 }
 </script>
 

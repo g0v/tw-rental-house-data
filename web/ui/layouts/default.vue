@@ -1,14 +1,14 @@
 <template lang="pug">
   .wrapper.flex.flex-column
-    header.bb.b--black-20.flex.items-baseline.pa2.ph3
+    header.bb.b--black-10.flex.items-baseline.pa2.ph3.bg-light-gray
       nuxt-link.header__menu.f4.b(to='/') 開放台灣民間租屋資料
       nuxt-link.header__menu(to='/download') 打包回家玩
       nuxt-link.header__menu(to='/about-data-set') 關於資料集
     nuxt.flex-auto
-    footer.bt.b--black-20.pa3.flex.space-between
+    footer.bt.b--black-10.pa3.flex.space-between.bg-light-gray
       section
         p.pa1.ma0
-          | 本網站的所有資料，除另外註明，皆以
+          | 本網站的所有資料，除另外註明，皆以 
           a(href='https://creativecommons.org/publicdomain/zero/1.0/deed.zh_TW') CC0
           |  拋棄一切著作相關權利，提供公眾使用。
         p.pa1.ma0

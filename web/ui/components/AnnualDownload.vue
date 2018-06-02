@@ -1,6 +1,6 @@
 <template lang="pug">
-  .annual.ba.b--black.br1
-    .annual__header.flex.justify-between.items-center.bb.b--black
+  .annual.ba.b--black.br1.ma4
+    .annual__header.flex.justify-between.items-center.bb.b--black.bg-black-30
       h2.ma0.pa2.ml2 {{year}}
       .pa2.mr2
         | 本表格資料下載 [

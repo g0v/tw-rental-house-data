@@ -4,7 +4,7 @@
       tr.striped--light-gray
         th.pv2.ph3.tl.f6.fw6(v-if="needIdColumn") {{idHeader}}
         th.pv2.ph3.tl.f6.fw6 總物件數
-        th.pv2.ph3.tl.f6.fw6(v-for="source in sourceHeaders" :key="source") {{source}}
+        th.pv2.ph3.tl.f6.fw6(v-for="source in sourceHeaders" :key="source") {{source}} 物件數
         th.pv2.ph3.tl.f6.fw6 檔案解壓縮後大小
         th.pv2.ph3.tl.f6.fw6 附註
         th.pv2.ph3.tl.f6.fw6 下載連結
@@ -30,7 +30,7 @@ export default {
       type: Array,
       required: true,
       validator (rows) {
-        return rows.isArray && rows.forEach(row => {
+        return _.isArray(rows) && rows.every(row => {
           return row.id !== undefined &&
             row.total_count &&
             row.sources &&
@@ -79,11 +79,9 @@ export default {
       return !!this.idHeader
     },
     sourceHeaders () {
-      console.log(this.rows)
       const sources = _.uniq(_.flatten(this.rows.map(
         row => row.sources.map(source => source.name)
       )))
-      console.log(sources)
       return sources
     }
   }
