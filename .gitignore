@@ -8,4 +8,4 @@ backup
 *.db*
 *.sqlite3
 *.tgz
-.*
+
