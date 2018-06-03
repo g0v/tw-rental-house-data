@@ -5,7 +5,7 @@
       AboutDataBrief
       p.mv3
         | 關於資料集的欄位與編碼表，請見「
-        nuxt-link(to="/about-data-set#資料內容與整理方式") 關於資料集
+        nuxt-link(to="/about-data-set") 關於資料集
         | 」。
         br
         | 如果好奇本專案的規劃、想要參與，或是發現問題，請至 
