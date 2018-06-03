@@ -191,7 +191,7 @@ export default {
   },
   data() {
     return {
-      isHeaderVisible: false
+      isHeaderVisible: true
     };
   },
   methods: {
