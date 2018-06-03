@@ -46,7 +46,11 @@ module.exports = {
     },
     vendor: [
       'lodash',
-      'filesize'
+      'filesize',
+      'vue-markdown'
     ]
-  }
+  },
+  plugins: [
+    '~/plugins/vue-markdown'
+  ]
 }
