@@ -48,8 +48,5 @@ module.exports = {
       'lodash',
       'filesize'
     ]
-  },
-  router: {
-    base: '/tw-rental-house-data/'
   }
 }
