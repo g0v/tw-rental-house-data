@@ -47,10 +47,13 @@ module.exports = {
     vendor: [
       'lodash',
       'filesize',
-      'vue-markdown'
+      'vue-markdown',
+      'intersection-observer',
+      'vue-observe-visibility'
     ]
   },
   plugins: [
-    '~/plugins/vue-markdown'
+    '~/plugins/vue-markdown',
+    '~/plugins/vue-observe-visibility'
   ]
 }
