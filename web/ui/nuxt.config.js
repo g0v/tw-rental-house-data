@@ -49,11 +49,13 @@ module.exports = {
       'filesize',
       'vue-markdown',
       'intersection-observer',
-      'vue-observe-visibility'
+      'vue-observe-visibility',
+      'vue-disqus'
     ]
   },
   plugins: [
     '~/plugins/vue-markdown',
-    '~/plugins/vue-observe-visibility'
+    '~/plugins/vue-observe-visibility',
+    '~/plugins/vue-disqus'
   ]
 }

@@ -18,10 +18,13 @@
 
     main.w-100(v-for="year in years" :key="year.year")
       AnnualDownload(:year="year.year" :definition="year.data")
+    
+    Disqus.mw7.center
 </template>
 <script>
 import AnnualDownload from '~/components/AnnualDownload'
 import AboutDataBrief from '~/components/AboutDataBrief'
+import Disqus from '~/components/Disqus'
 
 import def2018 from '~/assets/stats/2018.json'
 
@@ -40,7 +43,8 @@ export default {
     },
     components: {
       AnnualDownload,
-      AboutDataBrief
+      AboutDataBrief,
+      Disqus
     }
 }
 </script>

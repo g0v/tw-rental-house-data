@@ -185,9 +185,12 @@
         | 可炊       | 開伙必須是「可以」 |
         | 可寵       | 養寵物必須是「可以」 |
         | 產權登記    | 產權登記必須是「已辦」 |      
+    Disqus
+
 </template>
 <script>
-import AboutDataBrief from "~/components/AboutDataBrief";
+import AboutDataBrief from '~/components/AboutDataBrief'
+import Disqus from '~/components/Disqus'
 
 export default {
   head() {
@@ -206,7 +209,8 @@ export default {
     }
   },
   components: {
-    AboutDataBrief
+    AboutDataBrief,
+    Disqus
   }
 };
 </script>

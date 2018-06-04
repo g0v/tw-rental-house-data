@@ -19,6 +19,7 @@
     "lodash": "^4.17.10",
     "normalize.css": "^8.0.0",
     "nuxt": "^1.0.0",
+    "vue-disqus": "^3.0.3",
     "vue-markdown": "^2.2.4",
     "vue-observe-visibility": "^0.4.1"
   },
