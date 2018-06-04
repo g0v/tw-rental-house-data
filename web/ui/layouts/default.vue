@@ -9,13 +9,13 @@
       section
         p.pa1.ma0
           | 本網站的所有資料，除另外註明，皆以 
-          a(href='https://creativecommons.org/publicdomain/zero/1.0/deed.zh_TW') CC0
+          a(href='https://creativecommons.org/publicdomain/zero/1.0/deed.zh_TW' target="_blank" rel="noopener") CC0
           |  拋棄一切著作相關權利，提供公眾使用。
         p.pa1.ma0
           | 若有使用上的疑問，歡迎於網站留言、
           a(href="mailto:open-tw-rental-house@ddio.io") 來信
           | ，或至
-          a(href="https://github.com/g0v/tw-rental-house-data") 專案頁面
+          a(href="https://github.com/g0v/tw-rental-house-data" target="_blank" rel="noopener") 專案頁面
           | 詢問。
       // section
       //   p.pa1.ma0 隱私權說明

@@ -9,7 +9,7 @@
         | 」。
         br
         | 如果好奇本專案的規劃、想要參與，或是發現問題，請至 
-        a(href='https://github.com/g0v/tw-rental-house-data') Github
+        a(href='https://github.com/g0v/tw-rental-house-data' target="_blank" rel="noopener") Github
         |  開票。
         br
         | 若你是資料擁有者，而且認為本資料集有侵犯隱私或其他疑慮的，歡迎
