@@ -44,4 +44,21 @@ python tools/setup_db.py
    需符合現行法令的要求且自負其責，包括但不限於個人隱私、資料保護、資訊安全，以及公平競爭等相關規定。
 4. 其他事項請參見[授權頁面](LICENSE)。
 
+## 網頁前端
+
+### 環境需求
+  1. node 8+
+
+### 使用方式
+```sh
+# 安裝套件
+cd web/ui
+npm install
+
+# 啟動開發環境
+npm run dev
+
+```
+
+詳細操作方式，請參見 [nuxt](https://nuxtjs.org/)
 
