@@ -5,7 +5,7 @@
 - 專案資訊請見 [hackpad](https://g0v.hackpad.tw/Ih7Jp4pUD5y)。
 
 
-# 程式使用方式與注意事項：
+# 程式使用方式與注意事項
 
 ## 爬蟲
 
@@ -61,4 +61,10 @@ npm run dev
 ```
 
 詳細操作方式，請參見 [nuxt](https://nuxtjs.org/)
+
+
+# 非宅界專案貢獻者
+
+- [Lucien C.H. Lin (林誠夏)](lucien.cc)
+- [勞工陣線](http://labor.ngo.tw/) 洪敬舒
 

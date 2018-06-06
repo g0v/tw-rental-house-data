@@ -2,7 +2,7 @@
   "name": "tw-rental-house-data-ui",
   "version": "1.0.0",
   "description": "UI for TW Rental House Data",
-  "author": "ddio at ddio dot io",
+  "author": "ddio",
   "private": true,
   "scripts": {
     "dev": "nuxt",
