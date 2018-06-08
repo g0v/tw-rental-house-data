@@ -13,7 +13,12 @@ module.exports = {
     meta: [
       { charset: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      { hid: 'description', name: 'description', content: '開放台灣民間租屋資料' }
+      {
+        hid: 'description',
+        name: 'description',
+        content: '「開放民間租屋資料」希望提供對租屋議題有興趣的單位，一份長期、開放，而且詳細的租屋資料集，去除有著作權與隱私疑慮的資料後，以 CC0 釋出，為台灣的租賃市場與居住議題建立研究的基礎資料。'
+      },
+      { hid: 'og:image', name: 'og:image', content: 'https://rentalhouse.g0v.ddio.io/imgs/og.png'}
     ],
     link: [
     ]
