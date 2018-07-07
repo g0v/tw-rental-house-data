@@ -11,6 +11,16 @@
           "file_size_byte": 40765154,
           "download_url": "http://pcse.pw/tw-rental-data-2018-05",
           "comment": "五月底才開始收集六都以外縣市的資料，可視為五月只有六都的物件。"
+        },
+        {
+          "id": 6,
+          "total_count": 128857,
+          "sources": [
+              {"name": "591", "count": 128857}
+          ],
+          "file_size_byte": 38909596,
+          "download_url": "http://bit.ly/tw-rental-data-2018-06",
+          "comment": "第一次完整收集所有縣市的資料。"
         }
     ]
 }
