@@ -5,6 +5,7 @@ cffi==1.11.5
 constantly==15.1.0
 cryptography==2.1.4
 cssselect==1.0.3
+Django==2.0.7
 hyperlink==18.0.0
 idna==2.6
 incremental==17.5.0
@@ -17,6 +18,7 @@ pyasn1-modules==0.2.1
 pycparser==2.18
 PyDispatcher==2.0.5
 pyOpenSSL==17.5.0
+pytz==2018.5
 queuelib==1.5.0
 Scrapy==1.5.0
 service-identity==17.0.0
