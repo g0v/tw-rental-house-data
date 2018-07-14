@@ -1,4 +1,7 @@
-settings.py
+crawler/settings.py
+/settings.py
+backend/settings_local.py
+db.sqlite3*
 __pycache__
 *.log
 *.csv

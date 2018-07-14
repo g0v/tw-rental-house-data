@@ -1,6 +1,9 @@
 import json
+from os import path
 
-j2 = json.load(open('./319.sub_region.json'))
+j2 = json.load(open('{}/319.sub_region.json'.format(
+    path.dirname(path.realpath(__file__))
+)))
 
 region_dict = {}
 
@@ -54,42 +57,28 @@ for tokens in ordered_top_region:
     top2 = top.replace('臺', '台')
 
     if top2 is not top:
-        output['top_region'].append({
-            'int': i,
-            'enum': top2
-        })
+        output['top_region'].append((top2, i))
 
-    output['top_region'].append({
-        'int': i,
-        'enum': top
-    })
+    output['top_region'].append((top, i))
 
     for (j, sub) in enumerate(sorted(region_dict[top])):
         code = i * 100 + j
         sub2 = sub.replace('臺', '台')
 
         if top2 is not top:
-            output['sub_region'].append({
-                'int': code,
-                'enum': '{}{}'.format(top2, sub)
-            })
+            key = '{}{}'.format(top2, sub)
+            output['sub_region'].append((key, code))
 
             if sub2 is not sub:
-                output['sub_region'].append({
-                    'int': code,
-                    'enum': '{}{}'.format(top2, sub2)
-                })
+                key = '{}{}'.format(top2, sub2)
+                output['sub_region'].append((key, code))
 
-        output['sub_region'].append({
-            'int': code,
-            'enum': '{}{}'.format(top, sub)
-        })
+        key = '{}{}'.format(top, sub)
+        output['sub_region'].append((key, code))
 
         if sub2 is not sub:
-            output['sub_region'].append({
-                'int': code,
-                'enum': '{}{}'.format(top, sub2)
-            })
+            key = '{}{}'.format(top, sub2)
+            output['sub_region'].append((key, code))
 
 with open('tw_regions.json', 'w', encoding='utf8') as f:
     json.dump(output, f, ensure_ascii=False)

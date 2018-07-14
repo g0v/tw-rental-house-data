@@ -1,0 +1,29 @@
+[
+  {
+    "model": "rental.vendor",
+    "pk": 1,
+    "fields": {
+      "name": "591 租屋網",
+      "icon": null,
+      "site_url": "https://rent.591.com.tw"
+    }
+  },
+  {
+    "model": "rental.vendor",
+    "pk": 2,
+    "fields": {
+      "name": "好房網",
+      "icon": null,
+      "site_url": "https://rent.housefun.com.tw"
+    }
+  },
+  {
+    "model": "rental.vendor",
+    "pk": 3,
+    "fields": {
+      "name": "蟹居網",
+      "icon": null,
+      "site_url": "https://rent.tmm.org.tw"
+    }
+  }
+]
