@@ -3,20 +3,13 @@ import re
 import traceback
 from scrapy.spidermiddlewares.httperror import HttpError
 from rental.models import HouseTS, Vendor
-from ..models import RequestTS
-from ..enums import RequestType
+from crawlerrequest.models import RequestTS
+from crawlerrequest.enums import RequestType
 from rental.enums import UNKNOWN_ENUM
-from django.utils import timezone
+from crawler.utils import now_tuple
 
 # TODO: commit transaction
 # TODO: yield request
-
-# TODO: reuse this
-def now_tuple():
-    now = timezone.now()
-    # Let's do it once for now
-    return [now.year, now.month, now.day, 0]
-    # return [now.year, now.month, now.day, now.hour - now.hour % 12]
 
 
 class HouseSpider(scrapy.Spider):

@@ -10,14 +10,7 @@ from rental.models import HouseTS, House, HouseEtc
 from .items import GenericHouseItem, RawHouseItem
 import logging
 import traceback
-
-# TODO: reuse this
-tw_tz = timezone(timedelta(hours=8))
-def now_tuple():
-    now = datetime.now(tz=tw_tz)
-    # Let's do it once for now
-    return [now.year, now.month, now.day, 0]
-    # return [now.year, now.month, now.day, now.hour - now.hour % 12]
+from crawler.utils import now_tuple
 
 
 class CrawlerPipeline(object):

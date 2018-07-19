@@ -3,10 +3,9 @@
 import sys
 import os
 import django
-from django.conf import settings
 
 # Allow Scrapy to use Django
-sys.path.append('{}/..'.format(os.path.dirname(os.path.realpath(__file__))))
+sys.path.append('{}/../../backend'.format(os.path.dirname(os.path.realpath(__file__))))
 os.environ['DJANGO_SETTINGS_MODULE'] = 'backend.settings'
 django.setup()
 

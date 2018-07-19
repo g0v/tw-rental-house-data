@@ -47,7 +47,7 @@ python manage.py loaddata vendors
 確定資料庫準備完成後，執行以下步驟：
 
 ```sh
-cd backend
+cd crawler
 # 設定資料庫與使用環境
 cp settings.sample.py settings.py
 vim settins.py

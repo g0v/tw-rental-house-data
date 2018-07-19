@@ -38,7 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rental.apps.RentalConfig',
-    'crawler.apps.CrawlerConfig'
+    'crawlerrequest.apps.CrawlerConfig'
 ]
 
 MIDDLEWARE = [
