@@ -5,11 +5,19 @@
 # Don't forget to add your pipeline to the ITEM_PIPELINES setting
 # See: https://doc.scrapy.org/en/latest/topics/item-pipeline.html
 
-from datetime import datetime
-from backend.db.models import HouseTS, House, HouseEtc, now_tuple
+from datetime import datetime, timezone, timedelta
+from rental.models import HouseTS, House, HouseEtc
 from .items import GenericHouseItem, RawHouseItem
 import logging
 import traceback
+
+# TODO: reuse this
+tw_tz = timezone(timedelta(hours=8))
+def now_tuple():
+    now = datetime.now(tz=tw_tz)
+    # Let's do it once for now
+    return [now.year, now.month, now.day, 0]
+    # return [now.year, now.month, now.day, now.hour - now.hour % 12]
 
 
 class CrawlerPipeline(object):
@@ -20,12 +28,12 @@ class CrawlerPipeline(object):
         try:
             if type(item) is RawHouseItem:
 
-                house, created = House.get_or_create(
+                house, created = House.objects.get_or_create(
                     vendor_house_id=item['house_id'],
                     vendor=item['vendor']
                 )
 
-                house_etc, created = HouseEtc.get_or_create(
+                house_etc, created = HouseEtc.objects.get_or_create(
                     house=house,
                     vendor_house_id=item['house_id'],
                     vendor=item['vendor']
@@ -45,13 +53,13 @@ class CrawlerPipeline(object):
                 house_etc.save()
 
             elif type(item) is GenericHouseItem:
-                house_ts, created = HouseTS.get_or_create(
+                house_ts, created = HouseTS.objects.get_or_create(
                     year=y, month=m, day=d, hour=h,
                     vendor_house_id=item['vendor_house_id'],
                     vendor=item['vendor']
                 )
 
-                house, created = House.get_or_create(
+                house, created = House.objects.get_or_create(
                     vendor_house_id=item['vendor_house_id'],
                     vendor=item['vendor']
                 )

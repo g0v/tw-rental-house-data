@@ -2,8 +2,13 @@
 # can be override by settings
 import sys
 import os
-sys.path.append('{}/../..'.format(
-    os.path.dirname(os.path.realpath(__file__))))
+import django
+from django.conf import settings
+
+# Allow Scrapy to use Django
+sys.path.append('{}/..'.format(os.path.dirname(os.path.realpath(__file__))))
+os.environ['DJANGO_SETTINGS_MODULE'] = 'backend.settings'
+django.setup()
 
 BOT_NAME = 'tw-rental-house-data'
 FEED_FORAMT = 'jsonlines'

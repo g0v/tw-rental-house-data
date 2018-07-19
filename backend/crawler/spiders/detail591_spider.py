@@ -1,14 +1,16 @@
 import re
 from functools import partial
-from datetime import datetime
+from django.utils import timezone
 from ..items import GenericHouseItem, RawHouseItem
-from backend.db.models import House, db
-from backend.db import enums
 from .house_spider import HouseSpider
 import traceback
+from rental import enums
+from rental.models import House
+from django.db import transaction
 
-# TODO: mark 404, rented
+# TODO: mark 404, rented and avoid duplicated update
 
+# TODO: tools porting
 
 class Detail591Spider(HouseSpider):
     name = "detail591"
@@ -58,21 +60,20 @@ class Detail591Spider(HouseSpider):
 
         if not self.has_request():
             # find all opened houses and crawl all of them
-            houses = House.select(House.vendor_house_id).where(
-                House.deal_status == enums.DealStatusField.enums.OPENED
-            )
+            houses = House.objects.filter(
+                deal_status = enums.DealStatusType.OPENED
+            ).values('vendor_house_id')
 
             self.logger.info('generating request: {}'.format(houses.count()))
 
-            with db.atomic() as transaction:
+            with transaction.atomic():
                 try:
                     for house in houses:
                         self.gen_persist_request({
-                            'house_id': house.vendor_house_id
+                            'house_id': house['vendor_house_id']
                         })
                 except:
                     traceback.print_exc()
-                    transaction.rollback()
 
         while True:
             next_request = self.next_request()
@@ -197,7 +198,7 @@ class Detail591Spider(HouseSpider):
         # deal_at = None
         # if is_deal:
         #     house_state = 'DEAL'
-        #     deal_at = datetime.now(tz=tw_tz)
+        #     deal_at = timezone.localtime()
 
         # side meta
         sides = self.css(response, '.detailInfo .attr li::text')
@@ -274,20 +275,20 @@ class Detail591Spider(HouseSpider):
             deposit = detail_dict['top_metas']['押金']
             month_deposit = deposit.split('個月')
             if len(month_deposit) == 2:
-                ret['deposit_type'] = enums.DepositTypeField.enums.月
+                ret['deposit_type'] = enums.DepositType.月
                 ret['n_month_deposit'] = self.from_zh_number(month_deposit[0])
                 ret['deposit'] = ret['n_month_deposit'] * detail_dict['price']
             elif deposit.replace(',', '').isdigit():
                 ret['deposit'] = self.clean_number(deposit)
                 n_month = ret['deposit'] / detail_dict['price']
-                ret['deposit_type'] = enums.DepositTypeField.enums.定額
+                ret['deposit_type'] = enums.DepositType.定額
                 ret['n_month_deposit'] = n_month
             elif deposit == '面議':
-                ret['deposit_type'] = enums.DepositTypeField.enums.面議
+                ret['deposit_type'] = enums.DepositType.面議
                 ret['n_month_deposit'] = None
                 ret['deposit'] = None
             else:
-                ret['deposit_type'] = enums.DepositTypeField.enums.其他
+                ret['deposit_type'] = enums.DepositType.其他
                 ret['n_month_deposit'] = None
                 ret['deposit'] = None
 
@@ -338,19 +339,30 @@ class Detail591Spider(HouseSpider):
 
         # top_region, sub_region
         if 'top_region' in detail_dict:
-            ret['top_region'] = detail_dict['top_region']
-            ret['sub_region'] = '{}{}'.format(
-                detail_dict['top_region'], detail_dict['sub_region'])
+            ret['top_region'] = self.get_enum(
+                enums.TopRegionType,
+                detail_dict['house_id'],
+                detail_dict['top_region']
+            )
+            
+            ret['sub_region'] = self.get_enum(
+                enums.SubRegionType,
+                detail_dict['house_id'],
+                '{}{}'.format(
+                    detail_dict['top_region'],
+                    detail_dict['sub_region']
+                )
+            )
 
         if 'address' in detail_dict:
             ret['rough_address'] = detail_dict['address']
 
         # deal_status, deal_time, n_day_deal
         if detail_dict['is_deal']:
-            now = datetime.now()
+            now = timezone.now()
             time_taken = now - house.created
             elipse_day = 1 if time_taken.seconds > 0 else 0
-            ret['deal_status'] = enums.DealStatusField.enums.DEAL
+            ret['deal_status'] = enums.DealStatusType.DEAL
             ret['deal_time'] = now
             ret['n_day_deal'] = time_taken.days + elipse_day
 
@@ -358,12 +370,12 @@ class Detail591Spider(HouseSpider):
         if '型態' in detail_dict['side_metas']:
             building_type = detail_dict['side_metas']['型態']
             if building_type == '別墅' or building_type == '透天厝':
-                ret['building_type'] = enums.BuildingTypeField.enums.透天
+                ret['building_type'] = enums.BuildingType.透天
             elif building_type == '住宅大樓':
-                ret['building_type'] = enums.BuildingTypeField.enums.電梯大樓
+                ret['building_type'] = enums.BuildingType.電梯大樓
             else:
                 ret['building_type'] = self.get_enum(
-                    enums.BuildingTypeField,
+                    enums.BuildingType,
                     detail_dict['house_id'],
                     building_type
                 )
@@ -371,7 +383,7 @@ class Detail591Spider(HouseSpider):
         # property type
         if '現況' in detail_dict['side_metas']:
             ret['property_type'] = self.get_enum(
-                enums.PropertyTypeField,
+                enums.PropertyType,
                 detail_dict['house_id'],
                 detail_dict['side_metas']['現況']
             )
@@ -497,18 +509,18 @@ class Detail591Spider(HouseSpider):
 
         # has_gender_restriction
         ret['has_gender_restriction'] = False
-        ret['gender_restriction'] = enums.GenderTypeField.enums.不限
+        ret['gender_restriction'] = enums.GenderType.不限
         if '性別要求' in detail_dict['top_metas']:
             gender = detail_dict['top_metas']['性別要求']
             if gender == '女生':
                 ret['has_gender_restriction'] = True
-                ret['gender_restriction'] = enums.GenderTypeField.enums.女
+                ret['gender_restriction'] = enums.GenderType.女
             elif gender == '男生':
                 ret['has_gender_restriction'] = True
-                ret['gender_restriction'] = enums.GenderTypeField.enums.男
+                ret['gender_restriction'] = enums.GenderType.男
             elif '不限' not in gender and '男女生皆可' not in gender:
                 ret['has_gender_restriction'] = True
-                ret['gender_restriction'] = enums.GenderTypeField.enums.其他
+                ret['gender_restriction'] = enums.GenderType.其他
 
         # can_cook
         if '開伙' in detail_dict['top_metas']:
@@ -544,11 +556,11 @@ class Detail591Spider(HouseSpider):
         # contact and agent
         owner = detail_dict['owner']
         if '代理人' in owner['comment']:
-            ret['contact'] = enums.ContactTypeField.enums.代理人
+            ret['contact'] = enums.ContactType.代理人
         elif owner['isAgent']:
-            ret['contact'] = enums.ContactTypeField.enums.房仲
+            ret['contact'] = enums.ContactType.房仲
         else:
-            ret['contact'] = enums.ContactTypeField.enums.屋主
+            ret['contact'] = enums.ContactType.屋主
 
         if owner['isAgent']:
             agent = {}
@@ -568,9 +580,9 @@ class Detail591Spider(HouseSpider):
     def gen_shared_attrs(self, detail_dict, house=None):
 
         if house == None:
-            house = House.get(
-                House.vendor == self.vendor,
-                House.vendor_house_id == detail_dict['house_id']
+            house = House.objects.get(
+                vendor = self.vendor,
+                vendor_house_id = detail_dict['house_id']
             )
 
         detail_dict['price'] = self.clean_number(detail_dict['price'])
@@ -627,7 +639,7 @@ class Detail591Spider(HouseSpider):
             yield GenericHouseItem(
                 vendor=self.vendor,
                 vendor_house_id=response.meta['seed']['house_id'],
-                deal_status='NOT_FOUND'
+                deal_status=enums.DealStatusType.NOT_FOUND
             )
         else:
             # regular 200 response

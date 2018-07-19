@@ -7,10 +7,16 @@
 
 # 程式使用方式與注意事項
 
-## 爬蟲
+本程式還在初期開發階段，任何框架、資料庫定義、API 皆有可能更動。
 
+## 資料庫與網頁後端
 ### 環境需求
 1. Python3 + pip
+
+### Peewee -> Django 遷移步驟
+1. 理論上可以直接用 Django 內建工具，因為 0001_migration 的內容與 Peewee 完全相同
+2. 唯一的例外是 PostgreSQL ，請在遷移完畢後，執行 `python manage.py migratepeewee` ，
+   使用方式請參見 `--help`
 
 ### 使用方式
 ```sh
@@ -19,6 +25,29 @@ virtualenv -p python3 .
 pip install -r requirements.txt
 
 cd backend
+# 設定資料庫（預設使用 sqlite ）
+## 詳細資訊請見 [Django 官網](https://docs.djangoproject.com/en/2.0/topics/settings/)
+## 如果想用 PostgreSQL 9.3+ ，推薦打開 USE_NATIVE_JSONFIELD ，可以使用內建的 jsonb 
+vim backend/settings_local.py
+
+# 設定資料庫
+## 使用 --fake-init 可以讓 Django 跳過已存在的 migration script 
+## (如果你之前有乖乖把 DB 建好的話)
+python manage.py migrate --fake-init
+python manage.py loaddata vendors
+```
+
+## 爬蟲
+
+### 環境需求
+1. Python3 + pip
+
+### 使用方式
+
+確定資料庫準備完成後，執行以下步驟：
+
+```sh
+cd backend
 # 設定資料庫與使用環境
 cp settings.sample.py settings.py
 vim settins.py
@@ -26,9 +55,6 @@ vim settins.py
 # 設定 Scrapy
 cp crawler/settints.sample.py crawler/settings.py
 vim crawler/settings.py
-
-# 設定資料庫
-python tools/setup_db.py
 
 # 開始爬資料
 ./go.sh

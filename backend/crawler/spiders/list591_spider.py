@@ -1,6 +1,6 @@
 import json
 from ..items import RawHouseItem, GenericHouseItem
-from backend.db.enums import PropertyTypeField, TopRegionField, SubRegionField
+from rental.enums import PropertyType, TopRegionType, SubRegionType
 from .house_spider import HouseSpider
 from .all_591_cities import all_591_cities
 
@@ -54,16 +54,16 @@ class List591Spider(HouseSpider):
             self.vendor.site_url, house['id'])
 
         top_region = self.get_enum(
-            TopRegionField, house['id'], house['region_name'])
+            TopRegionType, house['id'], house['region_name'])
 
         sub_region = self.get_enum(
-            SubRegionField,
+            SubRegionType,
             house['id'],
             '{}{}'.format(house['region_name'], house['section_name'])
         )
 
         property_type = self.get_enum(
-            PropertyTypeField, house['id'], house['kind_name'])
+            PropertyType, house['id'], house['kind_name'])
 
         return {
             'vendor': self.vendor,

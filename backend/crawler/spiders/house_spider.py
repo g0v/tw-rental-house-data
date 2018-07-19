@@ -2,11 +2,21 @@ import scrapy
 import re
 import traceback
 from scrapy.spidermiddlewares.httperror import HttpError
-from backend.db.models import RequestTS, HouseTS, Vendor, now_tuple
-from backend.db.enums import RequestTypeField
+from rental.models import HouseTS, Vendor
+from ..models import RequestTS
+from ..enums import RequestType
+from rental.enums import UNKNOWN_ENUM
+from django.utils import timezone
 
 # TODO: commit transaction
 # TODO: yield request
+
+# TODO: reuse this
+def now_tuple():
+    now = timezone.now()
+    # Let's do it once for now
+    return [now.year, now.month, now.day, 0]
+    # return [now.year, now.month, now.day, now.hour - now.hour % 12]
 
 
 class HouseSpider(scrapy.Spider):
@@ -38,16 +48,16 @@ class HouseSpider(scrapy.Spider):
         y, m, d, h = now_tuple()
 
         try:
-            self.vendor = Vendor.get(
-                Vendor.name == vendor
+            self.vendor = Vendor.objects.get(
+                name = vendor
             )
         except Vendor.DoesNotExist:
             raise Exception('Vendor "{}" is not defined.'.format(vendor))
 
         if is_list:
-            self.request_type = RequestTypeField.enums.LIST
+            self.request_type = RequestType.LIST
         else:
-            self.request_type = RequestTypeField.enums.DETAIL
+            self.request_type = RequestType.DETAIL
 
         self.request_generator = request_generator
         self.response_parser = response_parser
@@ -60,30 +70,31 @@ class HouseSpider(scrapy.Spider):
         }
 
     def has_request(self):
-        undone_requests = RequestTS.select().where(
-            RequestTS.year == self.ts['y'],
-            RequestTS.month == self.ts['m'],
-            RequestTS.day == self.ts['d'],
-            RequestTS.hour == self.ts['h'],
-            RequestTS.is_pending == False,
-            RequestTS.vendor == self.vendor,
-            RequestTS.request_type == self.request_type
-        ).limit(1)
+        undone_requests = RequestTS.objects.filter(
+            year = self.ts['y'],
+            month = self.ts['m'],
+            day = self.ts['d'],
+            hour = self.ts['h'],
+            # TODO: remove this to match function meaning
+            is_pending = False,
+            vendor = self.vendor,
+            request_type = self.request_type
+        )[:1]
 
         return undone_requests.count() > 0
 
     def has_record(self):
-        today_houses = HouseTS.select().where(
-            HouseTS.year == self.ts['y'],
-            HouseTS.month == self.ts['m'],
-            HouseTS.day == self.ts['d'],
-            HouseTS.hour == self.ts['h']
-        ).limit(1)
+        today_houses = HouseTS.objects.filter(
+            year = self.ts['y'],
+            month = self.ts['m'],
+            day = self.ts['d'],
+            hour = self.ts['h']
+        )[:1]
 
         return today_houses.count() > 0
 
     def gen_persist_request(self, seed):
-        RequestTS.create(
+        RequestTS.objects.create(
             request_type=self.request_type,
             vendor=self.vendor,
             seed=seed
@@ -94,42 +105,42 @@ class HouseSpider(scrapy.Spider):
             # At most self.queue_length in memory
             return None
 
-        try:
-            next_row = RequestTS.get(
-                RequestTS.year == self.ts['y'],
-                RequestTS.month == self.ts['m'],
-                RequestTS.day == self.ts['d'],
-                RequestTS.hour == self.ts['h'],
-                RequestTS.vendor == self.vendor,
-                RequestTS.request_type == self.request_type,
-                RequestTS.is_pending == False)
+        next_row = RequestTS.objects.filter(
+            year = self.ts['y'],
+            month = self.ts['m'],
+            day = self.ts['d'],
+            hour = self.ts['h'],
+            vendor = self.vendor,
+            request_type = self.request_type,
+            is_pending = False
+        ).order_by('created').first()
 
-            next_row.is_pending = True
-            next_row.save()
-            self.n_live_spider += 1
-
-            requestArgs = {
-                'dont_filter': True,
-                'errback': self.error_handler,
-                'callback': self.parser_wrapper,
-                'meta': {}
-            }
-
-            if not request_generator:
-                request_generator = self.request_generator
-
-            requestArgs = {
-                **requestArgs,
-                **request_generator(next_row.seed)
-            }
-
-            if 'db_request' not in requestArgs['meta']:
-                requestArgs['meta']['db_request'] = next_row
-
-            return scrapy.Request(**requestArgs)
-
-        except RequestTS.DoesNotExist:
+        if next_row is None:
             return None
+
+        next_row.is_pending = True
+        next_row.save()
+        self.n_live_spider += 1
+
+        requestArgs = {
+            'dont_filter': True,
+            'errback': self.error_handler,
+            'callback': self.parser_wrapper,
+            'meta': {}
+        }
+
+        if not request_generator:
+            request_generator = self.request_generator
+
+        requestArgs = {
+            **requestArgs,
+            **request_generator(next_row.seed)
+        }
+
+        if 'db_request' not in requestArgs['meta']:
+            requestArgs['meta']['db_request'] = next_row
+
+        return scrapy.Request(**requestArgs)
 
     def parser_wrapper(self, response):
         db_request = response.meta['db_request']
@@ -139,7 +150,7 @@ class HouseSpider(scrapy.Spider):
         try:
             for item in self.response_parser(response):
                 if item is True:
-                    db_request.delete_instance()
+                    db_request.delete()
                 else:
                     yield item
         except:
@@ -195,16 +206,16 @@ class HouseSpider(scrapy.Spider):
 
     def get_enum(self, EnumCls, house_id, value):
         try:
-            enum_str = getattr(EnumCls.enums, value)
+            enum = EnumCls[value]
         except AttributeError:
             self.logger.error('Unknown property: {}/{} in house {}'.format(
                 value,
                 EnumCls.__name__,
                 house_id
             ))
-            enum_str = EnumCls.enums.__UNKNOWN__
+            enum = UNKNOWN_ENUM
 
-        return enum_str
+        return enum
 
     def css_first(self, base, selector, default=''):
         # Check how to find if there's missing attribute
