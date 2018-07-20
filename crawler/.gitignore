@@ -3,3 +3,4 @@ crawler/settings.py
 /settings.py
 *.log
 *.csv
+rental_house.json

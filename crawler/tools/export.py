@@ -4,17 +4,17 @@ import csv
 import argparse
 import json
 from datetime import datetime, timedelta
-# import logging
-sys.path.append('{}/../..'.format(
+from django.utils import timezone
+from django.core.paginator import Paginator
+
+sys.path.append('{}/..'.format(
     os.path.dirname(os.path.realpath(__file__))))
 
-from backend.db.models import House, HouseEtc, tw_tz
-from backend.db import enums
+from tools.utils import load_django
+load_django()
 
-# logging.basicConfig(
-#     format='%(levelname)s: %(message)s',
-#     level=logging.DEBUG
-# )
+from rental.models import House, HouseEtc
+from rental import enums
 
 vendor_stats = {'_total': 0}
 
@@ -24,13 +24,13 @@ structured_headers = [
     {'en': 'vendor_house_url', 'zh': '物件網址'},
     {'en': 'created', 'zh': '物件首次發現時間'},
     {'en': 'updated', 'zh': '物件最後更新時間'},
-    {'en': 'top_region', 'zh': '縣市', 'is_enum': enums.TopRegionField()},
-    {'en': 'sub_region', 'zh': '鄉鎮市區', 'is_enum': enums.SubRegionField()},
-    {'en': 'deal_status', 'zh': '房屋出租狀態', 'is_enum': enums.DealStatusField()},
+    {'en': 'top_region', 'zh': '縣市', 'is_enum': enums.TopRegionType},
+    {'en': 'sub_region', 'zh': '鄉鎮市區', 'is_enum': enums.SubRegionType},
+    {'en': 'deal_status', 'zh': '房屋出租狀態', 'is_enum': enums.DealStatusType},
     {'en': 'deal_time', 'zh': '出租大約時間'},
     {'en': 'n_day_deal', 'zh': '出租所費天數'},
     {'en': 'monthly_price', 'zh': '月租金'},
-    {'en': 'deposit_type', 'zh': '押金類型', 'is_enum': enums.DepositTypeField()},
+    {'en': 'deposit_type', 'zh': '押金類型', 'is_enum': enums.DepositType},
     {'en': 'n_month_deposit', 'zh': '押金月數'},
     {'en': 'deposit', 'zh': '押金金額'},
     {'en': 'is_require_management_fee', 'zh': '需要管理費？'},
@@ -41,8 +41,8 @@ structured_headers = [
     {'en': 'per_ping_price', 'zh': '每坪租金（含管理費與停車費）'},
     # {'en': 'detail_dict', 'zh': '建築類型_原始', 'field': 'building_type',
     #     'fn': lambda x: x['side_metas'].get('型態', '')},
-    {'en': 'building_type', 'zh': '建築類型', 'is_enum': enums.BuildingTypeField()},
-    {'en': 'property_type', 'zh': '物件類型', 'is_enum': enums.PropertyTypeField()},
+    {'en': 'building_type', 'zh': '建築類型', 'is_enum': enums.BuildingType},
+    {'en': 'property_type', 'zh': '物件類型', 'is_enum': enums.PropertyType},
     {'en': 'is_rooftop', 'zh': '自報頂加？'},
     # {'en': 'detail_dict', 'zh': '樓層_原始', 'field': 'raw_floor',
     #     'fn': lambda x: x['side_metas'].get('樓層', '')},
@@ -86,11 +86,11 @@ structured_headers = [
     #     'fn': lambda x: x['top_metas'].get('身份要求', '')},
     {'en': 'has_tenant_restriction', 'zh': '有身份限制？'},
     {'en': 'has_gender_restriction', 'zh': '有性別限制？'},
-    {'en': 'gender_restriction', 'zh': '性別限制', 'is_enum': enums.GenderTypeField()},
+    {'en': 'gender_restriction', 'zh': '性別限制', 'is_enum': enums.GenderType},
     {'en': 'can_cook', 'zh': '可炊？'},
     {'en': 'allow_pet', 'zh': '可寵？'},
     {'en': 'has_perperty_registration', 'zh': '有產權登記？'},
-    {'en': 'contact', 'zh': '刊登者類型', 'is_enum': enums.ContactTypeField()},
+    {'en': 'contact', 'zh': '刊登者類型', 'is_enum': enums.ContactType},
     {'en': 'agent_org', 'zh': '仲介資訊'},
 ]
 
@@ -142,82 +142,78 @@ def print_header(print_enum=True, file_name='rental_house'):
 
     return zh_writer
 
+def prepare_houses(from_date, to_date):
+    houses = House.objects.filter(
+        # building_type != enums.BuildingTypeField.enums.倉庫,
+        # building_type != getattr(enums.BuildingTypeField.enums, '店面（店鋪）'),
+        # building_type != enums.BuildingTypeField.enums.辦公商業大樓,
+        # property_type != enums.PropertyTypeField.enums.車位,
+        # property_type != enums.PropertyTypeField.enums.倉庫,
+        # property_type != enums.PropertyTypeField.enums.場地,
+        additional_fee__isnull=False,
+        created__lte=to_date,
+        updated__gte=from_date
+    ).order_by(
+        '-id'
+    # ).values(
+    #     'vendor_house_id',
+    #     'vendor',
+    #     'created',
+    #     'updated',
+    #     'vendor_house_url',
+    #     'top_region',
+    #     'sub_region',
+    #     'deal_status',
+    #     'deal_time',
+    #     'n_day_deal',
+    #     'monthly_price',
+    #     'deposit_type',
+    #     'n_month_deposit',
+    #     'deposit',
+    #     'is_require_management_fee',
+    #     'monthly_management_fee',
+    #     'has_parking',
+    #     'is_require_parking_fee',
+    #     'monthly_parking_fee',
+    #     'per_ping_price',
+    #     'building_type',
+    #     'property_type',
+    #     'is_rooftop',
+    #     'floor',
+    #     'total_floor',
+    #     'dist_to_highest_floor',
+    #     'floor_ping',
+    #     'n_living_room',
+    #     'n_bed_room',
+    #     'n_bath_room',
+    #     'n_balcony',
+    #     'apt_feature_code',
+    #     'rough_address',
+    #     'rough_gps',
+    #     'additional_fee',
+    #     'living_functions',
+    #     'transportation',
+    #     'has_tenant_restriction',
+    #     'has_gender_restriction',
+    #     'gender_restriction',
+    #     'can_cook',
+    #     'allow_pet',
+    #     'has_perperty_registration',
+    #     'contact',
+    #     'agent_org',
+    #     'imgs',
+    #     'facilities',
+    )
+    paginator = Paginator(houses, 5000)
+    return paginator
 
-def print_body(writer, from_date, to_date, page=1, print_enum=True):
+def print_body(writer, houses, print_enum=True):
     global structured_headers
     global vendor_stats
-    houses = House.select(
-        House.vendor_house_id,
-        House.vendor,
-        House.created,
-        House.updated,
-        House.vendor_house_url,
-        House.top_region,
-        House.sub_region,
-        House.deal_status,
-        House.deal_time,
-        House.n_day_deal,
-        House.monthly_price,
-        House.deposit_type,
-        House.n_month_deposit,
-        House.deposit,
-        House.is_require_management_fee,
-        House.monthly_management_fee,
-        House.has_parking,
-        House.is_require_parking_fee,
-        House.monthly_parking_fee,
-        House.per_ping_price,
-        House.building_type,
-        House.property_type,
-        House.is_rooftop,
-        House.floor,
-        House.total_floor,
-        House.dist_to_highest_floor,
-        House.floor_ping,
-        House.n_living_room,
-        House.n_bed_room,
-        House.n_bath_room,
-        House.n_balcony,
-        House.apt_feature_code,
-        House.rough_address,
-        House.rough_gps,
-        House.additional_fee,
-        House.living_functions,
-        House.transportation,
-        House.has_tenant_restriction,
-        House.has_gender_restriction,
-        House.gender_restriction,
-        House.can_cook,
-        House.allow_pet,
-        House.has_perperty_registration,
-        House.contact,
-        House.agent_org,
-        House.imgs,
-        House.facilities,
-    #     HouseEtc.detail_dict,
-    # ).join(
-    #     HouseEtc
-    ).where(
-        # House.building_type != enums.BuildingTypeField.enums.倉庫,
-        # House.building_type != getattr(enums.BuildingTypeField.enums, '店面（店鋪）'),
-        # House.building_type != enums.BuildingTypeField.enums.辦公商業大樓,
-        # House.property_type != enums.PropertyTypeField.enums.車位,
-        # House.property_type != enums.PropertyTypeField.enums.倉庫,
-        # House.property_type != enums.PropertyTypeField.enums.場地,
-        House.additional_fee != None,
-        House.created <= to_date,
-        House.updated >= from_date
-    ).order_by(
-        House.id.desc()
-    ).paginate(
-        page, 5000
-    ).objects()
-
-    count = houses.count()
-    if count == 0:
-        return 0
+    count = 0
 
     for house in houses:
+
         if house.vendor.name not in vendor_stats:
             vendor_stats[house.vendor.name] = 0
 
@@ -241,7 +237,7 @@ def print_body(writer, from_date, to_date, page=1, print_enum=True):
                         val = ''
 
                 if type(val) is datetime:
-                    val = val.replace(tzinfo=tw_tz).strftime('%Y-%m-%d %H:%M:%S %Z')
+                    val = timezone.localtime(val).strftime('%Y-%m-%d %H:%M:%S %Z')
                 if val is None or val is '':
                     val = '-'
                 elif val is True:
@@ -252,21 +248,22 @@ def print_body(writer, from_date, to_date, page=1, print_enum=True):
                 if print_enum:
                     row.append(val)
                     if 'is_enum' in header and header['is_enum']:
-                        row.append(header['is_enum'].db_value(val))
+                        if val != '-':
+                            row.append(header['is_enum'](val).name)
+                        else:
+                            row.append(val)
                 else:
-                    if 'is_enum' in header and header['is_enum']:
-                        row.append(header['is_enum'].db_value(val))
-                    else:
-                        row.append(val)
+                    row.append(val)
 
         writer.writerow(row)
+        count += 1
 
     return count
 
 
 def parse_date(input):
     try: 
-        return datetime.strptime(input, '%Y%m%d').replace(tzinfo=tw_tz)
+        return datetime.strptime(input, '%Y%m%d')
     except ValueError:
         raise argparse.ArgumentTypeError('Invalid date string: {}'.format(input))
 
@@ -307,16 +304,15 @@ arg_parser.add_argument(
 if __name__ == '__main__':
 
     args = arg_parser.parse_args()
-    page = 1
-    total = 0
+    
     print_enum = args.enum is not False
     from_date = args.from_date
     to_date = args.to_date
     if from_date is None:
-        from_date = datetime.now(tz=tw_tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        from_date = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
     if to_date is None:
-        to_date = datetime.now(tz=tw_tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        to_date = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
     if from_date > to_date:
         from_date, to_date = to_date, from_date
@@ -325,13 +321,14 @@ if __name__ == '__main__':
 
     writer = print_header(print_enum, args.outfile)
     print('===== Export all houses from {} to {} ====='.format(from_date, to_date))
-    while True:
-        ret = print_body(writer, from_date, to_date, page, print_enum)
-        total += ret
-        page += 1
-        if not ret:
-            break
-        print('[{}] we have {} rows'.format(datetime.now(), total))
+    paginator = prepare_houses(from_date, to_date)
+    total = paginator.count
+    current_done = 0
+    for page_num in paginator.page_range:
+        houses = paginator.page(page_num)
+        n_raws = print_body(writer, houses, print_enum)
+        current_done += n_raws
+        print('[{}] we have {}/{} rows'.format(datetime.now(), current_done, total))
 
     with open('{}.json'.format(args.outfile), 'w') as file:
         json.dump(vendor_stats, file, ensure_ascii=False)
