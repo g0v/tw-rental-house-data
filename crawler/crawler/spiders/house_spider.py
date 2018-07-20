@@ -8,7 +8,6 @@ from crawlerrequest.enums import RequestType
 from rental.enums import UNKNOWN_ENUM
 from crawler.utils import now_tuple
 
-# TODO: commit transaction
 # TODO: yield request
 
 
@@ -68,7 +67,7 @@ class HouseSpider(scrapy.Spider):
             month = self.ts['m'],
             day = self.ts['d'],
             hour = self.ts['h'],
-            # TODO: remove this to match function meaning
+            # Ignore pending request since we will generate new one and rerun it anyway
             is_pending = False,
             vendor = self.vendor,
             request_type = self.request_type

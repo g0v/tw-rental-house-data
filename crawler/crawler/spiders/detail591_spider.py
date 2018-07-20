@@ -10,8 +10,6 @@ from django.db import transaction
 
 # TODO: mark 404, rented and avoid duplicated update
 
-# TODO: tools porting
-
 class Detail591Spider(HouseSpider):
     name = "detail591"
     zh_number_dict = {
