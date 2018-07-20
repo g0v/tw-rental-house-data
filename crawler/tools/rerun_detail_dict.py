@@ -1,80 +1,82 @@
 import sys
 import os
 import traceback
-from datetime import datetime
-sys.path.append('{}/../..'.format(
+import json
+from django.utils import timezone
+from django.db import transaction
+from django.core.paginator import Paginator
+from scrapy.http import Request, HtmlResponse
+
+sys.path.append('{}/..'.format(
     os.path.dirname(os.path.realpath(__file__))))
 
+from tools.utils import load_django
+load_django()
 
-from backend.db.models import House, HouseEtc, db
-from backend.crawler.spiders.detail591_spider import Detail591Spider
+from rental.models import House, HouseEtc
+from crawler.spiders.detail591_spider import Detail591Spider
 
 rows = []
 total = 0
+current_count = 0
 
 
 def save(row, force=False):
     global rows
     global total
+    global current_count
     if row:
         rows.append(row)
     if len(rows) >= 1000 or force:
-        with db.atomic() as transaction:
+        with transaction.atomic():
             try:
                 for r in rows:
                     r.save()
-                print('[{}] Done {} rows'.format(datetime.now(), total))
+                print('[{}] Done {}/{} rows'.format(timezone.localtime(), current_count, total))
                 rows = []
             except:
                 traceback.print_exc()
-                transaction.rollback()
 
 
-def parse(page=1):
+def parse():
     global total
-    etcs = HouseEtc.select(
-        HouseEtc.house,
-        HouseEtc.vendor_house_id,
-        HouseEtc.detail_dict
-    ).where(
-        HouseEtc.detail_dict != None
+    global current_count
+    etcs = HouseEtc.objects.filter(
+        detail_dict__isnull=False
     ).order_by(
-        HouseEtc.house
-    ).paginate(
-        page, 1000
+        'house'
+    ).values(
+        'house',
+        'vendor_house_id',
+        'detail_dict'
     )
 
+    paginator = Paginator(etcs, 1000)
     detailSpider = Detail591Spider()
 
-    count = etcs.count()
+    total = paginator.count
 
-    if count == 0:
-        return False
+    for page_num in paginator.page_range:
+        etcs_page = paginator.page(page_num)
 
-    total += count
+        for etc in etcs_page:
+            house = House.objects.get(pk=etc['house'])
+            try:
+                detail_dict = json.loads(etc['detail_dict'])
+                share_attrs = detailSpider.gen_shared_attrs(
+                    detail_dict, house
+                )
+                for attr in share_attrs:
+                    setattr(house, attr, share_attrs[attr])
+                    setattr(house, attr, share_attrs[attr])
+                current_count += 1
+                save(house)
+            except:
+                print('error in {}'.format(house.id))
+                traceback.print_exc()
 
-    for etc in etcs:
-        house = etc.house
-        try:
-            share_attrs = detailSpider.gen_shared_attrs(
-                etc.detail_dict, house
-            )
-            for attr in share_attrs:
-                setattr(house, attr, share_attrs[attr])
-                setattr(house, attr, share_attrs[attr])
-            save(house)
-        except:
-            print('error in {} in page {}'.format(house.id, page))
-            traceback.print_exc()
-
-    return True
+    save(None, True)
 
 
 if __name__ == '__main__':
-    page = 1
-    while True:
-        ret = parse(page)
-        page += 1
-        if not ret:
-            break
-    save(None, True)
+    parse()

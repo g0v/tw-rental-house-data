@@ -1,6 +1,10 @@
 import json
 from os import path
 
+"""
+Script for converting TW region code into Django ORM choice compatible format
+"""
+
 j2 = json.load(open('{}/319.sub_region.json'.format(
     path.dirname(path.realpath(__file__))
 )))
@@ -82,3 +86,5 @@ for tokens in ordered_top_region:
 
 with open('tw_regions.json', 'w', encoding='utf8') as f:
     json.dump(output, f, ensure_ascii=False)
+
+print('Done. Please see tw_regions.json for result file.')
