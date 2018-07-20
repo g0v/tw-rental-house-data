@@ -6,6 +6,9 @@ from datetime import datetime
 sys.path.append('{}/../..'.format(
     os.path.dirname(os.path.realpath(__file__))))
 
+sys.stderr.write("This script is EOL since peewee model is removed. Please use export.py instead.\n")
+exit(1)
+
 from backend.db.models import House, HouseEtc
 from backend.db import enums
 
