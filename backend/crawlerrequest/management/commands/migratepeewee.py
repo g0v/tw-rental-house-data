@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.conf import settings
 from django.db import connections
 from rental.models import SubRegion, House, HouseEtc, RegionTS, HouseTS
-from crawler.models import RequestTS
+from crawlerrequest.models import RequestTS
 
 import json
 
