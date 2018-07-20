@@ -8,8 +8,6 @@ from rental import enums
 from rental.models import House
 from django.db import transaction
 
-# TODO: mark 404, rented and avoid duplicated update
-
 class Detail591Spider(HouseSpider):
     name = "detail591"
     zh_number_dict = {
@@ -360,9 +358,14 @@ class Detail591Spider(HouseSpider):
             now = timezone.now()
             time_taken = now - house.created
             elipse_day = 1 if time_taken.seconds > 0 else 0
+
+            if house.deal_status != enums.DealStatusType.DEAL:
+                # Issue #9, only update deal_time at 1st time we found it become deal
+                # 591 somehow put dealt house in search result....
+                ret['deal_time'] = now
+                ret['n_day_deal'] = time_taken.days + elipse_day
+
             ret['deal_status'] = enums.DealStatusType.DEAL
-            ret['deal_time'] = now
-            ret['n_day_deal'] = time_taken.days + elipse_day
 
         # building_type, 公寓 / 電梯大樓 / 透天
         if '型態' in detail_dict['side_metas']:
