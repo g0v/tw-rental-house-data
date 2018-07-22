@@ -55,6 +55,7 @@ def parse():
     detailSpider = Detail591Spider()
 
     total = paginator.count
+    print('==== Total {} rows to rerun ===='.format(total))
 
     for page_num in paginator.page_range:
         etcs_page = paginator.page(page_num)

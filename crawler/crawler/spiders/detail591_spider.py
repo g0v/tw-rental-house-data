@@ -1,12 +1,13 @@
 import re
 from functools import partial
+from urllib.parse import urlparse, parse_qs
+import traceback
 from django.utils import timezone
+from django.db import transaction
+from rental import enums
+from rental.models import House, Author
 from ..items import GenericHouseItem, RawHouseItem
 from .house_spider import HouseSpider
-import traceback
-from rental import enums
-from rental.models import House
-from django.db import transaction
 
 class Detail591Spider(HouseSpider):
     name = "detail591"
@@ -233,6 +234,34 @@ class Detail591Spider(HouseSpider):
         agent_info = list(map(make_agent_info, agent_info))
         owner['isAgent'] = len(agent_info) > 0
         owner['agent'] = agent_info
+
+        phone_ext = self.css_first(response, '.phone-hide .num::text')
+        phone_url = response.css('.phone-hide .num img').xpath('@src').extract_first()
+
+        if phone_ext:
+            # phone will be pure text when owner use 591 built-in phone number
+            # TODO: check is the ext is identical for the same owner
+            owner['id'] = phone_ext
+        elif phone_url:
+            # or it will be an img, the src would be identical for the same owner
+            # url is sth like
+            # statics.591.com.tw/tools/showPhone.php?info_data=%2BbRfNLlKoLNhHOKui2zb%2FBxYO6A&type=rLEFMu4XrrpgEw
+            parsed_url = urlparse(phone_url)
+            qs = parse_qs(parsed_url.query)
+            if 'info_data' in qs and len(qs['info_data']) > 0:
+                owner['id'] = qs['info_data'][0]
+        else:
+            # sth strange happened, such as it's already dealt
+            # let's try if there's avatar
+            avatar = response.css('.userInfo .avatar img').xpath('@src').extract_first()
+            if avatar and 'no-photo-new.png' not in avatar:
+                owner['id'] = avatar
+            else:
+                # last try, search description to see if there's phone number
+                phone = re.search(r'09[0-9]{8}', ' '.join(desp))
+                if phone:
+                    phone = phone.group()
+                    owner['id'] = phone
 
         return {
             'house_id': response.meta['seed']['house_id'],
@@ -554,7 +583,7 @@ class Detail591Spider(HouseSpider):
 
         ret['facilities'] = facilities
 
-        # contact and agent
+        # contact, agent, and author_hash
         owner = detail_dict['owner']
         if '代理人' in owner['comment']:
             ret['contact'] = enums.ContactType.代理人
@@ -575,6 +604,10 @@ class Detail591Spider(HouseSpider):
                 ret['agent_org'] = agent['經濟業']
             else:
                 ret['agent_org'] = '/'.join(agent.values())
+
+        if 'id' in detail_dict['owner'] and detail_dict['owner']['id']:
+            author_info, created = Author.objects.get_or_create(id=detail_dict['owner']['id'])
+            ret['author_hash'] = author_info.hash
 
         return ret
 

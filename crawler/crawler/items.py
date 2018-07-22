@@ -60,6 +60,7 @@ class GenericHouseItem(Item):
     # undermined for now
     facilities = Field()
     contact = Field()
+    author_hash = Field()
     agent_org = Field()
     imgs = Field()
 

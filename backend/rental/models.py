@@ -4,6 +4,7 @@ from .enums import DealStatusType, BuildingType, PropertyType, ContactType, \
     DepositType, GenderType, TopRegionType, SubRegionType
 
 from django.conf import settings
+import uuid
 
 # Since django doesn't support general JSONField that utilize json type in all DB,
 # It's better to let user to determine which column type s/he want
@@ -65,6 +66,15 @@ class SubRegion(BaseModel):
 
     class Meta:
         db_table = 'sub_region'
+
+class Author(BaseModel):
+    id = models.CharField(
+        primary_key=True,
+        max_length=200
+    )
+    hash = models.UUIDField(
+        default=uuid.uuid4
+    )
 
 class BaseHouse(models.Model):
     top_region = models.IntegerField(
@@ -142,11 +152,14 @@ class BaseHouse(models.Model):
         choices = [(tag, tag.value) for tag in ContactType],
         null=True
     )
+    # use hash instead of author foreign key, so we can 
+    # export house related table without leaking personal info
+    author_hash = models.UUIDField(null=True)
     agent_org = models.CharField(null=True, max_length=256)
     imgs = JSONField(null=True)
 
     class Meta:
-        abstract = True  
+        abstract = True
 
 class House(BaseHouse, BaseModel):
 
