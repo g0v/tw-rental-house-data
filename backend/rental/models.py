@@ -68,12 +68,14 @@ class SubRegion(BaseModel):
         db_table = 'sub_region'
 
 class Author(BaseModel):
-    id = models.CharField(
-        primary_key=True,
-        max_length=200
+    uuid = models.UUIDField(
+        default=uuid.uuid4,
+        primary_key=True
     )
-    hash = models.UUIDField(
-        default=uuid.uuid4
+    truth = models.CharField(
+        unique=True,
+        max_length=200,
+        null=True
     )
 
 class BaseHouse(models.Model):
@@ -152,9 +154,7 @@ class BaseHouse(models.Model):
         choices = [(tag, tag.value) for tag in ContactType],
         null=True
     )
-    # use hash instead of author foreign key, so we can 
-    # export house related table without leaking personal info
-    author_hash = models.UUIDField(null=True)
+    author = models.ForeignKey(Author, on_delete=models.PROTECT, null=True)
     agent_org = models.CharField(null=True, max_length=256)
     imgs = JSONField(null=True)
 

@@ -92,6 +92,7 @@ structured_headers = [
     {'en': 'allow_pet', 'zh': '可寵？'},
     {'en': 'has_perperty_registration', 'zh': '有產權登記？'},
     {'en': 'contact', 'zh': '刊登者類型', 'is_enum': enums.ContactType},
+    {'en': 'author', 'zh': '刊登者編碼', 'field': 'uuid'},
     {'en': 'agent_org', 'zh': '仲介資訊'},
 ]
 
@@ -230,7 +231,7 @@ def print_body(writer, houses, print_enum=True):
                 val = getattr(house, header['en'])
                 if 'fn' in header:
                     val = header['fn'](val)
-                elif 'field' in header:
+                elif val is not None and 'field' in header:
                     if hasattr(val, header['field']):
                         val = getattr(val, header['field'])
                     elif 'field' in header and header['field'] in val:

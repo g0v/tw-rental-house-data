@@ -583,7 +583,7 @@ class Detail591Spider(HouseSpider):
 
         ret['facilities'] = facilities
 
-        # contact, agent, and author_hash
+        # contact, agent, and author
         owner = detail_dict['owner']
         if '代理人' in owner['comment']:
             ret['contact'] = enums.ContactType.代理人
@@ -606,8 +606,8 @@ class Detail591Spider(HouseSpider):
                 ret['agent_org'] = '/'.join(agent.values())
 
         if 'id' in detail_dict['owner'] and detail_dict['owner']['id']:
-            author_info, created = Author.objects.get_or_create(id=detail_dict['owner']['id'])
-            ret['author_hash'] = author_info.hash
+            author_info, created = Author.objects.get_or_create(truth=detail_dict['owner']['id'])
+            ret['author'] = author_info
 
         return ret
 
