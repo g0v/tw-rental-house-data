@@ -199,7 +199,7 @@ class HouseSpider(scrapy.Spider):
     def get_enum(self, EnumCls, house_id, value):
         try:
             enum = EnumCls[value]
-        except AttributeError:
+        except KeyError:
             self.logger.error('Unknown property: {}/{} in house {}'.format(
                 value,
                 EnumCls.__name__,
