@@ -20,15 +20,17 @@ from rental.models import House, HouseEtc
 rows = []
 total = 0
 cur_count = 0
+transaction_size = 500
 
 
 def save(row, force=False):
     global rows
     global total
     global cur_count
+    global transaction_size
     if row:
         rows.append(row)
-    if len(rows) >= 1000 or force:
+    if len(rows) >= transaction_size or force:
         with transaction.atomic():
             try:
                 for r in rows:
@@ -42,13 +44,14 @@ def save(row, force=False):
 def parse():
     global total
     global cur_count
+    global transaction_size
     etcs = HouseEtc.objects.filter(
         detail_raw__isnull=False
     ).order_by(
         'house'
     )
 
-    paginator = Paginator(etcs, 1000)
+    paginator = Paginator(etcs, transaction_size/2)
     detailSpider = Detail591Spider()
 
     total = paginator.count

@@ -19,15 +19,17 @@ from crawler.spiders.detail591_spider import Detail591Spider
 rows = []
 total = 0
 current_count = 0
+transaction_size = 500
 
 
 def save(row, force=False):
     global rows
     global total
     global current_count
+    global transaction_size
     if row:
         rows.append(row)
-    if len(rows) >= 1000 or force:
+    if len(rows) >= transaction_size or force:
         with transaction.atomic():
             try:
                 for r in rows:
@@ -41,6 +43,7 @@ def save(row, force=False):
 def parse():
     global total
     global current_count
+    global transaction_size
     etcs = HouseEtc.objects.filter(
         detail_dict__isnull=False
     ).order_by(
@@ -51,7 +54,7 @@ def parse():
         'detail_dict'
     )
 
-    paginator = Paginator(etcs, 1000)
+    paginator = Paginator(etcs, transaction_size)
     detailSpider = Detail591Spider()
 
     total = paginator.count

@@ -17,6 +17,7 @@ from rental.models import House, HouseEtc
 from rental import enums
 
 vendor_stats = {'_total': 0}
+page_size = 500
 
 structured_headers = [
     {'en': 'vendor_house_id', 'zh': '物件編號'},
@@ -143,6 +144,7 @@ def print_header(print_enum=True, file_name='rental_house'):
     return zh_writer
 
 def prepare_houses(from_date, to_date):
+    global page_size
     houses = House.objects.filter(
         # building_type != enums.BuildingTypeField.enums.倉庫,
         # building_type != getattr(enums.BuildingTypeField.enums, '店面（店鋪）'),
@@ -204,7 +206,7 @@ def prepare_houses(from_date, to_date):
     #     'imgs',
     #     'facilities',
     )
-    paginator = Paginator(houses, 5000)
+    paginator = Paginator(houses, page_size)
     return paginator
 
 def print_body(writer, houses, print_enum=True):
