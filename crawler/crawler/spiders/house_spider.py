@@ -80,7 +80,8 @@ class HouseSpider(scrapy.Spider):
             year = self.ts['y'],
             month = self.ts['m'],
             day = self.ts['d'],
-            hour = self.ts['h']
+            hour = self.ts['h'],
+            vendor = self.vendor
         )[:1]
 
         return today_houses.count() > 0
