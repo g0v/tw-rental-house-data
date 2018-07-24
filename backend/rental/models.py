@@ -1,5 +1,5 @@
 from django.db import models
-from datetime import datetime, timezone, timedelta
+from django.utils import timezone
 from .enums import DealStatusType, BuildingType, PropertyType, ContactType, \
     DepositType, GenderType, TopRegionType, SubRegionType
 
@@ -19,20 +19,16 @@ class JSONField(superJSONField):
 
 
 def current_year():
-    tw_tz = timezone(timedelta(hours=8))
-    return datetime.now(tz=tw_tz).year
+    return timezone.localtime().year
 
 def current_month():
-    tw_tz = timezone(timedelta(hours=8))
-    return datetime.now(tz=tw_tz).month
+    return timezone.localtime().month
 
 def current_day():
-    tw_tz = timezone(timedelta(hours=8))
-    return datetime.now(tz=tw_tz).day
+    return timezone.localtime().day
 
 def current_stepped_hour():
-    tw_tz = timezone(timedelta(hours=8))
-    current = datetime.now(tz=tw_tz)
+    current = timezone.localtime()
     # Let's do only one step for now
     return current.hour - current.hour % 24
 
