@@ -5,11 +5,10 @@
 # Don't forget to add your pipeline to the ITEM_PIPELINES setting
 # See: https://doc.scrapy.org/en/latest/topics/item-pipeline.html
 
-from datetime import datetime, timezone, timedelta
-from rental.models import HouseTS, House, HouseEtc
-from .items import GenericHouseItem, RawHouseItem
 import logging
 import traceback
+from rental.models import HouseTS, House, HouseEtc
+from .items import GenericHouseItem, RawHouseItem
 from crawler.utils import now_tuple
 
 
@@ -42,7 +41,6 @@ class CrawlerPipeline(object):
                 if 'dict' in item and not item['is_list']:
                     house_etc.detail_dict = item['dict']
 
-                house.updated = datetime.now()
                 house_etc.save()
 
             elif type(item) is GenericHouseItem:
@@ -66,7 +64,6 @@ class CrawlerPipeline(object):
                         setattr(house_ts, attr, to_db[attr])
                         setattr(house, attr, to_db[attr])
 
-                house.updated = datetime.now()
 
                 house.save()
                 house_ts.save()
