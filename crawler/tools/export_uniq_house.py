@@ -233,19 +233,21 @@ def print_body(writer, houses, print_enum=True, listWriter=None):
                     json_val = False
 
                 if print_enum:
+                    obj[field] = json_val
                     row.append(val)
                     if 'is_enum' in header and header['is_enum']:
                         if val != '-':
                             obj[field] = header['is_enum'](val).name
                             row.append(header['is_enum'](val).name)
                         else:
-                            obj[field] = val
+                            obj[field] = json_val
                             row.append(val)
                 else:
-                    obj[field] = val
+                    obj[field] = json_val
                     row.append(val)
 
         writer.writerow(row)
+
         if list_writer:
             filename = ''
             if 'top_region' in house:
