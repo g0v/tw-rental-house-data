@@ -8,7 +8,6 @@ from django.utils import timezone
 from django.core.paginator import Paginator
 from django.contrib.postgres.fields.jsonb import KeyTextTransform, KeyTransform
 from django.db import models
-from django.db.models.expressions import RawSQL
 from django.db.models import Count, Max, Min, Avg
 
 sys.path.append('{}/..'.format(
@@ -78,8 +77,17 @@ structured_headers = [
     {'en': 'transportation_train', 'zh': '附近的火車站數', 'annotate': KeyTextTransform('train','transportation')},
     {'en': 'transportation_hsr', 'zh': '附近的高鐵站數', 'annotate': KeyTextTransform('hsr','transportation')},
     {'en': 'transportation_public_bike', 'zh': '附近的公共自行車數（實驗中）', 'annotate': KeyTextTransform('public_bike','transportation')},
-    # {'en': 'tenant_restriction', 'zh': '身份限制', 'annotate': RawSQL("(etc__detail_dict -> 'top_metas' ->> '身份要求')", [], output_field=models.TextField())},
-    # {'en': 'tenant_restriction', 'zh': '身份限制', 'annotate': KeyTextTransform('身份要求', KeyTransform('top_metas', 'etc__detail_dict'))},
+    {
+        'en': 'tenant_restriction',
+        'zh': '身份限制',
+        'annotate': KeyTextTransform('身份要求', KeyTransform('top_metas', 'etc__detail_dict')),
+        'fn': lambda x: [] if x is None else json.loads(x),
+        'expand_header': [
+            {'en': 'student', 'zh': '學生', 'fn': lambda field_value: '學生' in field_value},
+            {'en': 'office_worker', 'zh': '上班族', 'fn': lambda field_value: '上班族' in field_value},
+            {'en': 'family', 'zh': '家庭', 'fn': lambda field_value: '家庭' in field_value}
+        ]
+    },
     {'en': 'has_tenant_restriction', 'zh': '有身份限制？'},
     {'en': 'has_gender_restriction', 'zh': '有性別限制？'},
     {'en': 'gender_restriction', 'zh': '性別限制', 'is_enum': enums.GenderType},
@@ -111,34 +119,44 @@ for facility in facilities:
 
 def print_header(print_enum=True, file_name='rental_house'):
     global structured_headers
-    # looks like no one need en version XD
-    # en_csv = open('rental_house.en.csv', 'w')
     zh_csv = open('{}.csv'.format(file_name), 'w')
 
-    # en_writer = csv.writer(en_csv)
     zh_writer = csv.writer(zh_csv)
 
-    # en_csv_header = []
     zh_csv_header = []
 
     for header in structured_headers:
-        # en = header['en']
-        # en_csv_header.append(en)
-        zh_csv_header.append(header['zh'])
 
         if print_enum and 'is_enum' in header and header['is_enum']:
-            # en_csv_header.append(en + '_coding')
+            zh_csv_header.append(header['zh'])
             zh_csv_header.append(header['zh'] + '_coding')
+        elif 'expand_header' in header:
+            for more_header in header['expand_header']:
+                zh_csv_header.append('{}_{}'.format(header['zh'], more_header['zh']))
+        else:
+            zh_csv_header.append(header['zh'])
 
     # en_writer.writerow(en_csv_header)
     zh_writer.writerow(zh_csv_header)
 
     return zh_writer
 
-def prepare_houses(from_date, to_date):
+def prepare_houses(from_date, to_date, only_liudu = False):
     global page_size
     search_values = []
     search_annotates = {}
+
+    optional_filter = {}
+
+    if only_liudu:
+        optional_filter['top_region__in'] = [
+            enums.TopRegionType.台北市,
+            enums.TopRegionType.新北市,
+            enums.TopRegionType.桃園市,
+            enums.TopRegionType.台中市,
+            enums.TopRegionType.台南市,
+            enums.TopRegionType.高雄市,
+        ]
 
     for header in structured_headers:
         if 'annotate' in header:
@@ -164,14 +182,7 @@ def prepare_houses(from_date, to_date):
             enums.PropertyType.分租套房,
             enums.PropertyType.雅房
         ],
-        top_region__in=[
-            enums.TopRegionType.台北市,
-            enums.TopRegionType.新北市,
-            enums.TopRegionType.桃園市,
-            enums.TopRegionType.台中市,
-            enums.TopRegionType.台南市,
-            enums.TopRegionType.高雄市,
-        ],
+        **optional_filter,
         total_floor__lt=90,
         floor__lt=90,
         floor__lte=models.F('total_floor'),
@@ -190,6 +201,28 @@ def prepare_houses(from_date, to_date):
 
     paginator = Paginator(houses, page_size)
     return paginator
+
+def normalize_val(val, header):
+    json_val = val
+
+    if 'fn' in header:
+        val = header['fn'](val)
+        json_val = val
+
+    if type(val) is datetime:
+        val = timezone.localtime(val).strftime('%Y-%m-%d %H:%M:%S %Z')
+        json_val = val
+    elif val is '' or val is None:
+        val = '-'
+        json_val = None
+    elif val is True or val == 'true':
+        val = 1
+        json_val = True
+    elif val is False or val == 'false':
+        val = 0
+        json_val = False
+
+    return val, json_val
 
 def print_body(writer, houses, print_enum=True, listWriter=None):
     global structured_headers
@@ -213,24 +246,7 @@ def print_body(writer, houses, print_enum=True, listWriter=None):
                 obj[field] = None
                 row.append('-')
             else:
-                val = house[field]
-                json_val = house[field]
-                if 'fn' in header:
-                    val = header['fn'](val)
-                    json_val = val
-
-                if type(val) is datetime:
-                    val = timezone.localtime(val).strftime('%Y-%m-%d %H:%M:%S %Z')
-                    json_val = val
-                elif val is '' or val is None:
-                    val = '-'
-                    json_val = None
-                elif val is True or val == 'true':
-                    val = 1
-                    json_val = True
-                elif val is False or val == 'false':
-                    val = 0
-                    json_val = False
+                val, json_val = normalize_val(house[field], header)
 
                 if print_enum:
                     obj[field] = json_val
@@ -242,6 +258,11 @@ def print_body(writer, houses, print_enum=True, listWriter=None):
                         else:
                             obj[field] = json_val
                             row.append(val)
+                elif 'expand_header' in header:
+                    for more_header in header['expand_header']:
+                        more_val, more_json_val = normalize_val(val, more_header)
+                        row.append(more_val)
+                        obj['{}_{}'.format(field, more_header['en'])] = more_json_val
                 else:
                     obj[field] = json_val
                     row.append(val)
@@ -312,12 +333,22 @@ arg_parser.add_argument(
     help='export json or not, each top region will be put in seperated files'
 )
 
+arg_parser.add_argument(
+    '-b6',
+    '--liudu',
+    default=False,
+    const=True,
+    nargs='?',
+    help='only export 六都'
+)
+
 if __name__ == '__main__':
 
     args = arg_parser.parse_args()
     
     print_enum = args.enum is not False
     want_json = args.json is not False
+    liudu = args.liudu is not False
     from_date = args.from_date
     to_date = args.to_date
     if from_date is None:
@@ -336,8 +367,9 @@ if __name__ == '__main__':
 
     if want_json:
         list_writer = ListWriter(args.outfile)
+
     print('===== Export all houses from {} to {} ====='.format(from_date, to_date))
-    paginator = prepare_houses(from_date, to_date)
+    paginator = prepare_houses(from_date, to_date, liudu)
     total = paginator.count
     current_done = 0
     
