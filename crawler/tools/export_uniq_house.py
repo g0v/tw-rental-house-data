@@ -22,7 +22,7 @@ from rental import enums
 
 # TODO: add it back
 # vendor_stats = {'_total': 0}
-page_size = 500
+page_size = 3000
 
 structured_headers = [
     {'en': 'n_duplicate', 'zh': '重複物件數', 'annotate': Count('id')},
