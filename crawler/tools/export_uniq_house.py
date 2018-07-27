@@ -151,9 +151,6 @@ def prepare_houses(from_date, to_date):
     ).annotate(
         **search_annotates
     ).filter(
-        # TODO: add filter
-        # TODO: add json
-        # TODO: top 6 city
         # TODO: etc tenant
         additional_fee__isnull=False,
         building_type__in=[
