@@ -155,7 +155,7 @@ def prepare_houses(from_date, to_date):
         # property_type != enums.PropertyTypeField.enums.場地,
         additional_fee__isnull=False,
         created__lte=to_date,
-        updated__gte=from_date
+        crawled_at__gte=from_date
     ).order_by(
         '-id'
     # ).values(

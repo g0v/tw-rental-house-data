@@ -153,6 +153,7 @@ class BaseHouse(models.Model):
     author = models.ForeignKey(Author, on_delete=models.PROTECT, null=True)
     agent_org = models.CharField(null=True, max_length=256)
     imgs = JSONField(null=True)
+    crawled_at = models.DateTimeField(default=None, null=True)
 
     class Meta:
         abstract = True
@@ -162,7 +163,7 @@ class House(BaseHouse, BaseModel):
     class Meta:
         db_table='house'
         indexes = [
-            models.Index(fields=['updated'])
+            models.Index(fields=['crawled_at']),
         ]
         unique_together = (
             ('vendor', 'vendor_house_id'),
@@ -203,7 +204,8 @@ class HouseTS(BaseTimeSeries, BaseHouse):
     class Meta:
         db_table = 'house_ts'
         indexes = [
-            models.Index(fields=['created', 'deal_status'])
+            models.Index(fields=['created', 'deal_status']),
+            models.Index(fields=['vendor', 'vendor_house_id', 'updated']),
         ]
         unique_together = (
             ('year', 'month', 'day', 'hour', 'vendor', 'vendor_house_id'),      

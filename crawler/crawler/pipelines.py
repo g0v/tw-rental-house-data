@@ -7,7 +7,9 @@
 
 import logging
 import traceback
+from django.utils import timezone
 from rental.models import HouseTS, House, HouseEtc
+from rental.enums import DealStatusType
 from .items import GenericHouseItem, RawHouseItem
 from crawler.utils import now_tuple
 
@@ -59,11 +61,24 @@ class CrawlerPipeline(object):
                 del to_db['vendor']
                 del to_db['vendor_house_id']
 
-                for attr in to_db:
-                    if attr in to_db:
-                        setattr(house_ts, attr, to_db[attr])
-                        setattr(house, attr, to_db[attr])
+                # Issue #9
+                # if the house has been dealt, keep its deal_status
+                should_rollback_house_deal_status = False
+                if 'deal_status' in to_db and \
+                    to_db['deal_status'] == DealStatusType.NOT_FOUND and \
+                    house.deal_status == DealStatusType.DEAL:
+                    should_rollback_house_deal_status = True
 
+                for attr in to_db:
+                    setattr(house_ts, attr, to_db[attr])
+                    setattr(house, attr, to_db[attr])
+
+                house.crawled_at = timezone.now()
+                house_ts.crawled_at = timezone.now()
+
+                if should_rollback_house_deal_status:
+                    # don't update crawled_at either
+                    house.deal_status = DealStatusType.DEAL
 
                 house.save()
                 house_ts.save()

@@ -189,10 +189,7 @@ def prepare_houses(from_date, to_date, only_liudu = False):
         floor_ping__lt=500,
         per_ping_price__lte=15000,
         created__lte=to_date,
-        created__gte=from_date,
-        
-        # wait for #10
-        # updated__gte=from_date
+        crawled_at__gte=from_date,
     ).order_by(
         'max_house_id'
     )

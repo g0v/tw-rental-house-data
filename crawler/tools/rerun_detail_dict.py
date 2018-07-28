@@ -78,9 +78,9 @@ def parse(partition_size, partition_index):
             house = House.objects.get(pk=etc['house'])
             try:
                 if type(etc['detail_dict']) is dict:
-                    detail_dict = json.loads(etc['detail_dict'])
+                    detail_dict = etc['detail_dict']
                 else:
-                    detail_dict = json.loads(etc['detail_dict'])
+                    detail_dict = etc['detail_dict']
 
                 share_attrs = detailSpider.gen_shared_attrs(
                     detail_dict, house
