@@ -83,9 +83,9 @@ structured_headers = [
         'annotate': KeyTextTransform('身份要求', KeyTransform('top_metas', 'etc__detail_dict')),
         'fn': lambda x: [] if x is None else json.loads(x),
         'expand_header': [
-            {'en': 'student', 'zh': '學生', 'fn': lambda field_value: '學生' in field_value},
-            {'en': 'office_worker', 'zh': '上班族', 'fn': lambda field_value: '上班族' in field_value},
-            {'en': 'family', 'zh': '家庭', 'fn': lambda field_value: '家庭' in field_value}
+            {'en': 'student', 'zh': '學生？', 'fn': lambda field_value: '學生' in field_value},
+            {'en': 'office_worker', 'zh': '上班族？', 'fn': lambda field_value: '上班族' in field_value},
+            {'en': 'family', 'zh': '家庭？', 'fn': lambda field_value: '家庭' in field_value}
         ]
     },
     {'en': 'has_tenant_restriction', 'zh': '有身份限制？'},
