@@ -185,7 +185,7 @@ def prepare_houses(from_date, to_date, only_liudu = False):
         **optional_filter,
         total_floor__lt=90,
         floor__lt=90,
-        floor__lte=models.F('total_floor'),
+        floor__lte=(models.F('total_floor')+2),
         floor_ping__lt=500,
         per_ping_price__lte=15000,
         created__lte=to_date,
