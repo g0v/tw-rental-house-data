@@ -266,7 +266,7 @@ def print_body(writer, houses, print_enum=True):
 
 def parse_date(input):
     try: 
-        return datetime.strptime(input, '%Y%m%d')
+        return timezone.make_aware(datetime.strptime(input, '%Y%m%d'))
     except ValueError:
         raise argparse.ArgumentTypeError('Invalid date string: {}'.format(input))
 
