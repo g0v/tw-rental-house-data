@@ -8,7 +8,8 @@ from django.utils import timezone
 from django.core.paginator import Paginator
 from django.contrib.postgres.fields.jsonb import KeyTextTransform, KeyTransform
 from django.db import models
-from django.db.models import Count, Max, Min, Avg
+from django.db.models.functions import Cast
+from django.db.models import Count, Max, Min, Avg, TextField
 
 sys.path.append('{}/..'.format(
     os.path.dirname(os.path.realpath(__file__))))
@@ -17,12 +18,19 @@ from tools.utils import load_django
 from tools.json_writer import ListWriter
 load_django()
 
-from rental.models import House, HouseEtc
+from rental.models import House, HouseEtc, Vendor
 from rental import enums
 
-# TODO: add it back
-# vendor_stats = {'_total': 0}
+vendor_stats = {'_total': 0}
 page_size = 3000
+
+vendors = {}
+for vendor in Vendor.objects.all():
+    vendors[vendor.id] = vendor.name
+
+def lookup_vendor(vendor_id):
+    global vendors
+    return vendors[vendor_id]
 
 structured_headers = [
     {'en': 'n_duplicate', 'zh': '重複物件數', 'annotate': Count('id')},
@@ -31,7 +39,7 @@ structured_headers = [
     {'en': 'max_created', 'zh': '最大物件首次發現時間', 'annotate': Max('created')},
     {'en': 'min_created', 'zh': '最小物件首次發現時間', 'annotate': Min('created')},
 
-    {'en': 'vendor', 'zh': '租屋平台', 'field': 'name'},
+    {'en': 'vendor', 'zh': '租屋平台', 'fn': lookup_vendor},
     {'en': 'top_region', 'zh': '縣市', 'is_enum': enums.TopRegionType},
     {'en': 'sub_region', 'zh': '鄉鎮市區', 'is_enum': enums.SubRegionType},
     {'en': 'has_dealt', 'zh': '房屋曾出租過', 'is_enum': enums.DealStatusType, 'annotate': Max('deal_status')},
@@ -77,17 +85,17 @@ structured_headers = [
     {'en': 'transportation_train', 'zh': '附近的火車站數', 'annotate': KeyTextTransform('train','transportation')},
     {'en': 'transportation_hsr', 'zh': '附近的高鐵站數', 'annotate': KeyTextTransform('hsr','transportation')},
     {'en': 'transportation_public_bike', 'zh': '附近的公共自行車數（實驗中）', 'annotate': KeyTextTransform('public_bike','transportation')},
-    {
-        'en': 'tenant_restriction',
-        'zh': '身份限制',
-        'annotate': KeyTextTransform('身份要求', KeyTransform('top_metas', 'etc__detail_dict')),
-        'fn': lambda x: [] if x is None else json.loads(x),
-        'expand_header': [
-            {'en': 'student', 'zh': '學生？', 'fn': lambda field_value: '學生' in field_value},
-            {'en': 'office_worker', 'zh': '上班族？', 'fn': lambda field_value: '上班族' in field_value},
-            {'en': 'family', 'zh': '家庭？', 'fn': lambda field_value: '家庭' in field_value}
-        ]
-    },
+    # {
+    #     'en': 'tenant_restriction',
+    #     'zh': '身份限制',
+    #     'annotate': KeyTextTransform('身份要求', KeyTransform('top_metas', 'etc__detail_dict')),
+    #     'fn': lambda x: [] if x is None else json.loads(x),
+    #     'expand_header': [
+    #         {'en': 'student', 'zh': '學生？', 'fn': lambda field_value: '學生' in field_value},
+    #         {'en': 'office_worker', 'zh': '上班族？', 'fn': lambda field_value: '上班族' in field_value},
+    #         {'en': 'family', 'zh': '家庭？', 'fn': lambda field_value: '家庭' in field_value}
+    #     ]
+    # },
     {'en': 'has_tenant_restriction', 'zh': '有身份限制？'},
     {'en': 'has_gender_restriction', 'zh': '有性別限制？'},
     {'en': 'gender_restriction', 'zh': '性別限制', 'is_enum': enums.GenderType},
@@ -95,7 +103,7 @@ structured_headers = [
     {'en': 'allow_pet', 'zh': '可寵？'},
     {'en': 'has_perperty_registration', 'zh': '有產權登記？'},
     {'en': 'contact', 'zh': '刊登者類型', 'is_enum': enums.ContactType},
-    # {'en': 'author', 'zh': '刊登者編碼', 'annotate': Max('author')},
+    {'en': 'max_author_id', 'zh': '最大刊登者編碼', 'annotate': Max(Cast('author_id', TextField()))},
     {'en': 'agent_org', 'zh': '仲介資訊'},
 ]
 
@@ -103,7 +111,6 @@ facilities = [
     '床', '桌子', '椅子', '電視', '熱水器', '冷氣',
     '沙發', '洗衣機', '衣櫃', '冰箱', '網路', '第四台', '天然瓦斯'
 ]
-
 
 def gen_facility_header(facility):
     return {
@@ -169,7 +176,6 @@ def prepare_houses(from_date, to_date, only_liudu = False):
     ).annotate(
         **search_annotates
     ).filter(
-        # TODO: etc tenant
         additional_fee__isnull=False,
         building_type__in=[
             enums.BuildingType.公寓,
@@ -199,7 +205,7 @@ def prepare_houses(from_date, to_date, only_liudu = False):
     paginator = Paginator(houses, page_size)
     return paginator
 
-def normalize_val(val, header):
+def normalize_val(val, header, use_tf):
     json_val = val
 
     if 'fn' in header:
@@ -213,27 +219,27 @@ def normalize_val(val, header):
         val = '-'
         json_val = None
     elif val is True or val == 'true':
-        val = 1
+        val = 'T' if use_tf else 1
         json_val = True
     elif val is False or val == 'false':
-        val = 0
+        val = 'F' if use_tf else 0
         json_val = False
 
     return val, json_val
 
-def print_body(writer, houses, print_enum=True, listWriter=None):
+def print_body(writer, houses, print_enum=True, use_tf=False, listWriter=None):
     global structured_headers
-    # TODO: add it back
-    # global vendor_stats
+    global vendor_stats
     count = 0
 
     for house in houses:
-        # TODO: add it back
-        # if house.vendor.name not in vendor_stats:
-        #     vendor_stats[house.vendor.name] = 0
 
-        # vendor_stats[house.vendor.name] += 1
-        # vendor_stats['_total'] += 1
+        vendor_name = lookup_vendor(house['vendor'])
+        if vendor_name not in vendor_stats:
+            vendor_stats[vendor_name] = 0
+
+        vendor_stats[vendor_name] += 1
+        vendor_stats['_total'] += 1
 
         row = []
         obj = {}
@@ -242,8 +248,9 @@ def print_body(writer, houses, print_enum=True, listWriter=None):
             if field not in house:
                 obj[field] = None
                 row.append('-')
+                obj[header['en']] = None
             else:
-                val, json_val = normalize_val(house[field], header)
+                val, json_val = normalize_val(house[field], header, use_tf)
 
                 if print_enum:
                     obj[field] = json_val
@@ -257,7 +264,7 @@ def print_body(writer, houses, print_enum=True, listWriter=None):
                             row.append(val)
                 elif 'expand_header' in header:
                     for more_header in header['expand_header']:
-                        more_val, more_json_val = normalize_val(val, more_header)
+                        more_val, more_json_val = normalize_val(val, more_header, use_tf)
                         row.append(more_val)
                         obj['{}_{}'.format(field, more_header['en'])] = more_json_val
                 else:
@@ -339,12 +346,23 @@ arg_parser.add_argument(
     help='only export 六都'
 )
 
+arg_parser.add_argument(
+    '-tf',
+    '--truefalse-instead-of-10',
+    dest='use_tf',
+    default=False,
+    const=True,
+    nargs='?',
+    help='use T/F to express boolean value in csv, instead of 1/0'
+)
+
 if __name__ == '__main__':
 
     args = arg_parser.parse_args()
     
     print_enum = args.enum is not False
     want_json = args.json is not False
+    use_tf = args.use_tf is not False
     liudu = args.liudu is not False
     from_date = args.from_date
     to_date = args.to_date
@@ -372,15 +390,14 @@ if __name__ == '__main__':
     
     for page_num in paginator.page_range:
         houses = paginator.page(page_num)
-        n_raws = print_body(writer, houses, print_enum, list_writer)
+        n_raws = print_body(writer, houses, print_enum, use_tf, list_writer)
         current_done += n_raws
         print('[{}] we have {}/{} rows'.format(datetime.now(), current_done, total))
 
     if want_json:
         list_writer.closeAll()
 
-    # TODO: add it back
-    # with open('{}.json'.format(args.outfile), 'w') as file:
-    #     json.dump(vendor_stats, file, ensure_ascii=False)
+    with open('{}.json'.format(args.outfile), 'w') as file:
+        json.dump(vendor_stats, file, ensure_ascii=False)
 
     print('===== Export done =====\nData: {}.csv\nStatistics: {}.json\n'.format(args.outfile, args.outfile))

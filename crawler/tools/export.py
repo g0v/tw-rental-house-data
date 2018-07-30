@@ -13,11 +13,12 @@ sys.path.append('{}/..'.format(
 from tools.utils import load_django
 load_django()
 
+from tools.json_writer import ListWriter
 from rental.models import House, HouseEtc
 from rental import enums
 
 vendor_stats = {'_total': 0}
-page_size = 500
+page_size = 3000
 
 structured_headers = [
     {'en': 'vendor_house_id', 'zh': '物件編號'},
@@ -92,7 +93,7 @@ structured_headers = [
     {'en': 'allow_pet', 'zh': '可寵？'},
     {'en': 'has_perperty_registration', 'zh': '有產權登記？'},
     {'en': 'contact', 'zh': '刊登者類型', 'is_enum': enums.ContactType},
-    {'en': 'author', 'zh': '刊登者編碼', 'field': 'uuid'},
+    {'en': 'author', 'zh': '刊登者編碼', 'fn': lambda x: str(x.uuid) if hasattr(x, 'uuid') else None},
     {'en': 'agent_org', 'zh': '仲介資訊'},
 ]
 
@@ -117,14 +118,10 @@ for facility in facilities:
 
 def print_header(print_enum=True, file_name='rental_house'):
     global structured_headers
-    # looks like no one need en version XD
-    # en_csv = open('rental_house.en.csv', 'w')
     zh_csv = open('{}.csv'.format(file_name), 'w')
 
-    # en_writer = csv.writer(en_csv)
     zh_writer = csv.writer(zh_csv)
 
-    # en_csv_header = []
     zh_csv_header = []
 
     for header in structured_headers:
@@ -132,14 +129,11 @@ def print_header(print_enum=True, file_name='rental_house'):
         if 'field' in header:
             en += '_' + header['field']
 
-        # en_csv_header.append(en)
         zh_csv_header.append(header['zh'])
 
         if print_enum and 'is_enum' in header and header['is_enum']:
-            # en_csv_header.append(en + '_coding')
             zh_csv_header.append(header['zh'] + '_coding')
 
-    # en_writer.writerow(en_csv_header)
     zh_writer.writerow(zh_csv_header)
 
     return zh_writer
@@ -147,70 +141,47 @@ def print_header(print_enum=True, file_name='rental_house'):
 def prepare_houses(from_date, to_date):
     global page_size
     houses = House.objects.filter(
-        # building_type != enums.BuildingTypeField.enums.倉庫,
-        # building_type != getattr(enums.BuildingTypeField.enums, '店面（店鋪）'),
-        # building_type != enums.BuildingTypeField.enums.辦公商業大樓,
-        # property_type != enums.PropertyTypeField.enums.車位,
-        # property_type != enums.PropertyTypeField.enums.倉庫,
-        # property_type != enums.PropertyTypeField.enums.場地,
         additional_fee__isnull=False,
         created__lte=to_date,
         crawled_at__gte=from_date
     ).order_by(
         '-id'
-    # ).values(
-    #     'vendor_house_id',
-    #     'vendor',
-    #     'created',
-    #     'updated',
-    #     'vendor_house_url',
-    #     'top_region',
-    #     'sub_region',
-    #     'deal_status',
-    #     'deal_time',
-    #     'n_day_deal',
-    #     'monthly_price',
-    #     'deposit_type',
-    #     'n_month_deposit',
-    #     'deposit',
-    #     'is_require_management_fee',
-    #     'monthly_management_fee',
-    #     'has_parking',
-    #     'is_require_parking_fee',
-    #     'monthly_parking_fee',
-    #     'per_ping_price',
-    #     'building_type',
-    #     'property_type',
-    #     'is_rooftop',
-    #     'floor',
-    #     'total_floor',
-    #     'dist_to_highest_floor',
-    #     'floor_ping',
-    #     'n_living_room',
-    #     'n_bed_room',
-    #     'n_bath_room',
-    #     'n_balcony',
-    #     'apt_feature_code',
-    #     'rough_address',
-    #     'rough_gps',
-    #     'additional_fee',
-    #     'living_functions',
-    #     'transportation',
-    #     'has_tenant_restriction',
-    #     'has_gender_restriction',
-    #     'gender_restriction',
-    #     'can_cook',
-    #     'allow_pet',
-    #     'has_perperty_registration',
-    #     'contact',
-    #     'agent_org',
-    #     'imgs',
-    #     'facilities',
     )
     paginator = Paginator(houses, page_size)
     return paginator
 
-def print_body(writer, houses, print_enum=True):
+def normalize_val(val, header, use_tf):
+    json_val = val
+    if 'fn' in header:
+        val = header['fn'](val)
+        json_val = val
+    elif val is not None and 'field' in header:
+        if hasattr(val, header['field']):
+            val = getattr(val, header['field'])
+            json_val = val
+        elif 'field' in header and header['field'] in val:
+            val = val[header['field']]
+            json_val = val
+        else:
+            val = ''
+            json_val = ''
+
+    if type(val) is datetime:
+        val = timezone.localtime(val).strftime('%Y-%m-%d %H:%M:%S %Z')
+        json_val = val
+    if val is None or val is '':
+        val = '-'
+        json_val = None
+    elif val is True:
+        val = 'T' if use_tf else 1
+        json_val = True
+    elif val is False:
+        val = 'F' if use_tf else 0
+        json_val = False
+
+    return val, json_val
+
+def print_body(writer, houses, print_enum=True, use_tf=False, listWriter=None):
     global structured_headers
     global vendor_stats
     count = 0
@@ -224,41 +195,42 @@ def print_body(writer, houses, print_enum=True):
         vendor_stats['_total'] += 1
 
         row = []
-        for header in structured_headers:
-            if not hasattr(house, header['en']):
-                row.append('-')
-            else:
-                val = getattr(house, header['en'])
-                if 'fn' in header:
-                    val = header['fn'](val)
-                elif val is not None and 'field' in header:
-                    if hasattr(val, header['field']):
-                        val = getattr(val, header['field'])
-                    elif 'field' in header and header['field'] in val:
-                        val = val[header['field']]
-                    else:
-                        val = ''
+        obj = {}
 
-                if type(val) is datetime:
-                    val = timezone.localtime(val).strftime('%Y-%m-%d %H:%M:%S %Z')
-                if val is None or val is '':
-                    val = '-'
-                elif val is True:
-                    val = 1
-                elif val is False:
-                    val = 0
+        for header in structured_headers:
+            header_name = header['en']
+            if not hasattr(house, header_name):
+                row.append('-')
+                obj[header['en']] = None
+            else:
+                val, json_val = normalize_val(getattr(house, header_name), header, use_tf)
 
                 if print_enum:
                     row.append(val)
+                    obj[header_name] = json_val
                     if 'is_enum' in header and header['is_enum']:
                         if val != '-':
                             row.append(header['is_enum'](val).name)
+                            obj[header_name] = header['is_enum'](val).name
                         else:
                             row.append(val)
+                            obj[header_name] = json_val
                 else:
                     row.append(val)
+                    obj[header_name] = json_val
 
         writer.writerow(row)
+
+        if list_writer:
+            filename = ''
+            if hasattr(house, 'top_region'):
+                filename = enums.TopRegionType(house.top_region).name
+
+            list_writer.write(
+                filename, 
+                obj
+            )
+
         count += 1
 
     return count
@@ -304,13 +276,35 @@ arg_parser.add_argument(
     help='output file name, without postfix(.csv)'
 )
 
+arg_parser.add_argument(
+    '-j',
+    '--json',
+    default=False,
+    const=True,
+    nargs='?',
+    help='export json or not, each top region will be put in seperated files'
+)
+
+arg_parser.add_argument(
+    '-tf',
+    '--truefalse-instead-of-10',
+    dest='use_tf',
+    default=False,
+    const=True,
+    nargs='?',
+    help='use T/F to express boolean value in csv, instead of 1/0'
+)
+
 if __name__ == '__main__':
 
     args = arg_parser.parse_args()
     
     print_enum = args.enum is not False
+    want_json = args.json is not False
+    use_tf = args.use_tf is not False
     from_date = args.from_date
     to_date = args.to_date
+    
     if from_date is None:
         from_date = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -323,15 +317,24 @@ if __name__ == '__main__':
     to_date += timedelta(days=1)
 
     writer = print_header(print_enum, args.outfile)
+
+    list_writer = None
+
+    if want_json:
+        list_writer = ListWriter(args.outfile)
+
     print('===== Export all houses from {} to {} ====='.format(from_date, to_date))
     paginator = prepare_houses(from_date, to_date)
     total = paginator.count
     current_done = 0
     for page_num in paginator.page_range:
         houses = paginator.page(page_num)
-        n_raws = print_body(writer, houses, print_enum)
+        n_raws = print_body(writer, houses, print_enum, use_tf, list_writer)
         current_done += n_raws
         print('[{}] we have {}/{} rows'.format(datetime.now(), current_done, total))
+
+    if want_json:
+        list_writer.closeAll()
 
     with open('{}.json'.format(args.outfile), 'w') as file:
         json.dump(vendor_stats, file, ensure_ascii=False)
