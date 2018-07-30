@@ -7,7 +7,7 @@
     article
       h1 關於資料集
       AboutDataBrief
-      vue-markdown(:breaks="false", :html="true", :anchorAttributes="{target: '_blank', rel: 'noopener'}", :toc="true", :tocAnchorLink="false", tocId="data-set-toc").
+      vue-markdown(:breaks="false", :html="true", :toc="true", tocId="data-set-toc").
         ## 資料內容與整理方式
         除了單純擷取各網站，累積長時間的租屋資料外，本資料集也希望能夠滿足三項資料分析的需求：
 
