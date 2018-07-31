@@ -12,7 +12,9 @@
       tr.striped--light-gray(v-for="row in rows" :key="row.time + row.type")
         td.pv2.ph3(v-if="needIdColumn") {{idName(row.time)}}
         td.pv2.ph3 {{row.type}}
-        td.pv2.ph3 {{row.data_ver}}
+        td.pv2.ph3
+          nuxt-link(:to="dataUrl(row.data_ver)") 
+            span.ttu(:title="dataDesp(row.data_ver)") {{row.data_ver}}
         td.pv2.ph3 {{prettyNumber(row.total_count)}}
         td.pv2.ph3(v-for="source in sourceHeaders" :key="source") {{prettyCount(row, source)}}
         td.pv2.ph3
@@ -32,6 +34,10 @@
 <script>
 import _ from 'lodash'
 import filesize from 'filesize'
+
+const RELEASE_STAGE = {
+  beta: '本次資料集有新增欄位，但由於資料更新的限制，並非整個月的的物件都有此資料'
+}
 
 export default {
   props: {
@@ -80,6 +86,17 @@ export default {
     },
     filesize (size) {
       return filesize(size)
+    },
+    dataUrl (dataVer) {
+      const versionTokens = dataVer.split(' ')
+      return `/about-data-set/${versionTokens[0]}`
+    },
+    dataDesp (dataVer) {
+      const versionTokens = dataVer.split(' ')
+      if (versionTokens.length > 1) {
+        return RELEASE_STAGE[versionTokens[1].toLowerCase()]
+      }
+      return ''
     }
   },
   computed: {

@@ -5,9 +5,16 @@
       h2 目次
       #data-set-toc
     article
+      .white.br3.ph3.pv2.bg-green 本版本已經不是最新版囉！！請盡快使用
+        nuxt-link(to="/aboute-data-set") 新版資料集
       h1 關於資料集
       AboutDataBrief
       vue-markdown(:breaks="false", :html="true", :toc="true", tocId="data-set-toc").
+        ## 版本資訊
+        1. 版本： 0.0
+        2. 發行日期： 2018/06/06
+        3. 預計失效日期： 2018/12/31
+
         ## 資料內容與整理方式
         除了單純擷取各網站，累積長時間的租屋資料外，本資料集也希望能夠滿足三項資料分析的需求：
 
