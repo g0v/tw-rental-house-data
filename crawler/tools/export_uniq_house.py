@@ -340,16 +340,16 @@ arg_parser.add_argument(
 arg_parser.add_argument(
     '-b6',
     '--liudu',
-    default=False,
+    default=True,
     const=True,
     nargs='?',
     help='only export 六都'
 )
 
 arg_parser.add_argument(
-    '-tf',
-    '--truefalse-instead-of-10',
-    dest='use_tf',
+    '-01',
+    '--01-instead-of-truefalse',
+    dest='use_01',
     default=False,
     const=True,
     nargs='?',
@@ -362,7 +362,7 @@ if __name__ == '__main__':
     
     print_enum = args.enum is not False
     want_json = args.json is not False
-    use_tf = args.use_tf is not False
+    use_tf = args.use_01 is not True
     liudu = args.liudu is not False
     from_date = args.from_date
     to_date = args.to_date
