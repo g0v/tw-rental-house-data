@@ -53,7 +53,5 @@ export default {
     border-bottom: 1px solid black;
   }
 
-  &__table {
-  }
 }
 </style>
