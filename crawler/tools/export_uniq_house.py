@@ -274,9 +274,10 @@ def print_body(writer, houses, print_enum=True, use_tf=False, listWriter=None):
         writer.writerow(row)
 
         if list_writer:
-            filename = ''
-            if 'top_region' in house:
+            try:
                 filename = enums.TopRegionType(house['top_region']).name
+            except:
+                filename = 'default'
 
             list_writer.write(
                 filename, 
