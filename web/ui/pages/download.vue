@@ -31,7 +31,10 @@ import def2018 from '~/assets/stats/2018.json'
 export default {
     head () {
       return {
-        title: '打包回家玩'
+        title: '打包回家玩',
+        meta: [
+          { hid: 'og:image', name: 'og:image', content: 'https://rentalhouse.g0v.ddio.io/imgs/download-og.png'}
+        ]
       }
     },
     data () {
