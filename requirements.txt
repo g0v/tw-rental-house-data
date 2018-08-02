@@ -4,7 +4,7 @@ attrs==17.4.0
 Automat==0.6.0
 cffi==1.11.5
 constantly==15.1.0
-cryptography==2.1.4
+cryptography==2.3
 cssselect==1.0.3
 Django==2.0.7
 hyperlink==18.0.0
