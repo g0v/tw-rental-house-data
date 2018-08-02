@@ -341,7 +341,7 @@ arg_parser.add_argument(
 arg_parser.add_argument(
     '-b6',
     '--liudu',
-    default=True,
+    default=False,
     const=True,
     nargs='?',
     help='only export 六都'
