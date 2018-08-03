@@ -47,7 +47,7 @@
             {"format": "csv", "size_byte":   42338009, "download_url": "http://bit.ly/tw-rental-data-2018-07-raw-csv"},
             {"format": "json", "size_byte": 151489893, "download_url": "http://bit.ly/tw-rental-data-2018-07-raw-json"}
           ],
-          "comment": ["新增 T/F 版本，原本 1/0 版本將於 2018 年底取消。", "新增「刊登者編碼」，只可嘗試，還沒有完整資料喔～"]
+          "comment": ["新增 T/F 版本，原本 1/0 版本將於 2018 年底取消。", "新增「刊登者編碼」，只可嘗試，還沒有完整資料喔～", "目前「出租所費天數」、「出租大約時間」這兩欄的資料是有問題的，修正後會另外公佈新檔"]
         },
         {
           "schema_ver": "1.0.0",
@@ -62,7 +62,7 @@
             {"format": "csv", "size_byte":   33053540, "download_url": "http://bit.ly/tw-rental-data-2018-07-dedup-csv"},
             {"format": "json", "size_byte": 230464902, "download_url": "http://bit.ly/tw-rental-data-2018-07-dedup-json"}
           ],
-          "comment": "新增「刊登者編碼」，只可嘗試，還沒有完整資料喔～"
+          "comment": ["新增「刊登者編碼」，只可嘗試，還沒有完整資料喔～", "目前「出租所費天數」、「出租大約時間」這兩欄的資料是有問題的，修正後會另外公佈新檔"]
         }
     ]
 }
