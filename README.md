@@ -9,6 +9,8 @@
 
 本程式還在初期開發階段，任何框架、資料庫定義、API 皆有可能更動。
 
+關於開發的詳細資訊，請參見[專案 wiki ](https://github.com/g0v/tw-rental-house-data/wiki/)
+
 ## 資料庫與網頁後端
 ### 環境需求
 1. Python3 + pip
