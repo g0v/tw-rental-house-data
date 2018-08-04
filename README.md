@@ -50,9 +50,6 @@ python manage.py loaddata vendors
 
 ```sh
 cd crawler
-# 設定資料庫與使用環境
-cp settings.sample.py settings.py
-vim settins.py
 
 # 設定 Scrapy
 cp crawler/settints.sample.py crawler/settings.py
