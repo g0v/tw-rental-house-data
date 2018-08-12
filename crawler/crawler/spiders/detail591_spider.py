@@ -387,6 +387,9 @@ class Detail591Spider(HouseSpider):
             # Issue #15, update only deal_status in crawler
             # let `syncstateful` to update the rest
             ret['deal_status'] = enums.DealStatusType.DEAL
+        else:
+            # Issue #14, always update deal status since item may be reopened
+            ret['deal_status'] = enums.DealStatusType.OPENED
 
         # building_type, 公寓 / 電梯大樓 / 透天
         if '型態' in detail_dict['side_metas']:
