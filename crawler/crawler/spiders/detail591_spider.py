@@ -382,18 +382,10 @@ class Detail591Spider(HouseSpider):
         if 'address' in detail_dict:
             ret['rough_address'] = detail_dict['address']
 
-        # deal_status, deal_time, n_day_deal
+        # deal_status
         if detail_dict['is_deal']:
-            now = timezone.now()
-            time_taken = now - house.created
-            elipse_day = 1 if time_taken.seconds > 0 else 0
-
-            if house.deal_status != enums.DealStatusType.DEAL:
-                # Issue #9, only update deal_time at 1st time we found it become deal
-                # 591 somehow put dealt house in search result....
-                ret['deal_time'] = now
-                ret['n_day_deal'] = time_taken.days + elipse_day
-
+            # Issue #15, update only deal_status in crawler
+            # let `syncstateful` to update the rest
             ret['deal_status'] = enums.DealStatusType.DEAL
 
         # building_type, 公寓 / 電梯大樓 / 透天

@@ -14,7 +14,7 @@ scrapy crawl detail591 -L INFO
 mv scrapy.log ../logs/$now.detail.log
 
 echo '===== STATEFUL UPDATE ====='
-python ../backend/manage.py syncstateful -ts > ../logs/$now.stateful.log
+python ../backend/manage.py syncstateful -ts
 
 echo '===== FINALIZE ====='
 grep -n ERROR  ../logs/$now.*.log > ../logs/$now.error
