@@ -18,7 +18,9 @@ BuildingType = IntEnum('BuildingType', [
     ('辦公商業大樓', 4),
     ('倉庫', 5),
     ('店面（店鋪）', 6),
-    ('廠辦', 7)
+    ('廠辦', 7),
+    ('工廠', 8),
+    ('農舍', 9)
 ])
 
 class PropertyType(IntEnum):
