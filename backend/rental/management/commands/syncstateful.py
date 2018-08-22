@@ -33,6 +33,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+
         need_reset = options['need_reset'] is not False
         update_ts = options['update_ts'] is not False
         target_date = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
