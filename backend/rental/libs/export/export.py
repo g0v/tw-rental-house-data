@@ -36,7 +36,9 @@ class Export(ABC):
         return cls.vendors[vendor_id]
 
     def print(self, from_date, to_date, print_enum=True, only_big6=False, outfile='rental_house', export_json=False, use_tf=True):
-        print('===== Export all houses from {} to {} ====='.format(from_date, to_date))
+        print('---- Export all houses from {} to {} ----'.format(from_date, to_date))
+
+        self.vendor_stats = {'_total': 0}
 
         self.init_writer(print_enum, outfile)
         paginator = self.prepare_houses(from_date, to_date, only_big6)
@@ -60,7 +62,7 @@ class Export(ABC):
         with open('{}.json'.format(outfile), 'w') as file:
             json.dump(self.vendor_stats, file, ensure_ascii=False)
 
-        print('===== Export done =====\nData: {}.csv\nStatistics: {}.json\n'.format(outfile, outfile))
+        print('---- Export done ----\nData: {}.csv\nStatistics: {}.json\n'.format(outfile, outfile))
 
     def init_writer(self, print_enum, file_name):
         zh_csv = open('{}.csv'.format(file_name), 'w')
