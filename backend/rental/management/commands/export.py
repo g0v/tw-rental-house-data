@@ -2,9 +2,9 @@ import argparse
 from datetime import datetime, date, timedelta
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
-from rental.models import House, HouseEtc, HouseTS
-from rental.enums import DealStatusType
-from rental.libs.export.uniq_export import UniqExport
+from rental.libs.export import UniqExport, RawExport
+
+# TODO: uniq support postgres only
 
 class Command(BaseCommand):
     help = 'Export house data by given time range'
@@ -18,12 +18,22 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
+            '-u',
+            '--unique',
+            default=False,
+            const=True,
+            nargs='?',
+            help='remove duplicated item or not'
+        )
+
+        parser.add_argument(
             '-e',
             '--enum',
             default=False,
             const=True,
             nargs='?',
-            help='print enumeration or not')
+            help='print enumeration or not'
+        )
 
         parser.add_argument(
             '-f',
@@ -61,7 +71,7 @@ class Command(BaseCommand):
 
         parser.add_argument(
             '-b6',
-            '--liudu',
+            '--big6',
             default=False,
             const=True,
             nargs='?',
@@ -79,10 +89,11 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        need_uniq = options['unique'] is not False
         print_enum = options['enum'] is not False
         want_json = options['json'] is not False
         use_tf = options['use_01'] is not True
-        liudu = options['liudu'] is not False
+        big6 = options['big6'] is not False
         from_date = options['from_date']
         to_date = options['to_date']
 
@@ -97,12 +108,16 @@ class Command(BaseCommand):
 
         to_date += timedelta(days=1)
 
-        tool = UniqExport()
+        if need_uniq:
+            tool = UniqExport()
+        else:
+            tool = RawExport()
+
         tool.print(
             from_date,
             to_date,
             print_enum=print_enum,
-            only_liudu=liudu,
+            only_big6=big6,
             outfile=options['outfile'],
             export_json=want_json,
             use_tf=use_tf

@@ -35,11 +35,11 @@ class Export(ABC):
     def lookup_vendor(cls, vendor_id):
         return cls.vendors[vendor_id]
 
-    def print(self, from_date, to_date, print_enum=True, only_liudu=False, outfile='rental_house', export_json=False, use_tf=True):
+    def print(self, from_date, to_date, print_enum=True, only_big6=False, outfile='rental_house', export_json=False, use_tf=True):
         print('===== Export all houses from {} to {} ====='.format(from_date, to_date))
 
         self.init_writer(print_enum, outfile)
-        paginator = self.prepare_houses(from_date, to_date, only_liudu)
+        paginator = self.prepare_houses(from_date, to_date, only_big6)
 
         total_houses = paginator.count
         current_done = 0
@@ -143,5 +143,5 @@ class Export(ABC):
         return count
 
     @abstractmethod
-    def prepare_houses(self, from_date, to_date, only_liudu):
+    def prepare_houses(self, from_date, to_date, only_big6):
         raise NotImplementedError()
