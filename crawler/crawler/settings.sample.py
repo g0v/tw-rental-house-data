@@ -14,6 +14,8 @@ import scrapy
 import logging
 import os
 
+# Enable sentry to catch all error
+# SENTRY_DSN = 'https://your.sentry/dsn'
 
 # Enable debug log in all place
 # scrapy.utils.log.configure_logging(install_root_handler=False)
