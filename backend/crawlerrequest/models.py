@@ -19,3 +19,18 @@ class RequestTS(BaseTimeSeries):
         indexes = [
             models.Index(fields=['year', 'month', 'day', 'hour'])
         ]
+
+class Stats(BaseTimeSeries):
+    vendor = models.ForeignKey(Vendor, on_delete=models.PROTECT)
+    n_list_fail = models.IntegerField(default=0)
+    n_expected = models.IntegerField(default=0)
+    n_crawled = models.IntegerField(default=0)
+    n_fail = models.IntegerField(default=0)
+    n_new_item = models.IntegerField(default=0)
+    n_closed = models.IntegerField(default=0)
+    n_dealt = models.IntegerField(default=0)
+
+    class Meta:
+        unique_together = (
+            ('year', 'month', 'day', 'hour', 'vendor'),
+        )

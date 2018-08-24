@@ -31,7 +31,7 @@ ITEM_PIPELINES = {
 }
 
 EXTENSIONS = {
-    "crawler.extensions.scrapy.ScrapyLogger": 10,
+    "crawler.extensions.sentry.SentryLogger": 10,
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)

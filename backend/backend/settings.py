@@ -38,7 +38,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rental.apps.RentalConfig',
-    'crawlerrequest.apps.CrawlerConfig'
+    'crawlerrequest.apps.CrawlerConfig',
+    'raven.contrib.django.raven_compat',
 ]
 
 MIDDLEWARE = [
@@ -126,6 +127,8 @@ USE_TZ = True
 STATIC_URL = '/static/'
 
 # To overwrite config, or define per-env conf, use backend.settings_local
+# Additional features:
+# 1. Sentry: https://docs.sentry.io/clients/python/integrations/django/
 try:
     from backend.settings_local import *
 except ImportError:

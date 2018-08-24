@@ -18,6 +18,10 @@ python ../backend/manage.py syncstateful -ts
 echo '===== CHECK EXPORT ====='
 python ../backend/manage.py export -p
 
+echo '===== GENERATE STATISTICS ====='
+python ../backend/manage.py statscheck
+
+
 echo '===== FINALIZE ====='
 grep -n ERROR  ../logs/$now.*.log > ../logs/$now.error
 gzip ../logs/*.log
