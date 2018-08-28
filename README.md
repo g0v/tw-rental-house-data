@@ -14,7 +14,7 @@
 ## 資料庫與網頁後端
 ### 環境需求
 1. Python3 + pip
-2. 支援 GeoDjango 的資料庫，目前[主要的關聯是資料庫都有支援](https://docs.djangoproject.com/en/2.1/ref/contrib/gis/db-api/)。關於如何準備 GeoDjango 所需的系統環境，請參見[官方文件](https://docs.djangoproject.com/en/1.10/ref/contrib/gis/install/#installation)
+2. 支援 GeoDjango 的資料庫，目前[主要的關聯式資料庫都有支援](https://docs.djangoproject.com/en/2.1/ref/contrib/gis/db-api/)。關於如何準備 GeoDjango 所需的系統環境，請參見[官方文件](https://docs.djangoproject.com/en/1.10/ref/contrib/gis/install/#installation)
 
 ### Peewee -> Django 遷移步驟
 1. 理論上可以直接用 Django 內建工具，因為 0001_migration 的內容與 Peewee 完全相同
