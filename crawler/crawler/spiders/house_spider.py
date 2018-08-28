@@ -3,10 +3,10 @@ import re
 import traceback
 from scrapy.spidermiddlewares.httperror import HttpError
 from rental.models import HouseTS, Vendor
+from rental import models
 from crawlerrequest.models import RequestTS
 from crawlerrequest.enums import RequestType
 from rental.enums import UNKNOWN_ENUM
-from crawler.utils import now_tuple
 
 # TODO: yield request
 
@@ -20,7 +20,8 @@ class HouseSpider(scrapy.Spider):
         vendor,
         is_list,
         request_generator,
-        response_parser,
+        response_router=None,
+        response_parser=None,
         **kwargs
     ):
         '''
@@ -37,7 +38,10 @@ class HouseSpider(scrapy.Spider):
             Will be set as default request callback
         '''
         super().__init__(**kwargs)
-        y, m, d, h = now_tuple()
+        y = models.current_year()
+        m = models.current_month()
+        d = models.current_day()
+        h = models.current_stepped_hour()
 
         try:
             self.vendor = Vendor.objects.get(
@@ -52,7 +56,13 @@ class HouseSpider(scrapy.Spider):
             self.request_type = RequestType.DETAIL
 
         self.request_generator = request_generator
-        self.response_parser = response_parser
+
+        if response_router:
+            self.response_router = response_router
+        elif response_parser:
+            self.response_router = lambda x: response_parser
+        else:
+            raise Exception('No response router or parser given')
 
         self.ts = {
             'y': y,
@@ -140,8 +150,11 @@ class HouseSpider(scrapy.Spider):
         db_request.last_status = response.status
         db_request.save()
 
+        seed = response.meta.get('seed', {})
+
         try:
-            for item in self.response_parser(response):
+            response_parser = self.response_router(seed)
+            for item in response_parser(response):
                 if item is True:
                     db_request.delete()
                 else:
@@ -150,7 +163,7 @@ class HouseSpider(scrapy.Spider):
             self.logger.error(
                 'Parser error in {} when handle meta {}. [{}] - {:.128}'.format(
                     self.name,
-                    response.meta.get('seed', {}),
+                    seed,
                     response.status,
                     response.text
                 )

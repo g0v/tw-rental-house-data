@@ -1,4 +1,4 @@
-from django.db import models
+from django.contrib.gis.db import models
 from django.utils import timezone
 from .enums import DealStatusType, BuildingType, PropertyType, ContactType, \
     DepositType, GenderType, TopRegionType, SubRegionType
@@ -13,10 +13,8 @@ if hasattr(settings, 'USE_NATIVE_JSONFIELD') and settings.USE_NATIVE_JSONFIELD:
 else:
     from jsonfield import JSONField as superJSONField
 
-# 
 class JSONField(superJSONField):
     pass
-
 
 def current_year():
     return timezone.localtime().year
@@ -126,7 +124,7 @@ class BaseHouse(models.Model):
     n_balcony = models.IntegerField(null=True)
     apt_feature_code = models.CharField(null=True, max_length=16)
     rough_address = models.CharField(null=True, max_length=256)
-    rough_gps = models.CharField(null=True, max_length=32)
+    rough_coordinate = models.PointField(null=True)
     # boolean map
     # eletricity: true, water: true, gas: true, internet: true, cable_tv: true
     additional_fee = JSONField(null=True)
@@ -210,4 +208,3 @@ class HouseTS(BaseTimeSeries, BaseHouse):
         unique_together = (
             ('year', 'month', 'day', 'hour', 'vendor', 'vendor_house_id'),      
         )
-

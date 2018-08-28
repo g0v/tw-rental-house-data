@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'rental.apps.RentalConfig',
     'crawlerrequest.apps.CrawlerConfig',
     'raven.contrib.django.raven_compat',
+    'django.contrib.gis'
 ]
 
 MIDDLEWARE = [
@@ -75,13 +76,18 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/2.0/ref/settings/#databases
+# https://docs.djangoproject.com/en/dev/ref/contrib/gis/db-api/
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
+        'ENGINE': 'django.contrib.gis.db.backends.spatialite',
         'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
     }
 }
+
+# for spatialite 4.2+ 
+# ref: https://docs.djangoproject.com/en/1.10/ref/contrib/gis/install/spatialite/
+SPATIALITE_LIBRARY_PATH = 'mod_spatialite'
 
 # Set USE_NATIVE_JSONFIELD to True when using PostgreSQL
 # See https://github.com/pennersr/django-allauth/issues/598 for detail info

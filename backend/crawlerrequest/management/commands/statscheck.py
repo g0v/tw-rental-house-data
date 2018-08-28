@@ -82,7 +82,7 @@ class Command(BaseCommand):
             elif row['deal_status'] == DealStatusType.NOT_FOUND:
                 vendor_stats.n_closed = row['count']
             elif row['deal_status'] == DealStatusType.DEAL:
-                vendor_stats.dealt = row['count']
+                vendor_stats.n_dealt = row['count']
 
         # get today's new item
         today_start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)

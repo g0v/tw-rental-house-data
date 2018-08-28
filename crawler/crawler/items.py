@@ -42,7 +42,7 @@ class GenericHouseItem(Item):
     n_balcony = Field()
     apt_feature_code = Field()
     rough_address = Field()
-    rough_gps = Field()
+    rough_coordinate = Field()
     # boolean map
     # eletricity: true, water: true, gas: true, internet: true, cable_tv: true
     additional_fee = Field()

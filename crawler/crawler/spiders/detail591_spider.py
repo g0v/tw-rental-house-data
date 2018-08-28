@@ -1,9 +1,11 @@
 import re
+from decimal import Decimal
 from functools import partial
 from urllib.parse import urlparse, parse_qs
 import traceback
 from django.utils import timezone
 from django.db import transaction
+from django.contrib.gis.geos import Point
 from rental import enums
 from rental.models import House, Author
 from ..items import GenericHouseItem, RawHouseItem
@@ -37,21 +39,35 @@ class Detail591Spider(HouseSpider):
             vendor='591 租屋網',
             is_list=False,
             request_generator=self.gen_request_params,
-            response_parser=self.parse_detail,
+            response_router=self.route_parser,
             **kwargs
         )
         self.BASE_URL = self.vendor.site_url
 
     def gen_request_params(self, seed):
-        url = "{}/rent-detail-{}.html".format(self.BASE_URL, seed['house_id'])
 
-        return {
-            'url': url,
-            'meta': {
-                'seed': seed,
-                'handle_httpstatus_list': [400, 404, 302, 301]
+        if 'gps' in seed:
+            # https://rent.591.com.tw/map-houseRound.html?type=1&detail=detail&version=1&post_id=6635655
+            url = "{}/map-houseRound.html?type=1&detail=detail&version=1&post_id={}".format(self.BASE_URL, seed['house_id'])
+
+            # GPS is expected to be existed
+            return {
+                'url': url,
+                'meta': {
+                    'seed': seed
+                }
             }
-        }
+        else:
+            # https://rent.591.com.tw/rent-detail-6635655.html
+            url = "{}/rent-detail-{}.html".format(self.BASE_URL, seed['house_id'])
+
+            return {
+                'url': url,
+                'meta': {
+                    'seed': seed,
+                    'handle_httpstatus_list': [400, 404, 302, 301]
+                }
+            }
 
     def start_requests(self):
 
@@ -172,9 +188,6 @@ class Detail591Spider(HouseSpider):
 
         # desp
         desp = self.css(response, '.houseIntro *::text')
-
-        # gps
-        # TODO
 
         # q and a
         # TODO
@@ -455,7 +468,7 @@ class Detail591Spider(HouseSpider):
                 ret['n_living_room']
             )
 
-        # TODO: rough_address, rough_gps
+        # TODO: rough_address
 
         return ret
 
@@ -657,23 +670,54 @@ class Detail591Spider(HouseSpider):
 
         return ret
 
-    def parse_detail(self, response):
+    def route_parser(self, seed):
+        if 'gps' in seed:
+            return self.parse_gps_response
+        else:
+            return self.parse_main_response
+
+    def parse_gps_response(self, response):
+        gmap_url = self.css_first(response, '#main .propMapBarMap iframe::attr(src)')
+        # example url: //maps.google.com.tw/maps?f=q&hl=zh-TW&q=25.0268980,121.5542323&z=17&output=embed
+
+        parsed_url = urlparse(gmap_url)
+        qs = parse_qs(parsed_url.query)
+        if 'q' not in qs or len(qs['q']) == 0:
+            yield True
+            return
+
+        gps_str = qs['q'][0]
+        coordinate = list(map(lambda x: Decimal(x), gps_str.split(',')))
+
+        if len(coordinate) == 2:
+            yield GenericHouseItem(
+                vendor=self.vendor,
+                vendor_house_id=response.meta['seed']['house_id'],
+                rough_coordinate=Point(coordinate, srid=4326)
+            )
+
+        yield True
+
+
+    def parse_main_response(self, response):
+        house_id = response.meta['seed']['house_id']
+
         if response.status == 400:
             self.logger.info("I'm getting blocked -___-")
         elif response.status != 200:
             self.logger.info(
                 'House {} not found by receiving status code {}'
-                .format(response.meta['seed']['house_id'], response.status)
+                .format(house_id, response.status)
             )
             yield GenericHouseItem(
                 vendor=self.vendor,
-                vendor_house_id=response.meta['seed']['house_id'],
+                vendor_house_id=house_id,
                 deal_status=enums.DealStatusType.NOT_FOUND
             )
         else:
             # regular 200 response
             yield RawHouseItem(
-                house_id=response.meta['seed']['house_id'],
+                house_id=house_id,
                 vendor=self.vendor,
                 is_list=False,
                 raw=response.body
@@ -682,7 +726,7 @@ class Detail591Spider(HouseSpider):
             detail_dict = self.collect_dict(response)
 
             yield RawHouseItem(
-                house_id=response.meta['seed']['house_id'],
+                house_id=house_id,
                 vendor=self.vendor,
                 is_list=False,
                 dict=detail_dict
@@ -691,6 +735,12 @@ class Detail591Spider(HouseSpider):
             yield GenericHouseItem(
                 **self.gen_shared_attrs(detail_dict)
             )
+
+            # get gps only when the house existed
+            self.gen_persist_request({
+                'house_id': house_id,
+                'gps': True
+            })
 
         if response.status != 400:
             yield True

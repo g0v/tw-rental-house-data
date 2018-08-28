@@ -5,3 +5,4 @@ def now_tuple():
     # Let's do it once for now
     return [now.year, now.month, now.day, 0]
     # return [now.year, now.month, now.day, now.hour - now.hour % 12]
+    
