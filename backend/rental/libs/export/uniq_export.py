@@ -1,7 +1,7 @@
 from django.db.models.functions import Cast
 from django.db.models import Count, Max, Min, Avg, TextField
 from django.core.paginator import Paginator
-
+from django.contrib.gis.db.models import Extent
 from .field import Field
 from .export import Export
 from rental.libs import filters
@@ -18,6 +18,7 @@ class UniqExport(Export):
         Field('vendor', '租屋平台', fn=Export.lookup_vendor),
         Field('top_region', '縣市', enum=enums.TopRegionType),
         Field('sub_region', '鄉鎮市區', enum=enums.SubRegionType),
+        Field('rough_coordinate', '約略地點範圍', en='rough_coordinate_bb', annotate=Extent('rough_coordinate')),
         Field('deal_status', '房屋曾出租過', en='has_dealt', enum=enums.DealStatusType, annotate=Max('deal_status')),
         Field('deal_time', '最後出租時間', en='max_deal_time', annotate=Max('deal_time')),
         Field('n_day_deal', '最大出租所費天數', en='max_n_day_deal', annotate=Max('n_day_deal')),

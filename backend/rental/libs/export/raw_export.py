@@ -1,4 +1,5 @@
 from django.core.paginator import Paginator
+from django.db.models import F
 from rental.libs import filters
 from rental.models import House
 from rental import enums
@@ -14,6 +15,8 @@ class RawExport(Export):
         Field('updated', '物件最後更新時間'),
         Field('top_region', '縣市', enum=enums.TopRegionType),
         Field('sub_region', '鄉鎮市區', enum=enums.SubRegionType),
+        Field('rough_coordinate', '約略地點_x', en='rough_coordinate_x', fn=lambda p: p.x if p else None),
+        Field('rough_coordinate', '約略地點_y', en='rough_coordinate_y', fn=lambda p: p.y if p else None),
         Field('deal_status', '房屋出租狀態', enum=enums.DealStatusType),
         Field('deal_time', '出租大約時間'),
         Field('n_day_deal', '出租所費天數'),
@@ -88,17 +91,22 @@ class RawExport(Export):
         optional_filter = filters.big6 if only_big6 else {}
 
         dict_fields = {}
+        extra_fields = {}
         pure_fields = []
 
         for header in self.headers:
             if header.annotate:
                 dict_fields[header.en] = header.annotate
+            elif header.en != header.column:
+                extra_fields[header.en] = F(header.column)
             else:
                 pure_fields.append(header.en)
 
         houses = House.objects.values(
             *pure_fields,
             **dict_fields
+        ).annotate(
+            **extra_fields
         ).filter(
             **optional_filter,
             additional_fee__isnull=False,
