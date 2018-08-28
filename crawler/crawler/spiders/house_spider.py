@@ -197,14 +197,14 @@ class HouseSpider(scrapy.Spider):
                 '[Live|{}] Error: {}', self.n_live_spider, failure)
 
     def clean_number(self, number_string):
-        if not number_string:
-            return -1
+        if number_string is None or number_string == '':
+            return None
 
         number_string = '{}'.format(number_string)
         pure_number = re.sub('[^\\d.-]', '', number_string)
-        if not pure_number:
-            # it could be '' is no digit included
-            return ''
+        if pure_number == '':
+            # it could be '' if no digit included
+            return None
         elif pure_number.isdigit():
             return int(pure_number, base=10)
         else:
