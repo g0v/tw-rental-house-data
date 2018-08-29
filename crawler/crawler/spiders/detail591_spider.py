@@ -50,11 +50,12 @@ class Detail591Spider(HouseSpider):
             # https://rent.591.com.tw/map-houseRound.html?type=1&detail=detail&version=1&post_id=6635655
             url = "{}/map-houseRound.html?type=1&detail=detail&version=1&post_id={}".format(self.BASE_URL, seed['house_id'])
 
-            # GPS is expected to be existed
+            #19, the house may be closed in 3 hours when we found it....
             return {
                 'url': url,
                 'meta': {
-                    'seed': seed
+                    'seed': seed,
+                    'handle_httpstatus_list': [404]
                 }
             }
         else:
@@ -677,12 +678,26 @@ class Detail591Spider(HouseSpider):
             return self.parse_main_response
 
     def parse_gps_response(self, response):
+        house_id = response.meta['seed']['house_id']
+
+        if response.status == 404:
+            self.logger.info(
+                'GPS {} not found by receiving status code {}'
+                .format(house_id, response.status)
+            )
+            yield True
+            return
+
         gmap_url = self.css_first(response, '#main .propMapBarMap iframe::attr(src)')
         # example url: //maps.google.com.tw/maps?f=q&hl=zh-TW&q=25.0268980,121.5542323&z=17&output=embed
 
         parsed_url = urlparse(gmap_url)
         qs = parse_qs(parsed_url.query)
         if 'q' not in qs or len(qs['q']) == 0:
+            self.logger.info(
+                'Invalid GPS page in house: {}'
+                .format(house_id)
+            )
             yield True
             return
 
@@ -692,12 +707,11 @@ class Detail591Spider(HouseSpider):
         if len(coordinate) == 2:
             yield GenericHouseItem(
                 vendor=self.vendor,
-                vendor_house_id=response.meta['seed']['house_id'],
+                vendor_house_id=house_id,
                 rough_coordinate=Point(coordinate, srid=4326)
             )
 
         yield True
-
 
     def parse_main_response(self, response):
         house_id = response.meta['seed']['house_id']
