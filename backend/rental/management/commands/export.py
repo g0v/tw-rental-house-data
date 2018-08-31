@@ -1,7 +1,7 @@
 import argparse
 import shutil
 from os import path, mkdir, remove, listdir
-from zipfile import ZipFile
+from zipfile import ZipFile, ZIP_BZIP2
 from tempfile import mkdtemp
 from datetime import datetime, date, timedelta
 from django.core.management.base import BaseCommand, CommandError
@@ -160,7 +160,7 @@ class Command(BaseCommand):
     def zip_everything(self, tmp_dir, prefix, type='raw'):
         zip_name = path.join(self.zip_dir, '[{}][CSV][{}] TW-Rental-Data.zip'.format(prefix, type.capitalize()))
         csv_postfix = list(map(lambda name: '-{}{}'.format(type, name), ['-01.csv', '-01.json', '.csv', '.json']))
-        with ZipFile(zip_name, 'w') as zip:
+        with ZipFile(zip_name, 'w', compression=ZIP_BZIP2) as zip:
             for postfix in csv_postfix:
                 filename = '{}{}'.format(prefix, postfix)
                 filepath = path.join(tmp_dir, filename)
@@ -174,12 +174,13 @@ class Command(BaseCommand):
                 remove(filepath)
 
         zip_name = path.join(self.zip_dir, '[{}][JSON][{}] TW-Rental-Data.zip'.format(prefix, type.capitalize()))
-        with ZipFile(zip_name, 'w') as zip:
+        with ZipFile(zip_name, 'w', compression=ZIP_BZIP2) as zip:
             for f in listdir(tmp_dir):
                 zip.write(path.join(tmp_dir, f), arcname=path.join(self.default_export_dir, f))
 
     def export_everything(self, from_date, to_date, prefix):
 
+        to_date += timedelta(days=1)
         tmp_dir = mkdtemp()
         outfile_prefix = path.join(tmp_dir, prefix)
 

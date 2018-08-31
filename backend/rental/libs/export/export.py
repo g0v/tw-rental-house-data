@@ -62,6 +62,7 @@ class Export(ABC):
         with open('{}.json'.format(outfile), 'w') as file:
             json.dump(self.vendor_stats, file, ensure_ascii=False)
 
+        self.csv_h.close()
         print('---- Export done ----\nData: {}.csv\nStatistics: {}.json\n'.format(outfile, outfile))
 
     def init_writer(self, print_enum, file_name):
@@ -83,6 +84,7 @@ class Export(ABC):
 
         zh_writer.writerow(zh_csv_header)
 
+        self.csv_h = zh_csv
         self.csv_writer = zh_writer
 
     def print_body(self, houses, print_enum, use_tf, list_writer):
