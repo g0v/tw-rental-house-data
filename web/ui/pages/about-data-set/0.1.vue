@@ -41,7 +41,7 @@
         為了後續分析方便，本資料集亦提供較保守的物件過濾條件，提供對住宅研究有興趣的人使用。在這裡，保守的意思是只刪除非常極端，或是非常確定有問題的物件，
         以免誤刪應該被拿來分析的資料，所以有可能還是會在資料集裡看到一些不合理的值（第二型錯誤）。目前所有過濾條件皆為列舉，並未使用任何統計與機器學習的技術，
         如果對過濾方式有任何想法或興趣，歡迎直接至 [hackpack](https://g0v.hackpad.tw/Ih7Jp4pUD5y#:h=%E7%B0%A1%E5%96%AE%E7%9A%84%E7%95%B0%E5%B8%B8%E5%80%BC%E6%A2%9D%E4%BB%B6) 討論，
-        為開源專案貢獻力氣。目前的過濾條件說明如下（程式部份[請見此](https://github.com/g0v/tw-rental-house-data/blob/master/crawler/tools/export_uniq_house.py)）：
+        為開源專案貢獻力氣。目前的過濾條件說明如下（程式部份[請見此](https://github.com/g0v/tw-rental-house-data/blob/68575ea5d49754f4447452edeb60a3530eba74b6/crawler/tools/export_uniq_house.py#L180-L196)）：
 
         ### 住宅的過濾條件：
 
