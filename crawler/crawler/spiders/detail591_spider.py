@@ -118,7 +118,12 @@ class Detail591Spider(HouseSpider):
 
         # region 首頁/租屋/xx市/xx區
         breadcromb = self.css(response, '#propNav a::text')
-        if len(breadcromb) >= 4:
+        if len(breadcromb) == 6:
+            # 首頁 > 店面 > 出租 > 台北市 > 大安區 > 台北市大安區安和路二段
+            top_region = breadcromb[3]
+            sub_region = breadcromb[4]
+        elif len(breadcromb) >= 4:
+            # 首頁 > 租屋 > 台北市 > 大安區 > 獨立套房 > 20000-30000元 > 台北市大安區仁愛路四段50號
             top_region = breadcromb[2]
             sub_region = breadcromb[3]
         else:

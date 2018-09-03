@@ -32,6 +32,7 @@ class PropertyType(IntEnum):
     其他 = 5
     倉庫 = 6
     場地 = 7
+    攤位 = 8
 
 
 class ContactType(IntEnum):
