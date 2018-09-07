@@ -1,3 +1,4 @@
+import uuid
 from django.db import models
 from rental.models import JSONField
 from .enums import RequestType
@@ -13,6 +14,7 @@ class RequestTS(BaseTimeSeries):
     seed = JSONField()
     is_pending = models.BooleanField(default=False)
     last_status = models.IntegerField(null=True)
+    owner = models.CharField(null=True, max_length=63)
 
     class Meta:
         db_table='request_ts'

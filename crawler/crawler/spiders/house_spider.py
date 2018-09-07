@@ -1,6 +1,8 @@
 import scrapy
 import re
 import traceback
+import uuid
+from django.db import connection
 from scrapy.spidermiddlewares.httperror import HttpError
 from rental.models import HouseTS, Vendor
 from rental import models
@@ -9,7 +11,6 @@ from crawlerrequest.enums import RequestType
 from rental.enums import UNKNOWN_ENUM
 
 # TODO: yield request
-
 
 class HouseSpider(scrapy.Spider):
     queue_length = 30
@@ -42,6 +43,8 @@ class HouseSpider(scrapy.Spider):
         m = models.current_month()
         d = models.current_day()
         h = models.current_stepped_hour()
+
+        self.spider_id = str(uuid.uuid4())
 
         try:
             self.vendor = Vendor.objects.get(
@@ -108,15 +111,36 @@ class HouseSpider(scrapy.Spider):
             # At most self.queue_length in memory
             return None
 
+        #21, makre next_request to be automic
+        with connection.cursor() as cursor:
+            sql = (
+                'update request_ts set owner = %s where year = %s and month = %s '
+                'and day = %s and hour = %s and vendor_id = %s and request_type = %s '
+                'and is_pending = %s and owner is null order by id limit 1'
+            )
+            a = cursor.execute(sql, [
+                self.spider_id,
+                self.ts['y'],
+                self.ts['m'],
+                self.ts['d'],
+                self.ts['h'],
+                self.vendor.id,
+                self.request_type,
+                False
+            ])
+
         next_row = RequestTS.objects.filter(
-            year = self.ts['y'],
-            month = self.ts['m'],
-            day = self.ts['d'],
-            hour = self.ts['h'],
-            vendor = self.vendor,
-            request_type = self.request_type,
-            is_pending = False
-        ).order_by('created').first()
+            year=self.ts['y'],
+            month=self.ts['m'],
+            day=self.ts['d'],
+            hour=self.ts['h'],
+            vendor=self.vendor,
+            request_type=self.request_type,
+            is_pending=False,
+            owner=self.spider_id
+        ).order_by('created')
+
+        next_row = next_row.first()
 
         if next_row is None:
             return None
