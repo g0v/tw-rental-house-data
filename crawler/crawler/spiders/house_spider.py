@@ -111,12 +111,14 @@ class HouseSpider(scrapy.Spider):
             # At most self.queue_length in memory
             return None
 
-        #21, makre next_request to be automic
+        # #21, temp workaround to get next_request ASAP
+        # this operation is still not atomic, different session may get the same request
         with connection.cursor() as cursor:
             sql = (
-                'update request_ts set owner = %s where year = %s and month = %s '
+                'update request_ts set owner = %s where id = ('
+                'select id from request_ts where year = %s and month = %s '
                 'and day = %s and hour = %s and vendor_id = %s and request_type = %s '
-                'and is_pending = %s and owner is null order by id limit 1'
+                'and is_pending = %s and owner is null order by id limit 1)'
             )
             a = cursor.execute(sql, [
                 self.spider_id,
@@ -125,7 +127,7 @@ class HouseSpider(scrapy.Spider):
                 self.ts['d'],
                 self.ts['h'],
                 self.vendor.id,
-                self.request_type,
+                self.request_type.value,
                 False
             ])
 
