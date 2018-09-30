@@ -26,7 +26,7 @@
             |] 
         td.pv2.ph3
           div(v-if="Array.isArray(row.comment)")
-            p.ma0.lh-copy(v-for="line in row.comment" :key="line") {{line || '-'}}
+            vue-markdown.ma0.lh-copy(v-for="line in row.comment" :key="line") {{line || '-'}}
           span(v-else) {{row.comment || '-'}}
         
 

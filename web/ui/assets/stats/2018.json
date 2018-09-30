@@ -1,6 +1,37 @@
 {
     "annual": null,
-    "quarterly": [],
+    "quarterly": [
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "3",
+        "type": "原始資料",
+        "total_count": 296396,
+        "sources": [
+            {"name": "591", "count": 296396}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":  107936280, "download_url": "http://bit.ly/tw-rental-data-2018-Q3-raw-csv"},
+          {"format": "json", "size_byte": 610075006, "download_url": "http://bit.ly/tw-rental-data-2018-Q3-raw-json"}
+        ],
+        "comment": ["「約略地點」已經有整個月的完整資料了", "由於 [#21](https://github.com/g0v/tw-rental-house-data/issues/21) 的影響，大約要等到 10/07 才可確定九月資料的正確性。"]
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "3",
+        "type": "消除重複住宅",
+        "total_count": 229630,
+        "sources": [
+            {"name": "591", "count": 229630}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   77756639, "download_url": "http://bit.ly/tw-rental-data-2018-Q3-dedup-csv"},
+          {"format": "json", "size_byte": 467969438, "download_url": "http://bit.ly/tw-rental-data-2018-Q3-dedup-json"}
+        ],
+        "comment": ["「約略地點」已經有整個月的完整資料了", "由於 [#21](https://github.com/g0v/tw-rental-house-data/issues/21) 的影響，大約要等到 10/07 才可確定九月資料的正確性。"]
+      }
+    ],
     "monthly": [
         {
           "schema_ver": "1.0.0",
@@ -93,6 +124,36 @@
             {"format": "json", "size_byte": 243418398, "download_url": "http://bit.ly/tw-rental-data-2018-08-dedup-json"}
           ],
           "comment": ["「刊登者編碼」已經有整個月的完整資料了", "新增「約略地點範圍」，只可嘗試，還沒有完整資料喔～"]
+        },
+        {
+          "schema_ver": "1.0.0",
+          "data_ver": "0.2",
+          "time": "9",
+          "type": "原始資料",
+          "total_count": 128317,
+          "sources": [
+              {"name": "591", "count": 128317}
+          ],
+          "files": [
+            {"format": "csv", "size_byte":   44635820, "download_url": "http://bit.ly/tw-rental-data-2018-09-raw-csv"},
+            {"format": "json", "size_byte": 264981779, "download_url": "http://bit.ly/tw-rental-data-2018-09-raw-json"}
+          ],
+          "comment": ["「約略地點」已經有整個月的完整資料了", "由於 [#21](https://github.com/g0v/tw-rental-house-data/issues/21) 的影響，大約要等到 10/07 才可確定九月資料的正確性。"]
+        },
+        {
+          "schema_ver": "1.0.0",
+          "data_ver": "0.2",
+          "time": "9",
+          "type": "消除重複住宅",
+          "total_count": 106257,
+          "sources": [
+              {"name": "591", "count": 106257}
+          ],
+          "files": [
+            {"format": "csv", "size_byte":   35841764, "download_url": "http://bit.ly/tw-rental-data-2018-09-dedup-csv"},
+            {"format": "json", "size_byte": 218948566, "download_url": "http://bit.ly/tw-rental-data-2018-09-dedup-json"}
+          ],
+          "comment": ["「約略地點」已經有整個月的完整資料了", "由於 [#21](https://github.com/g0v/tw-rental-house-data/issues/21) 的影響，大約要等到 10/07 才可確定九月資料的正確性。"]
         }
     ]
 }

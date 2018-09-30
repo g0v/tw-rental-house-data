@@ -8,6 +8,9 @@
         | ]
     .annual__seg.seg(v-if="definition.annual")
     .annual__seg.seg(v-if="definition.quarterly.length")
+      .seg__title 每月資料
+      .seg__table
+        DownloadTable(idHeader="季度", :rows="definition.quarterly")
     .annual__seg.seg
       .seg__title 每月資料
       .seg__table
