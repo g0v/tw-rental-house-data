@@ -12,6 +12,7 @@ module.exports = {
     },
     meta: [
       { charset: 'utf-8' },
+      { name: 'google-site-verification', content: 'uCUr0xYNUdjv0NqVRBNBDlnRHqkbLOmc_E8uzfkNxtY' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       {
         hid: 'description',
