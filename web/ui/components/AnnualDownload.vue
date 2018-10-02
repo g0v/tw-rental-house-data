@@ -8,7 +8,7 @@
         | ]
     .annual__seg.seg(v-if="definition.annual")
     .annual__seg.seg(v-if="definition.quarterly.length")
-      .seg__title 每月資料
+      .seg__title 每季資料
       .seg__table
         DownloadTable(idHeader="季度", :rows="definition.quarterly")
     .annual__seg.seg
@@ -47,6 +47,13 @@ export default {
 </script>
 <style lang="scss" scoped>
 .seg {
+
+  margin-top: 0.5rem;
+
+  &:not(:last-child) {
+    margin-bottom: 2rem;
+  }
+
   > * {
     padding: 0.5rem 1rem;
   }
@@ -54,6 +61,7 @@ export default {
   &__title {
     font-size: 1.2em;
     border-bottom: 1px solid black;
+    border-top: 1px solid black;
   }
 
 }

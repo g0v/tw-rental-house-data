@@ -104,10 +104,10 @@ class Command(BaseCommand):
             # print('  {} x {} - {}'.format(house_id, house['count'], house['building_type']))
             if house['vendor_house_id'] in static_houses:
                 static_houses[house_id].append(house['count'])
-                total_houses += 1
+                total_invalid_houses += 1
             else:
                 static_houses[house_id] = [house['count']]
-                total_invalid_houses += 1
+                total_houses += 1
 
         for house_id in static_houses:
             if len(static_houses[house_id]) > 1:

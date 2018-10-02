@@ -14,7 +14,7 @@
           {"format": "csv", "size_byte":  107936280, "download_url": "http://bit.ly/tw-rental-data-2018-Q3-raw-csv"},
           {"format": "json", "size_byte": 610075006, "download_url": "http://bit.ly/tw-rental-data-2018-Q3-raw-json"}
         ],
-        "comment": ["「約略地點」已經有整個月的完整資料了", "由於 [#21](https://github.com/g0v/tw-rental-house-data/issues/21) 的影響，大約要等到 10/07 才可確定九月資料的正確性。"]
+        "comment": ["本季新增，所以還不完整的資料：「約略地點」、「刊登者編碼」", "經過 [#21](https://github.com/g0v/tw-rental-house-data/issues/21#issuecomment-426175103) 的檢查，這季的資料是可以用的。"]
       },
       {
         "schema_ver": "1.0.0",
@@ -29,7 +29,7 @@
           {"format": "csv", "size_byte":   77756639, "download_url": "http://bit.ly/tw-rental-data-2018-Q3-dedup-csv"},
           {"format": "json", "size_byte": 467969438, "download_url": "http://bit.ly/tw-rental-data-2018-Q3-dedup-json"}
         ],
-        "comment": ["「約略地點」已經有整個月的完整資料了", "由於 [#21](https://github.com/g0v/tw-rental-house-data/issues/21) 的影響，大約要等到 10/07 才可確定九月資料的正確性。"]
+        "comment": ["本季新增，所以還不完整的資料：「約略地點」、「刊登者編碼」", "經過 [#21](https://github.com/g0v/tw-rental-house-data/issues/21#issuecomment-426175103) 的檢查，這季的資料是可以用的。"]
       }
     ],
     "monthly": [
@@ -138,7 +138,7 @@
             {"format": "csv", "size_byte":   44635820, "download_url": "http://bit.ly/tw-rental-data-2018-09-raw-csv"},
             {"format": "json", "size_byte": 264981779, "download_url": "http://bit.ly/tw-rental-data-2018-09-raw-json"}
           ],
-          "comment": ["「約略地點」已經有整個月的完整資料了", "由於 [#21](https://github.com/g0v/tw-rental-house-data/issues/21) 的影響，大約要等到 10/07 才可確定九月資料的正確性。"]
+          "comment": ["「約略地點」已經有整個月的完整資料了", "經過 [#21](https://github.com/g0v/tw-rental-house-data/issues/21#issuecomment-426175103) 的檢查，這月的資料是可以用的。"]
         },
         {
           "schema_ver": "1.0.0",
@@ -153,7 +153,7 @@
             {"format": "csv", "size_byte":   35841764, "download_url": "http://bit.ly/tw-rental-data-2018-09-dedup-csv"},
             {"format": "json", "size_byte": 218948566, "download_url": "http://bit.ly/tw-rental-data-2018-09-dedup-json"}
           ],
-          "comment": ["「約略地點」已經有整個月的完整資料了", "由於 [#21](https://github.com/g0v/tw-rental-house-data/issues/21) 的影響，大約要等到 10/07 才可確定九月資料的正確性。"]
+          "comment": ["「約略地點」已經有整個月的完整資料了", "經過 [#21](https://github.com/g0v/tw-rental-house-data/issues/21#issuecomment-426175103) 的檢查，這月的資料是可以用的。"]
         }
     ]
 }
