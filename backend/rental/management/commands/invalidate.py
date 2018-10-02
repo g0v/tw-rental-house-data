@@ -49,11 +49,16 @@ class Command(BaseCommand):
     ]
 
     should_be_small_diff_fields = [
-        'deposit',
+        'n_month_deposit',
         'monthly_price',
         'floor',
         'total_floor',
     ]
+
+    could_be_house = {
+        'rough_address__isnull': False,
+        'building_type__isnull': False,
+    }
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -81,8 +86,7 @@ class Command(BaseCommand):
         static_qs = HouseTS.objects.filter(
             created__gte=from_date,
             created__lte=to_date,
-        ).exclude(
-            rough_address__isnull=True,
+            **self.could_be_house
         ).values(
             'vendor_house_id',
             *self.should_be_static_fields
@@ -121,8 +125,7 @@ class Command(BaseCommand):
         small_diff_qs = HouseTS.objects.filter(
             created__gte=from_date,
             created__lte=to_date,
-        ).exclude(
-            rough_address__isnull=True,
+            **self.could_be_house
         ).values(
             'vendor_house_id',
         ).annotate(
@@ -141,11 +144,12 @@ class Command(BaseCommand):
             for field in self.should_be_small_diff_fields:
                 max_value = house['max_{}'.format(field)]
                 min_value = house['min_{}'.format(field)]
-                if max_value is not None and min_value is not None and max_value / 2 > min_value:
-                    is_invalid = True
-                    print('[SMALL] House {} field {} change too much, from {} to {}'.format(
-                        house['vendor_house_id'], field, min_value, max_value
-                    ))
+                if max_value is not None and min_value is not None:
+                    if max_value / 2 > min_value and min_value >= 0:
+                        is_invalid = True
+                        print('[SMALL] House {} field {} change too much, from {} to {}'.format(
+                            house['vendor_house_id'], field, min_value, max_value
+                        ))
 
             if is_invalid:
                 total_invalid_houses += 1
