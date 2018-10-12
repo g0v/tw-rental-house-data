@@ -2,11 +2,12 @@ asn1crypto==0.24.0
 astroid==2.0
 attrs==17.4.0
 Automat==0.6.0
+beautifulsoup4==4.6.3
 cffi==1.11.5
 constantly==15.1.0
 cryptography==2.3
 cssselect==1.0.3
-Django==2.0.7
+Django==2.1.2
 hyperlink==18.0.0
 idna==2.6
 incremental==17.5.0
@@ -22,6 +23,8 @@ pyasn1-modules==0.2.1
 pycparser==2.18
 PyDispatcher==2.0.5
 pylint==2.0.0
+pylint-django==2.0.2
+pylint-plugin-utils==0.4
 pyOpenSSL==17.5.0
 pytz==2018.5
 queuelib==1.5.0
