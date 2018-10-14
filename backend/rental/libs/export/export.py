@@ -36,7 +36,7 @@ class Export(ABC):
         return cls.vendors[vendor_id]
 
     def print(self, from_date, to_date, print_enum=True, only_big6=False, outfile='rental_house', export_json=False, use_tf=True):
-        print('---- Export all houses from {} to {} ----'.format(from_date, to_date))
+        print('---- [{}] Export all houses from {} to {} ----'.format(timezone.localtime(), from_date, to_date))
 
         self.vendor_stats = {'_total': 0}
 
@@ -54,7 +54,7 @@ class Export(ABC):
             houses = paginator.page(page_num)
             n_raws = self.print_body(houses, print_enum, use_tf, list_writer)
             current_done += n_raws
-            print('[{}] we have {}/{} rows'.format(datetime.now(), current_done, total_houses))
+            print('[{}] we have {}/{} rows'.format(timezone.localtime(), current_done, total_houses))
 
         if export_json:
             list_writer.close_all()
@@ -63,7 +63,7 @@ class Export(ABC):
             json.dump(self.vendor_stats, file, ensure_ascii=False)
 
         self.csv_h.close()
-        print('---- Export done ----\nData: {}.csv\nStatistics: {}.json\n'.format(outfile, outfile))
+        print('---- [{}] Export done ----\nData: {}.csv\nStatistics: {}.json\n'.format(timezone.localtime(), outfile, outfile))
 
     def init_writer(self, print_enum, file_name):
         zh_csv = open('{}.csv'.format(file_name), 'w')
@@ -87,7 +87,16 @@ class Export(ABC):
         self.csv_h = zh_csv
         self.csv_writer = zh_writer
 
+    def decorate_body(self, houses, print_enum, use_tf, list_writer):
+        """
+        Called before print_body, so we can decorate it.
+        Use this method to query etc table to avoid huge foreign table query
+        """
+        return houses
+
     def print_body(self, houses, print_enum, use_tf, list_writer):
+
+        houses = self.decorate_body(houses, print_enum, use_tf, list_writer)
         count = 0
 
         for house in houses:
