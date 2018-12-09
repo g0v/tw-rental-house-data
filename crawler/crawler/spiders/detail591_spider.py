@@ -255,7 +255,7 @@ class Detail591Spider(HouseSpider):
         owner['isAgent'] = len(agent_info) > 0
         owner['agent'] = agent_info
 
-        phone_ext = self.css_first(response, '.phone-hide .num::text')
+        phone_ext = self.css_first(response, '.phone-hide .num::text', allow_empty=True)
         phone_url = response.css('.phone-hide .num img').xpath('@src').extract_first()
 
         if phone_ext:

@@ -220,7 +220,7 @@ class HouseSpider(scrapy.Spider):
             request.save()
         else:
             self.logger.error(
-                '[Live|{}] Error: {}', self.n_live_spider, failure)
+                '[Live|{}] Error: {}'.format(self.n_live_spider, failure))
 
     def clean_number(self, number_string):
         if number_string is None or number_string == '':
@@ -249,7 +249,7 @@ class HouseSpider(scrapy.Spider):
 
         return enum
 
-    def css_first(self, base, selector, default=''):
+    def css_first(self, base, selector, default='', allow_empty=False):
         # Check how to find if there's missing attribute
         css = base.css(selector).extract_first() or default
         ret = ''
@@ -257,12 +257,13 @@ class HouseSpider(scrapy.Spider):
             try:
                 ret = next(self.clean_string([css]))
             except StopIteration:
-                self.logger.info(
-                    'Fail to get css first from {}({})'.format(
-                        base,
-                        selector
+                if not allow_empty:
+                    self.logger.info(
+                        'Fail to get css first from {}({})'.format(
+                            base,
+                            selector
+                        )
                     )
-                )
         return ret
 
     def css(self, base, selector, default=[]):
