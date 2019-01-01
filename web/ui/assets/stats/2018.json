@@ -13,7 +13,7 @@
           {"format": "csv", "size_byte":   239775817, "download_url": "http://bit.ly/tw-rental-data-2018-raw-csv"},
           {"format": "json", "size_byte": 1454765767, "download_url": "http://bit.ly/tw-rental-data-2018-raw-json"}
         ],
-        "comment": ["本年度有資料格式異動，共同欄位為 [0.1](/about-data-set/0.1)，最新欄位為 [0.2](/about-data-set/0.2)，詳情請參見每月附註。"]
+        "comment": ["本年度從五月開始紀錄，並非完整的年度資料。", "本年度有資料格式異動，共同欄位為 [0.1](/about-data-set/0.1)，最新欄位為 [0.2](/about-data-set/0.2)，詳情請參見每月附註。"]
       },
       {
         "schema_ver": "1.0.0",
@@ -28,7 +28,7 @@
           {"format": "csv", "size_byte":   160314850, "download_url": "http://bit.ly/tw-rental-data-2018-dedup-csv"},
           {"format": "json", "size_byte": 1037377575, "download_url": "http://bit.ly/tw-rental-data-2018-dedup-json"}
         ],
-        "comment": ["本年度有資料格式異動，共同欄位為 [0.1](/about-data-set/0.1)，最新欄位為 [0.2](/about-data-set/0.2)，詳情請參見每月附註。"]
+        "comment": ["本年度從五月開始紀錄，並非完整的年度資料。", "本年度有資料格式異動，共同欄位為 [0.1](/about-data-set/0.1)，最新欄位為 [0.2](/about-data-set/0.2)，詳情請參見每月附註。"]
       }
     ],
     "quarterly": [
