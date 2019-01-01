@@ -6,7 +6,10 @@
         | 本表格資料下載 [
         a(:download="`${year}.json`" :href="jsonContent") JSON
         | ]
-    .annual__seg.seg(v-if="definition.annual")
+    .annual__seg.seg(v-if="definition.annual.length")
+      .seg__title 年度資料
+      .seg__table
+        DownloadTable(:rows="definition.annual")
     .annual__seg.seg(v-if="definition.quarterly.length")
       .seg__title 每季資料
       .seg__table

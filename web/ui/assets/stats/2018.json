@@ -1,5 +1,36 @@
 {
-    "annual": null,
+    "annual": [
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "1",
+        "type": "原始資料",
+        "total_count": 706654,
+        "sources": [
+            {"name": "591", "count": 706654}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   239775817, "download_url": "http://bit.ly/tw-rental-data-2018-raw-csv"},
+          {"format": "json", "size_byte": 1454765767, "download_url": "http://bit.ly/tw-rental-data-2018-raw-json"}
+        ],
+        "comment": ["本年度有資料格式異動，共同欄位為 [0.1](/about-data-set/0.1)，最新欄位為 [0.2](/about-data-set/0.2)，詳情請參見每月附註。"]
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "1",
+        "type": "消除重複住宅",
+        "total_count": 508545,
+        "sources": [
+            {"name": "591", "count": 508545}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   160314850, "download_url": "http://bit.ly/tw-rental-data-2018-dedup-csv"},
+          {"format": "json", "size_byte": 1037377575, "download_url": "http://bit.ly/tw-rental-data-2018-dedup-json"}
+        ],
+        "comment": ["本年度有資料格式異動，共同欄位為 [0.1](/about-data-set/0.1)，最新欄位為 [0.2](/about-data-set/0.2)，詳情請參見每月附註。"]
+      }
+    ],
     "quarterly": [
       {
         "schema_ver": "1.0.0",
@@ -30,6 +61,36 @@
           {"format": "json", "size_byte": 467969438, "download_url": "http://bit.ly/tw-rental-data-2018-Q3-dedup-json"}
         ],
         "comment": ["本季新增，所以還不完整的資料：「約略地點」、「刊登者編碼」", "經過 [#21](https://github.com/g0v/tw-rental-house-data/issues/21#issuecomment-426175103) 的檢查，這季的資料已經沒問題囉～"]
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "4",
+        "type": "原始資料",
+        "total_count": 298343,
+        "sources": [
+            {"name": "591", "count": 298343}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":  112261196, "download_url": "http://bit.ly/tw-rental-data-2018-Q4-raw-csv"},
+          {"format": "json", "size_byte": 616623168, "download_url": "http://bit.ly/tw-rental-data-2018-Q4-raw-json"}
+        ],
+        "comment": "12/01 - 12/12，爬蟲曾經中斷過，這段期間後就沒更新的資料，有可能被標成 12/12 更新。"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "4",
+        "type": "消除重複住宅",
+        "total_count": 216996,
+        "sources": [
+            {"name": "591", "count": 216996}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   79521267, "download_url": "http://bit.ly/tw-rental-data-2018-Q4-dedup-csv"},
+          {"format": "json", "size_byte": 447666145, "download_url": "http://bit.ly/tw-rental-data-2018-Q4-dedup-json"}
+        ],
+        "comment": "12/01 - 12/12，爬蟲曾經中斷過，這段期間後就沒更新的資料，有可能被標成 12/12 更新。"
       }
     ],
     "monthly": [
@@ -214,6 +275,36 @@
             {"format": "json", "size_byte": 218668070, "download_url": "http://bit.ly/tw-rental-data-2018-11-dedup-json"}
           ],
           "comment": "-"
+        },
+        {
+          "schema_ver": "1.0.0",
+          "data_ver": "0.2",
+          "time": "12",
+          "type": "原始資料",
+          "total_count": 135700,
+          "sources": [
+              {"name": "591", "count": 135700}
+          ],
+          "files": [
+            {"format": "csv", "size_byte":   47344066, "download_url": "http://bit.ly/tw-rental-data-2018-12-raw-csv"},
+            {"format": "json", "size_byte": 280301724, "download_url": "http://bit.ly/tw-rental-data-2018-12-raw-json"}
+          ],
+          "comment": "12/01 - 12/12，爬蟲曾經中斷過，這段期間後就沒更新的資料，有可能被標成 12/12 更新。"
+        },
+        {
+          "schema_ver": "1.0.0",
+          "data_ver": "0.2",
+          "time": "12",
+          "type": "消除重複住宅",
+          "total_count": 108523,
+          "sources": [
+              {"name": "591", "count": 108523}
+          ],
+          "files": [
+            {"format": "csv", "size_byte":   36753115, "download_url": "http://bit.ly/tw-rental-data-2018-12-dedup-csv"},
+            {"format": "json", "size_byte": 223722223, "download_url": "http://bit.ly/tw-rental-data-2018-12-dedup-json"}
+          ],
+          "comment": "12/01 - 12/12，爬蟲曾經中斷過，這段期間後就沒更新的資料，有可能被標成 12/12 更新。"
         }
     ]
 }
