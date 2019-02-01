@@ -27,6 +27,7 @@ import AboutDataBrief from '~/components/AboutDataBrief'
 import Disqus from '~/components/Disqus'
 
 import def2018 from '~/assets/stats/2018.json'
+import def2019 from '~/assets/stats/2019.json'
 
 export default {
     head () {
@@ -40,6 +41,7 @@ export default {
     data () {
       return {
         years: [
+          {year: 2019, data: def2019},
           {year: 2018, data: def2018}
         ]
       }

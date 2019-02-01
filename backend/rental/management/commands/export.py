@@ -188,15 +188,6 @@ class Command(BaseCommand):
         uniq = UniqExport()
         raw = RawExport()
 
-        # export 01 raw
-        raw.print(
-            from_date,
-            to_date,
-            print_enum=False,
-            outfile='{}-raw-01'.format(outfile_prefix),
-            use_tf=False
-        )
-
         # export tf raw + json
         raw.print(
             from_date,
