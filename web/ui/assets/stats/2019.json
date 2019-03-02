@@ -31,6 +31,36 @@
           {"format": "json", "size_byte": 222332981, "download_url": "http://bit.ly/tw-rental-data-2019-01-dedup-json"}
         ],
         "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "2",
+        "type": "原始資料",
+        "total_count": 127732,
+        "sources": [
+            {"name": "591", "count": 127732}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   44505474, "download_url": "http://bit.ly/tw-rental-data-2019-02-raw-csv"},
+          {"format": "json", "size_byte": 263814807, "download_url": "http://bit.ly/tw-rental-data-2019-02-raw-json"}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "2",
+        "type": "消除重複住宅",
+        "total_count": 101253,
+        "sources": [
+            {"name": "591", "count": 101253}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   34225822, "download_url": "http://bit.ly/tw-rental-data-2019-02-dedup-csv"},
+          {"format": "json", "size_byte": 208706311, "download_url": "http://bit.ly/tw-rental-data-2019-02-dedup-json"}
+        ],
+        "comment": ""
       }
   ]
 }
