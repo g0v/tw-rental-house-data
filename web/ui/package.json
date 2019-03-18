@@ -16,7 +16,7 @@
   "dependencies": {
     "filesize": "^3.6.1",
     "intersection-observer": "^0.5.0",
-    "lodash": "^4.17.10",
+    "lodash": "^4.17.11",
     "normalize.css": "^8.0.0",
     "nuxt": "^1.0.0",
     "vue-disqus": "^3.0.3",
@@ -29,7 +29,7 @@
     "eslint-friendly-formatter": "^3.0.0",
     "eslint-loader": "^1.7.1",
     "eslint-plugin-vue": "^4.0.0",
-    "node-sass": "^4.9.3",
+    "node-sass": "^4.11.0",
     "pug": "^2.0.3",
     "pug-loader": "^2.4.0",
     "push-dir": "^0.4.1",
