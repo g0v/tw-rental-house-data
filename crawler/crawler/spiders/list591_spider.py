@@ -1,12 +1,13 @@
 import json
+import scrapy
 from ..items import RawHouseItem, GenericHouseItem
 from rental.enums import PropertyType, TopRegionType, SubRegionType
 from .house_spider import HouseSpider
 from .all_591_cities import all_591_cities
 
-
 class List591Spider(HouseSpider):
     ENDPOINT = 'https://rent.591.com.tw/home/search/rsList?is_new_list=1&type=1&kind=0&searchtype=1'
+    SESSION_ENDPOINT = 'https://rent.591.com.tw/?kind=0&region=6'
     N_PAGE = 30
     name = 'list591'
 
@@ -19,6 +20,9 @@ class List591Spider(HouseSpider):
             **kwargs
         )
 
+        self.csrf_token = None
+        self.session_token = None
+
     def gen_request_params(self, seed):
         city = seed['region']
 
@@ -28,12 +32,31 @@ class List591Spider(HouseSpider):
                 city['id'],
                 seed['page'] * self.N_PAGE
             ),
-            'headers': {'Cookie': 'urlJumpIp={};'.format(city['id'])},
+            'headers': {
+                'Cookie': 'urlJumpIp={}; 591_new_session={};'.format(city['id'], self.session_token),
+                'X-CSRF-TOKEN': self.csrf_token
+            },
             'priority': self.clean_number(city['id']),
             'meta': {'seed': seed}
         }
 
     def start_requests(self):
+        # 591 require a valid session to start request, #27
+        yield scrapy.Request(
+            url=self.SESSION_ENDPOINT,
+            dont_filter=True,
+            callback=self.handle_session_init,
+        )
+
+    def handle_session_init(self, response):
+        self.csrf_token = response.css('meta[name="csrf-token"]').xpath('@content').extract_first()
+
+        for cookie in response.headers.getlist('Set-Cookie'):
+            cookie_tokens = cookie.decode('utf-8').split('; ')
+            if cookie_tokens and cookie_tokens[0].startswith('591_new_session='):
+                self.session_token = cookie_tokens[0].split('=')[1]
+                break
+
         if not self.has_request() and not self.has_record():
             for region in all_591_cities:
                 # let's do DFS
