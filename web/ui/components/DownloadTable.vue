@@ -28,8 +28,6 @@
           div(v-if="Array.isArray(row.comment)")
             vue-markdown.ma0.lh-copy(v-for="line in row.comment" :key="line") {{line || '-'}}
           span(v-else) {{row.comment || '-'}}
-        
-
 </template>
 <script>
 import _ from 'lodash'
@@ -45,7 +43,7 @@ export default {
       type: Array,
       required: true,
       validator (rows) {
-        return _.isArray(rows) && rows.every(row => {
+        return _.isArray(rows) && rows.every((row) => {
           return row.time !== undefined &&
             row.total_count &&
             row.sources &&
@@ -64,6 +62,17 @@ export default {
   },
   data () {
     return {}
+  },
+  computed: {
+    needIdColumn () {
+      return !!this.idHeader
+    },
+    sourceHeaders () {
+      const sources = _.uniq(_.flatten(this.rows.map(
+        row => row.sources.map(source => source.name)
+      )))
+      return sources
+    }
   },
   methods: {
     idName (id) {
@@ -98,18 +107,6 @@ export default {
       }
       return ''
     }
-  },
-  computed: {
-    needIdColumn () {
-      return !!this.idHeader
-    },
-    sourceHeaders () {
-      const sources = _.uniq(_.flatten(this.rows.map(
-        row => row.sources.map(source => source.name)
-      )))
-      return sources
-    }
   }
 }
 </script>
-

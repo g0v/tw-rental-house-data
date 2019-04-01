@@ -234,26 +234,26 @@ import AboutDataBrief from '~/components/AboutDataBrief'
 import Disqus from '~/components/Disqus'
 
 export default {
+  components: {
+    AboutDataBrief,
+    Disqus
+  },
   head() {
     return {
-      title: "關於資料集"
-    };
+      title: '關於資料集'
+    }
   },
   data() {
     return {
       isHeaderVisible: true
-    };
+    }
   },
   methods: {
     visibilityChanged(isVisible) {
-      this.isHeaderVisible = isVisible;
+      this.isHeaderVisible = isVisible
     }
-  },
-  components: {
-    AboutDataBrief,
-    Disqus
   }
-};
+}
 </script>
 <style lang="scss" scoped>
 .about {

@@ -30,27 +30,26 @@ import def2018 from '~/assets/stats/2018.json'
 import def2019 from '~/assets/stats/2019.json'
 
 export default {
-    head () {
-      return {
-        title: '打包回家玩',
-        meta: [
-          { hid: 'og:image', name: 'og:image', content: 'https://rentalhouse.g0v.ddio.io/imgs/download-og.png'}
-        ]
-      }
-    },
-    data () {
-      return {
-        years: [
-          {year: 2019, data: def2019},
-          {year: 2018, data: def2018}
-        ]
-      }
-    },
-    components: {
-      AnnualDownload,
-      AboutDataBrief,
-      Disqus
+  components: {
+    AnnualDownload,
+    AboutDataBrief,
+    Disqus
+  },
+  head () {
+    return {
+      title: '打包回家玩',
+      meta: [
+        { hid: 'og:image', name: 'og:image', content: 'https://rentalhouse.g0v.ddio.io/imgs/download-og.png' }
+      ]
     }
+  },
+  data () {
+    return {
+      years: [
+        { year: 2019, data: def2019 },
+        { year: 2018, data: def2018 }
+      ]
+    }
+  }
 }
 </script>
-

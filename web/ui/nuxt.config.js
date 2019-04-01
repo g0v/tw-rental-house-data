@@ -3,7 +3,7 @@ module.exports = {
   ** Headers of the page
   */
   head: {
-    titleTemplate: origTitle => {
+    titleTemplate: (origTitle) => {
       if (origTitle) {
         return `${origTitle} | 開放台灣民間租屋資料`
       } else {
@@ -49,15 +49,7 @@ module.exports = {
           exclude: /(node_modules)/
         })
       }
-    },
-    vendor: [
-      'lodash',
-      'filesize',
-      'vue-markdown',
-      'intersection-observer',
-      'vue-observe-visibility',
-      'vue-disqus'
-    ]
+    }
   },
   plugins: [
     '~/plugins/vue-markdown',

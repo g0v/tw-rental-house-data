@@ -1,6 +1,6 @@
 <script>
 export default {
-  fetch ({params, redirect}) {
+  fetch ({ redirect }) {
     redirect(307, '/download')
   }
 }

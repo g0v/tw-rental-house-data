@@ -23,6 +23,9 @@
 import DownloadTable from '~/components/DownloadTable'
 
 export default {
+  components: {
+    DownloadTable
+  },
   props: {
     year: {
       type: Number,
@@ -42,9 +45,6 @@ export default {
       return 'data:text/plain;charset=utf-8,' +
         encodeURIComponent(JSON.stringify(this.definition, null, 2))
     }
-  },
-  components: {
-    DownloadTable
   }
 }
 </script>
