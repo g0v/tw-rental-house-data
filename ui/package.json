@@ -47,6 +47,8 @@
     "pug": "^2.0.3",
     "pug-plain-loader": "^1.0.0",
     "push-dir": "^0.4.1",
+    "babel-core": "7.0.0-bridge.0",
+    "babel-jest": "^24.1.0",
     "sass-loader": "^7.1.0",
     "tachyons": "^4.10.0"
   }
