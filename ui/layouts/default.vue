@@ -34,7 +34,8 @@
     margin-left: 1rem;
   }
 
-  &:hover, &.nuxt-link-active {
+  &:hover,
+  &.nuxt-link-active {
     color: black;
   }
 }

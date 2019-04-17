@@ -35,20 +35,21 @@ export default {
     AboutDataBrief,
     Disqus
   },
-  head () {
+  head() {
     return {
       title: '打包回家玩',
       meta: [
-        { hid: 'og:image', name: 'og:image', content: 'https://rentalhouse.g0v.ddio.io/imgs/download-og.png' }
+        {
+          hid: 'og:image',
+          name: 'og:image',
+          content: 'https://rentalhouse.g0v.ddio.io/imgs/download-og.png'
+        }
       ]
     }
   },
-  data () {
+  data() {
     return {
-      years: [
-        { year: 2019, data: def2019 },
-        { year: 2018, data: def2018 }
-      ]
+      years: [{ year: 2019, data: def2019 }, { year: 2018, data: def2018 }]
     }
   }
 }

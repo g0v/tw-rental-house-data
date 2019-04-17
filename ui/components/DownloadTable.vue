@@ -34,7 +34,8 @@ import _ from 'lodash'
 import filesize from 'filesize'
 
 const RELEASE_STAGE = {
-  beta: '本次資料集有新增欄位，但由於資料更新的限制，並非整個月的的物件都有此資料'
+  beta:
+    '本次資料集有新增欄位，但由於資料更新的限制，並非整個月的的物件都有此資料'
 }
 
 export default {
@@ -42,13 +43,18 @@ export default {
     rows: {
       type: Array,
       required: true,
-      validator (rows) {
-        return _.isArray(rows) && rows.every((row) => {
-          return row.time !== undefined &&
-            row.total_count &&
-            row.sources &&
-            row.files
-        })
+      validator(rows) {
+        return (
+          _.isArray(rows) &&
+          rows.every(row => {
+            return (
+              row.time !== undefined &&
+              row.total_count &&
+              row.sources &&
+              row.files
+            )
+          })
+        )
       }
     },
     idHeader: {
@@ -60,32 +66,32 @@ export default {
       default: null
     }
   },
-  data () {
+  data() {
     return {}
   },
   computed: {
-    needIdColumn () {
+    needIdColumn() {
       return !!this.idHeader
     },
-    sourceHeaders () {
-      const sources = _.uniq(_.flatten(this.rows.map(
-        row => row.sources.map(source => source.name)
-      )))
+    sourceHeaders() {
+      const sources = _.uniq(
+        _.flatten(this.rows.map(row => row.sources.map(source => source.name)))
+      )
       return sources
     }
   },
   methods: {
-    idName (id) {
+    idName(id) {
       if (this.idFormatter) {
         return this.idFormatter(id)
       } else {
         return id
       }
     },
-    prettyNumber (number) {
+    prettyNumber(number) {
       return number.toLocaleString()
     },
-    prettyCount (row, sourceName) {
+    prettyCount(row, sourceName) {
       const source = row.sources.find(source => source.name === sourceName)
       if (source) {
         return this.prettyNumber(source.count)
@@ -93,14 +99,14 @@ export default {
         return '-'
       }
     },
-    filesize (size) {
+    filesize(size) {
       return filesize(size)
     },
-    dataUrl (dataVer) {
+    dataUrl(dataVer) {
       const versionTokens = dataVer.split(' ')
       return `/about-data-set/${versionTokens[0]}`
     },
-    dataDesp (dataVer) {
+    dataDesp(dataVer) {
       const versionTokens = dataVer.split(' ')
       if (versionTokens.length > 1) {
         return RELEASE_STAGE[versionTokens[1].toLowerCase()]

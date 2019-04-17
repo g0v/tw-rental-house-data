@@ -3,11 +3,11 @@
 </template>
 <script>
 export default {
-  data () {
+  data() {
     return {}
   },
   computed: {
-    url () {
+    url() {
       if (!process.browser) {
         return ''
       }

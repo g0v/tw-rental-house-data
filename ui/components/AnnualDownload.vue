@@ -37,20 +37,21 @@ export default {
       required: true
     }
   },
-  data () {
+  data() {
     return {}
   },
   computed: {
-    jsonContent () {
-      return 'data:text/plain;charset=utf-8,' +
+    jsonContent() {
+      return (
+        'data:text/plain;charset=utf-8,' +
         encodeURIComponent(JSON.stringify(this.definition, null, 2))
+      )
     }
   }
 }
 </script>
 <style lang="scss" scoped>
 .seg {
-
   margin-top: 0.5rem;
 
   &:not(:last-child) {
@@ -66,6 +67,5 @@ export default {
     border-bottom: 1px solid black;
     border-top: 1px solid black;
   }
-
 }
 </style>
