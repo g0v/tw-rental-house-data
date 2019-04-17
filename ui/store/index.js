@@ -9,7 +9,8 @@ export const mutations = {
 }
 
 export const actions = {
-  nuxtServerInit({ commit }) {
+  nuxtClientInit({ commit }) {
+    // don't use nuxtServerInit since we are using gh-page
     if (process.server) {
       const { listPosts } = require('@/utils/blog')
       commit('updateBlogPosts', listPosts())

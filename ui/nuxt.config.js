@@ -58,6 +58,9 @@ module.exports = {
       }
     }
   },
+  generate: {
+    fallback: true
+  },
   modules: ['modules/blog'],
   plugins: [
     'plugins/vue-markdown',
