@@ -17,6 +17,11 @@ export default {
     BlogTagList
   },
   layout: 'blog',
+  head() {
+    return {
+      title: '部落格'
+    }
+  },
   computed: {
     ...mapState(['blogPosts']),
     tags() {

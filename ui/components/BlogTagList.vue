@@ -3,7 +3,7 @@
     nuxt-link.tag.mr1.dim.no-underline.outline-0(
       v-for="tag in tagTexts"
       :key="tag"
-      :to="`/blog/tag/${tag}`"
+      :to="`/blog/tag/${tag}/`"
     ) {{tag}}
 </template>
 <script>

@@ -40,4 +40,20 @@ export function listPosts() {
   return posts
 }
 
+export function listRoutes() {
+  const posts = listPosts()
+  const tags = {}
+
+  posts.forEach(post => {
+    post.meta.tags.forEach(tag => {
+      tags[tag] = true
+    })
+  })
+
+  return [
+    ...posts.map(post => `/blog/post/${post.url}`),
+    ...Object.keys(tags).map(tag => `/blog/tag/${tag}`)
+  ]
+}
+
 export default listPosts

@@ -1,3 +1,5 @@
+const { listRoutes } = require('./utils/blog')
+
 module.exports = {
   /*
    ** Headers of the page
@@ -59,7 +61,8 @@ module.exports = {
     }
   },
   generate: {
-    fallback: true
+    fallback: true,
+    routes: listRoutes()
   },
   modules: ['modules/blog', '@nuxtjs/font-awesome'],
   plugins: [

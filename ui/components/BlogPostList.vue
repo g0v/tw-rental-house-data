@@ -1,19 +1,21 @@
 <template lang="pug">
   .flex.flex-wrap.justify-center
     .mw6-l.w-33-l.w-100.fl.relative(v-for="post in posts" :key="post.url")
-      .aspect-ratio--1x1
-        nuxt-link.pa3.h-100.w-100.dim.no-underline.db.absolute(:to="`/blog/post/${post.url}`")
+      article.aspect-ratio--1x1(itemscope itemtype="http://schema.org/Article")
+        nuxt-link.pa3.h-100.w-100.dim.no-underline.db.absolute(itemprop="url" :to="`/blog/post/${post.url}/`")
           .post.br2.ba.b--moon-gray.h-100.overflow-hidden
             .post__cover.cover.center.black(:style="{backgroundImage: `url('${post.meta.cover}')`}")
             .pa3
-              .f4.b.black {{post.meta.title}}
-              vue-markdown.f6.black.lh-copy {{contentHead(post)}}
+              header.f4.b.black(itemprop="name headline") {{post.meta.title}}
+              vue-markdown.f6.black.lh-copy(itemprop="articleBody") {{contentHead(post)}}
+            div(itemprop="publisher" itemscope itemtype="https://schema.org/Organization")
+              meta(itemprop="name" content="開放台灣民間租屋資料")
             .post__tail
             .post__footer.bt.b--moon-gray.flex.justify-between.light-silver
-              .dib.f6
+              .dib.f6(itemprop="author" itemscope itemtype="http://schema.org/Person")
                 i.mr2.fa.fa-user-o
-                | {{post.meta.author}}
-              .dib.f6
+                span(itemprop="name") {{post.meta.author}}
+              .dib.f6(itemprop="datePublished dateModified" :content="post.meta.created")
                 i.mr2.fa.fa-calendar
                 | {{contentCreated(post)}}
 </template>
@@ -21,7 +23,7 @@
 export default {
   props: {
     posts: {
-      requied: true,
+      required: true,
       type: Array
     }
   },
