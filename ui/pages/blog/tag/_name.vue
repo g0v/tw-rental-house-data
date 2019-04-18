@@ -1,10 +1,17 @@
 <template lang="pug">
   main.w-100.mw9-l.pa4.center
-    p.tc 關於爬蟲錯誤說明、專案開發、衍生應用
+    h1.tc
+      span.gray 包含
+      i.fa.fa-tag.mh2
+      | {{tag}} 
+      span.gray 的貼文
     .tc.gray.f6
-      i.fa.fa-tags.mr1
+      | 其他標籤：
       blog-tag-list.dib(:tags="tags")
-    blog-post-list(:posts="blogPosts")
+    blog-post-list(v-if="posts.length" :posts="posts")
+    div(v-else)
+      .f3.b.pa3.mt6.tc 這是國王的標籤嗎？ ~"~ 
+      nuxt-link.tc.db(to="/blog") 回部落格首頁
 </template>
 <script>
 import { mapState } from 'vuex'
@@ -19,6 +26,12 @@ export default {
   layout: 'blog',
   computed: {
     ...mapState(['blogPosts']),
+    tag() {
+      return this.$route.params.name
+    },
+    posts() {
+      return this.blogPosts.filter(post => post.meta.tags.includes(this.tag))
+    },
     tags() {
       const counter = {}
       this.blogPosts.forEach(post => {
@@ -29,12 +42,14 @@ export default {
           counter[tag] += 1
         })
       })
-      return Object.keys(counter).map(tag => {
-        return {
-          name: tag,
-          count: counter[tag]
-        }
-      })
+      return Object.keys(counter)
+        .map(tag => {
+          return {
+            name: tag,
+            count: counter[tag]
+          }
+        })
+        .filter(tag => tag.name !== this.tag)
     }
   }
 }

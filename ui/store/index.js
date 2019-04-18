@@ -14,7 +14,7 @@ export const actions = {
     if (process.server) {
       const { listPosts } = require('@/utils/blog')
       commit('updateBlogPosts', listPosts())
-    } else {
+    } else if (process.static) {
       commit('updateBlogPosts', this.$getBlogPosts())
     }
   }

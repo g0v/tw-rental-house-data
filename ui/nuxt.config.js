@@ -61,7 +61,7 @@ module.exports = {
   generate: {
     fallback: true
   },
-  modules: ['modules/blog'],
+  modules: ['modules/blog', '@nuxtjs/font-awesome'],
   plugins: [
     'plugins/vue-markdown',
     'plugins/vue-observe-visibility',
