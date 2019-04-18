@@ -26,8 +26,8 @@
             |] 
         td.pv2.ph3
           div(v-if="Array.isArray(row.comment)")
-            vue-markdown.ma0.lh-copy(v-for="line in row.comment" :key="line") {{line || '-'}}
-          span(v-else) {{row.comment || '-'}}
+            vue-markdown.ma0.lh-copy(v-for="line in row.comment" :key="line") {{line || '--'}}
+          vue-markdown(v-else) {{row.comment || '--'}}
 </template>
 <script>
 import _ from 'lodash'
