@@ -15,8 +15,8 @@
         .gray.mb3(v-if="post.meta.tags.length")
           i.mr1.fa.fa-tags
           blog-tag-list.dib(:tags="post.meta.tags")
-        div(itemprop="publisher" itemscope itemtype="https://schema.org/Organization")
-          meta(itemprop="name" content="開放台灣民間租屋資料")
+      div(itemprop="publisher" itemscope itemtype="https://schema.org/Organization")
+        meta(itemprop="name" content="開放台灣民間租屋資料")
       disqus.mw7.center
     div(v-else)
       .f3.b.pa3.mt6.tc 查無此文耶 ~"~ 
@@ -28,8 +28,6 @@ import { mapState } from 'vuex'
 import markdownIt from 'markdown-it'
 import Disqus from '~/components/Disqus'
 import BlogTagList from '@/components/BlogTagList'
-
-const md = markdownIt()
 
 export default {
   components: {
@@ -57,6 +55,8 @@ export default {
     post() {
       const postName = this.$route.params.name || ''
       const target = this.blogPosts.find(thisPost => thisPost.url === postName)
+      const md = markdownIt(target.meta.config)
+
       if (target && !target.html) {
         target.html = md.render(target.content)
       }

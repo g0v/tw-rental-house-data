@@ -20,6 +20,7 @@ module.exports = {
   // add your custom rules here
   rules: {
     "no-trailing-spaces": "off",
+    "no-console": "off",
     "space-before-function-paren": "off"
   }
 }

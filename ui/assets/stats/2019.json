@@ -122,6 +122,34 @@
           {"format": "json", "size_byte": 241080285, "download_url": "http://bit.ly/tw-rental-data-2019-03-dedup-json"}
         ],
         "comment": "爬蟲在 [3/8 - 3/19 期間沒有完整執行](/blog/post/data-issue-2019-00)，只在這 12 天出現的物件可能會消失，其他物件在這段期間的新增、刪除、修改，也可能會有時間登記錯誤的問題。"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "4",
+        "type": "原始資料",
+        "total_count": 149144,
+        "sources": [
+            {"name": "591", "count": 149144}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   52125956, "download_url": "http://bit.ly/tw-rental-data-2019-04-raw-csv"},
+          {"format": "json", "size_byte": 308153756, "download_url": "http://bit.ly/tw-rental-data-2019-04-raw-json"}
+        ]
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "4",
+        "type": "消除重複住宅",
+        "total_count": 117107,
+        "sources": [
+            {"name": "591", "count": 117107}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   39709789, "download_url": "http://bit.ly/tw-rental-data-2019-04-dedup-csv"},
+          {"format": "json", "size_byte": 241488491, "download_url": "http://bit.ly/tw-rental-data-2019-04-dedup-json"}
+        ]
       }
   ]
 }

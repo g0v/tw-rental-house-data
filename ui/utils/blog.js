@@ -22,6 +22,7 @@ export function listPosts() {
           created: '1970-01-01T08:00:00+08:00',
           title: '',
           tags: [],
+          config: {},
           author: ''
         },
         loadFront(fs.readFileSync(`${blogBase}${file}`, 'utf-8'))
