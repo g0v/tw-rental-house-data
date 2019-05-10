@@ -114,10 +114,10 @@ class Detail591Spider(HouseSpider):
 
     def collect_dict(self, response):
         # title
-        title = self.css_first(response, '.houseInfoTitle::text')
+        title = self.css_first(response, '.houseInfoTitle', deep_text=True)
 
         # region 首頁/租屋/xx市/xx區
-        breadcromb = self.css(response, '#propNav a::text')
+        breadcromb = self.css(response, '#propNav a', deep_text=True)
         if len(breadcromb) >= 4:
             if breadcromb[2] == '出租' and len(breadcromb) >= 5:
                 # 首頁 > 店面 > 出租 > 台北市 > 大安區 > 台北市大安區安和路二段
@@ -132,18 +132,21 @@ class Detail591Spider(HouseSpider):
             sub_region = '__UNKNOWN__'
 
         # rough address
-        address = self.css_first(response, '#propNav .addr::text')
+        address = self.css_first(response, '#propNav .addr', deep_text=True)
 
         # image, it's in a hidden input
-        imgs = self.css_first(response, '#hid_imgArr::attr(value)')\
-            .replace('"', '').split(',')
+        imgs = self.css_first(
+            response,
+            '#hid_imgArr::attr(value)',
+            allow_empty=True
+        ).replace('"', '').split(',')
 
         if imgs[0] == "":
             imgs.pop(0)
 
         # top meta, including 押金, 法定用途, etc..
-        top_meta_keys = self.css(response, '.labelList-1 .one::text')
-        top_meta_values = self.css(response, '.labelList-1 .two em::text')
+        top_meta_keys = self.css(response, '.labelList-1 .one', deep_text=True)
+        top_meta_values = self.css(response, '.labelList-1 .two em', deep_text=True)
         top_metas = self.dict_from_tuple(top_meta_keys, top_meta_values)
 
         if '身份要求' in top_metas:
@@ -151,7 +154,7 @@ class Detail591Spider(HouseSpider):
 
         # facilities, including 衣櫃、沙發, etc..
         fa_status = self.css(response, '.facility li span::attr(class)')
-        fa_text = self.css(response, '.facility li::text')
+        fa_text = self.css(response, '.facility li', deep_text=True)
         fa = []
         without_fa = []
         for index, key in enumerate(fa_text):
@@ -162,29 +165,29 @@ class Detail591Spider(HouseSpider):
 
         # environment
         # <p><strong>生活機能</strong>：近便利商店；傳統市場；夜市</p>
-        env_keys = self.css(response, '.lifeBox > p strong::text')
-        env_desps = self.css(response, '.lifeBox > p::text')
-        env_desps = list(map(lambda desp: desp.replace('：', '').split('；'), env_desps))
+        env_keys = self.css(response, '.lifeBox > p strong', deep_text=True)
+        env_desps = self.css(response, '.lifeBox > p', deep_text=True)
+        env_desps = list(map(lambda desp: re.sub('.*：', '', desp).split('；'), env_desps))
         env = self.dict_from_tuple(env_keys, env_desps)
 
         # neighbor
         nei_selector = response.css('.lifeBox.community')
         nei = {}
         if nei_selector:
-            nei['name'] = self.css_first(nei_selector, '.communityName a::text')
-            nei['desp'] = self.css_first(nei_selector, '.communityIntroduce::text')
+            nei['name'] = self.css_first(nei_selector, '.communityName a', deep_text=True)
+            nei['desp'] = self.css_first(nei_selector, '.communityIntroduce::text', deep_text=True, allow_empty=True)
             nei['url'] = self.BASE_URL +\
-                self.css_first(nei_selector, '.communityIntroduce a::attr(href)')
+                self.css_first(nei_selector, '.communityIntroduce a::attr(href)', allow_empty=True)
             nei_keys = self.css(nei_selector, '.communityDetail p::text')
-            nei_values = self.css(nei_selector, '.communityDetail p > *::text')
+            nei_values = self.css(nei_selector, '.communityDetail p > *', deep_text=True)
             nei['info'] = self.dict_from_tuple(nei_keys, nei_values)
 
         # sublets 分租套房、雅房
-        sublets_keys = self.css(response, '.list-title span::text')
+        sublets_keys = self.css(response, '.list-title span', deep_text=True)
         sublets_list = response.css('.house-list')
         sublets = []
         for sublet in sublets_list:
-            texts = self.css(sublet, 'li *::text')
+            texts = self.css(sublet, 'li', deep_text=True)
             sublet_dict = self.dict_from_tuple(sublets_keys, texts)
             if '租金' in sublet_dict:
                 sublet_dict['租金'] = self.clean_number(sublet_dict['租金'])
@@ -194,19 +197,22 @@ class Detail591Spider(HouseSpider):
             sublets.append(sublet_dict)
 
         # desp
-        desp = self.css(response, '.houseIntro *::text')
+        desp = self.css(response, '.houseIntro *', deep_text=True)
 
         # q and a
         # TODO
         # TODO: format correct
 
         # price
-        price = self.css_first(response, '.price i::text')
+        # <div class="price clearfix"><i>14,500 <b>元/月</b></i></div>
+        price = self.css_first(response, '.price i', deep_text=True)
 
         # built-in facility
         price_includes = self.css_first(
             response,
-            '.detailInfo .price+.explain::text'
+            '.detailInfo .price+.explain',
+            deep_text=True,
+            allow_empty=True
         ).split('/')
 
         # lease status
@@ -218,7 +224,7 @@ class Detail591Spider(HouseSpider):
         #     deal_at = timezone.localtime()
 
         # side meta
-        sides = self.css(response, '.detailInfo .attr li::text')
+        sides = self.css(response, '.detailInfo .attr li', deep_text=True)
         side_metas = {}
         for side in sides:
             tokens = side.split(':')
@@ -242,20 +248,20 @@ class Detail591Spider(HouseSpider):
             side_metas['權狀坪數'] = self.clean_number(side_metas['權狀坪數'])
 
         # due day
-        due_day = self.css_first(response, '.explain .ft-rt::text')
+        due_day = self.css_first(response, '.explain .ft-rt', deep_text=True)
         due_day = due_day.replace('有效期：', '')
 
         # owner
         owner = {}
-        owner['name'] = self.css_first(response, '.avatarRight i::text')
-        owner['comment'] = self.css_first(response, '.avatarRight div::text')
-        agent_info = self.css(response, '.avatarRight .auatarSonBox p::text')
+        owner['name'] = self.css_first(response, '.avatarRight i', deep_text=True)
+        owner['comment'] = self.css_first(response, '.avatarRight div', deep_text=True)
+        agent_info = self.css(response, '.avatarRight .auatarSonBox p', deep_text=True)
         make_agent_info = partial(self.split_string_to_dict, seperator='：')
         agent_info = list(map(make_agent_info, agent_info))
         owner['isAgent'] = len(agent_info) > 0
         owner['agent'] = agent_info
 
-        phone_ext = self.css_first(response, '.phone-hide .num::text', allow_empty=True)
+        phone_ext = self.css_first(response, '.phone-hide .num', deep_text=True, allow_empty=True)
         phone_url = response.css('.phone-hide .num img').xpath('@src').extract_first()
 
         if phone_ext:
@@ -285,7 +291,7 @@ class Detail591Spider(HouseSpider):
 
         return {
             'house_id': response.meta['seed']['house_id'],
-            'n_views': self.css_first(response, '.pageView b::text'),
+            'n_views': self.css_first(response, '.pageView b', deep_text=True),
             'top_region': top_region,
             'sub_region': sub_region,
             'address': address,

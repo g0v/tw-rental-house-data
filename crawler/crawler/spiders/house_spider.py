@@ -249,25 +249,33 @@ class HouseSpider(scrapy.Spider):
 
         return enum
 
-    def css_first(self, base, selector, default='', allow_empty=False):
+    def css_first(self, base, selector, default='', allow_empty=False, deep_text=False):
         # Check how to find if there's missing attribute
-        css = base.css(selector).extract_first() or default
-        ret = ''
+        css = self.css(base, selector, [default], deep_text=deep_text)
         if css:
-            try:
-                ret = next(self.clean_string([css]))
-            except StopIteration:
-                if not allow_empty:
-                    self.logger.info(
-                        'Fail to get css first from {}({})'.format(
-                            base,
-                            selector
-                        )
-                    )
-        return ret
+            return css[0]
 
-    def css(self, base, selector, default=[]):
-        ret = base.css(selector).extract() or default
+        if not allow_empty:
+            self.logger.info(
+                'Fail to get css first from {}({})'.format(
+                    base,
+                    selector
+                )
+            )
+
+        return ''
+
+    def css(self, base, selector, default=None, deep_text=False):
+        # Issue #30, we may get innerHTML like "some of <kkkk></kkkk>target <qqq></qqq>string"
+        # deep_text=True retrieve text in the way different from ::text, which will also get all child text.
+        if deep_text:
+            ret = map(lambda dom: ''.join(dom.css('*::text').extract()), base.css(selector))
+        else:
+            ret = base.css(selector).extract()
+
+        if not ret:
+            ret = [] if default is None else default
+
         ret = self.clean_string(ret)
         return list(ret)
 
