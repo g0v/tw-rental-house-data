@@ -197,12 +197,16 @@ class HouseSpider(scrapy.Spider):
             traceback.print_exc()
 
         self.n_live_spider -= 1
+        # quick fix for concurrency issue
+        mercy = 10
         while True:
             next_request = self.next_request()
             if next_request:
                 yield next_request
-            else:
+            elif mercy < 0:
                 break
+            else:
+                mercy -= 1
 
     def error_handler(self, failure):
         self.n_live_spider -= 1

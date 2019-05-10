@@ -89,12 +89,16 @@ class Detail591Spider(HouseSpider):
                 except:
                     traceback.print_exc()
 
+        # quick fix for concurrency issue
+        mercy = 10
         while True:
             next_request = self.next_request()
             if next_request:
                 yield next_request
-            else:
+            elif mercy < 0:
                 break
+            else:
+                mercy -= 1
 
     def dict_from_tuple(self, keys, values):
         min_length = min(len(keys), len(values))
