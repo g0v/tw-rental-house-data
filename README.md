@@ -9,7 +9,7 @@
 
 本程式還在初期開發階段，任何框架、資料庫定義、API 皆有可能更動。
 
-關於開發的詳細資訊，請參見[專案 wiki ](https://github.com/g0v/tw-rental-house-data/wiki/)
+關於開發的詳細資訊，請參見[專案 wiki](https://github.com/g0v/tw-rental-house-data/wiki/)
 
 ## 資料庫與網頁後端
 ### 環境需求
@@ -53,7 +53,7 @@ python manage.py loaddata vendors
 cd crawler
 
 # 設定 Scrapy
-cp crawler/settints.sample.py crawler/settings.py
+cp crawler/settings.sample.py crawler/settings.py
 vim crawler/settings.py
 
 # 開始爬資料
