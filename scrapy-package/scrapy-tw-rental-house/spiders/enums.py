@@ -55,7 +55,7 @@ class GenderType(IntEnum):
     其他 = 3
 
 
-tw_regions_path = '{}/data/tw_regions.json'.format(
+tw_regions_path = '{}/tw_regions.json'.format(
     path.dirname(path.realpath(__file__)))
 
 with open(tw_regions_path) as regions_file:

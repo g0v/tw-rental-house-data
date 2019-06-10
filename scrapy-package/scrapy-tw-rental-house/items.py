@@ -61,6 +61,7 @@ class GenericHouseItem(Item):
     # undermined for now
     facilities = Field()
     contact = Field()
+    # an unique identifier, could be phone number, image url, etc..
     author = Field()
     agent_org = Field()
     imgs = Field()
