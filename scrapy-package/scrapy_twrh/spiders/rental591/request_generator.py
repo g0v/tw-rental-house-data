@@ -1,5 +1,5 @@
 from scrapy.spidermiddlewares.httperror import HttpError
-from spiders.rental_spider import RentalSpider
+from scrapy_twrh.spiders.rental_spider import RentalSpider
 from .util import SITE_URL, LIST_ENDPOINT, ListRequestMeta, DetailRequestMeta
 
 class RequestGenerator(RentalSpider):

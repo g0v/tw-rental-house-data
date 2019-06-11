@@ -1,5 +1,5 @@
 import logging
-from items import GenericHouseItem, RawHouseItem
+from scrapy_twrh.items import GenericHouseItem, RawHouseItem
 
 class CrawlerPipeline():
 

@@ -1,7 +1,7 @@
 import json
-from items import RawHouseItem, GenericHouseItem
-from spiders.enums import PropertyType, TopRegionType, SubRegionType
-from spiders.util import clean_number
+from scrapy_twrh.items import RawHouseItem, GenericHouseItem
+from scrapy_twrh.spiders.enums import PropertyType, TopRegionType, SubRegionType
+from scrapy_twrh.spiders.util import clean_number
 from .util import SITE_URL, ListRequestMeta, DetailRequestMeta
 from .request_generator import RequestGenerator
 

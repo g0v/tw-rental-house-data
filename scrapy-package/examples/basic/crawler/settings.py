@@ -5,11 +5,6 @@ import os
 import scrapy
 import logging
 
-# Use latest code
-sys.path.append('{}/../..'.format(
-  os.path.dirname(os.path.realpath(__file__)))
-)
-
 scrapy.utils.log.configure_logging(install_root_handler=False)
 logging.basicConfig(
     filename='scrapy.log',
@@ -17,7 +12,7 @@ logging.basicConfig(
     level=logging.DEBUG
 )
 
-BOT_NAME = 'scrapy-tw-rental-house-tester'
+BOT_NAME = 'scrapy-tw-rental-house-basic-example'
 FEED_FORAMT = 'jsonlines'
 
 # Obey robots.txt rules
@@ -35,7 +30,6 @@ COOKIES_ENABLED = False
 # Configure item pipelines
 # See https://doc.scrapy.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
-    # 'crawler.pipelines.CrawlerPipeline': 300
 }
 
 EXTENSIONS = {
@@ -54,5 +48,4 @@ AUTOTHROTTLE_TARGET_CONCURRENCY = 1.0
 # Enable showing throttling stats for every response received:
 #AUTOTHROTTLE_DEBUG = False
 
-# Issue #21, ensure request/sec <= 1
 DOWNLOAD_DELAY = 1

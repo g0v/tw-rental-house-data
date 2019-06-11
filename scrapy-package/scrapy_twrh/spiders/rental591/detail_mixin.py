@@ -2,9 +2,9 @@ import re
 from urllib.parse import urlparse, parse_qs
 from decimal import Decimal
 from functools import partial
-from spiders import enums
-from spiders.util import clean_number
-from items import RawHouseItem, GenericHouseItem
+from scrapy_twrh.spiders import enums
+from scrapy_twrh.spiders.util import clean_number
+from scrapy_twrh.items import RawHouseItem, GenericHouseItem
 from .request_generator import RequestGenerator
 from .util import DetailRequestMeta, SITE_URL
 
