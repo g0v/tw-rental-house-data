@@ -56,5 +56,9 @@ scrapy crawl location-only
 
 ## Example 4 - Persist request / 另存網頁請求
 
-This example catch all detail info request and store for later use.
-See `persist-request/pipelines.py` for detail usage.
+`TODO`
+
+```bash
+# This example catch all detail info request and store for later use.
+# See `persist-request/pipelines.py` for detail usage.
+```
