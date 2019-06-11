@@ -5,13 +5,13 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="scrapy-tw-rental-house",
-    version="0.1.0",
+    version="0.1.1",
     author="ddio",
     author_email="ddio@ddio.io",
     description="Scrapy spider for TW Rental House",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/g0v/tw-rental-house-data",
+    url="https://github.com/g0v/tw-rental-house-data/tree/master/scrapy-package",
     include_package_data=True,
     packages=setuptools.find_packages(
         exclude=['trial', 'examples']
