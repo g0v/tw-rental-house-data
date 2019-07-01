@@ -44,7 +44,7 @@ pyOpenSSL = "==17.5.0"
 Scrapy = "==1.5.0"
 Twisted = "==17.9.0"
 "zope.interface" = "==4.4.3"
-psycopg2-binary = "==2.7.4"
+psycopg2-binary = "==2.7.5"
 
 [requires]
 python_version = "3"
