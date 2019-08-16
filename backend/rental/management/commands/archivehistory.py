@@ -5,6 +5,7 @@ import json
 from django.core.management.base import BaseCommand, CommandError
 from django.forms.models import model_to_dict
 from django.utils import timezone
+from django.core.paginator import Paginator
 from django.contrib.gis.geos import Point
 
 from rental.models import HouseEtc, HouseTS
@@ -44,6 +45,7 @@ class Command(BaseCommand):
     help = 'Archive unused time series and raw data.'
     requires_migrations_checks = True
     default_days_ago = 60
+    items_per_page = 3000
 
     def add_arguments(self, parser):
         parser.add_argument('output_dir')
@@ -93,6 +95,7 @@ class Command(BaseCommand):
         )
 
         total_house = old_houses.count()
+        pages = Paginator(old_houses, self.items_per_page)
         n_done = 0
         self.stdout.ending = ''
         self.stdout.write("[HouseTS] Start to backup {} rows before {}.\n".format(
@@ -100,20 +103,21 @@ class Command(BaseCommand):
             before_date.isoformat()
         ))
 
-        for house in old_houses:
-            sub_dir = 'ts/{:04d}/{:02d}/{:02d}'.format(house.created.year, house.created.month, house.created.day)
-            filename = 'house.{}.{}.json'.format(house.vendor.name, house.vendor_house_id)
-            self.dump_row(
-                base_dir=output_dir,
-                sub_dir=sub_dir,
-                filename=filename,
-                house=house
-            )
-            house.delete()
-            n_done += 1
-            self.stdout.write("\r[HouseTS] {:3.0f}% done".format(
-                100 * n_done / total_house
-            ))
+        for page_num in pages.page_range:
+            for house in pages.page(page_num):
+                sub_dir = 'ts/{:04d}/{:02d}/{:02d}'.format(house.created.year, house.created.month, house.created.day)
+                filename = 'house.{}.{}.json'.format(house.vendor.name, house.vendor_house_id)
+                self.dump_row(
+                    base_dir=output_dir,
+                    sub_dir=sub_dir,
+                    filename=filename,
+                    house=house
+                )
+                house.delete()
+                n_done += 1
+                self.stdout.write("\r[HouseTS] {:3.0f}% done".format(
+                    100 * n_done / total_house
+                ))
         
         self.stdout.write("\n[HouseTS] done!\n")
         self.stdout.ending = '\n'
