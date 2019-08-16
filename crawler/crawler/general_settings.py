@@ -12,6 +12,10 @@ django.setup()
 BOT_NAME = 'tw-rental-house-data'
 FEED_FORAMT = 'jsonlines'
 
+# For Python 3.7 compatibility
+# Ref: https://stackoverflow.com/questions/51522281/telnetconsole-enabled-setting-is-true-but-required-twisted-modules-failed-to-imp
+TELNETCONSOLE_ENABLED=False
+
 # Obey robots.txt rules
 ROBOTSTXT_OBEY = True
 
