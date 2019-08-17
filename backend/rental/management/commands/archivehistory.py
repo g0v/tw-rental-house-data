@@ -91,7 +91,7 @@ class Command(BaseCommand):
         else:
             before_date -= timedelta(self.default_days_ago)
 
-        # self.remove_old_ts(output, before_date)
+        self.remove_old_ts(output, before_date)
         self.make_tgz(output)
 
     def make_tgz(self, output_dir):
