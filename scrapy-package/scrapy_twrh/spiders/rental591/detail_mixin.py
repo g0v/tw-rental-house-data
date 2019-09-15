@@ -111,24 +111,33 @@ class DetailMixin(RequestGenerator):
                 raw=response.body
             )
 
-            detail_dict = self.collect_dict(response)
+            # sometime we got 200 but it's actually 30x...
+            browser_title = self.css_first(response, 'title::text')
+            if browser_title.startswith('等待跳轉'):
+                yield GenericHouseItem(
+                    vendor=self.vendor,
+                    vendor_house_id=house_id,
+                    deal_status=enums.DealStatusType.NOT_FOUND
+                )
+            else:
+                detail_dict = self.collect_dict(response)
 
-            yield RawHouseItem(
-                house_id=house_id,
-                vendor=self.vendor,
-                is_list=False,
-                dict=detail_dict
-            )
+                yield RawHouseItem(
+                    house_id=house_id,
+                    vendor=self.vendor,
+                    is_list=False,
+                    dict=detail_dict
+                )
 
-            yield GenericHouseItem(
-                **self.gen_detail_shared_attrs(detail_dict)
-            )
+                yield GenericHouseItem(
+                    **self.gen_detail_shared_attrs(detail_dict)
+                )
 
-            # get gps only when the house existed
-            yield self.gen_detail_request(DetailRequestMeta(
-                house_id,
-                True
-            ))
+                # get gps only when the house existed
+                yield self.gen_detail_request(DetailRequestMeta(
+                    house_id,
+                    True
+                ))
 
     def css_first(self, base, selector, default='', allow_empty=False, deep_text=False):
         # Check how to find if there's missing attribute
