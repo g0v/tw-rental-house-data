@@ -60,6 +60,34 @@
         {"format": "json", "size_byte": 500138487, "download_url": "http://bit.ly/tw-rental-data-2019-Q2-dedup-json"}
       ],
       "comment": "爬蟲在 5/9 - 5/10 期間沒有完整執行，詳細資訊請參見[部落格](/blog/post/data-issue-2019-01)"
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "3",
+      "type": "原始資料",
+      "total_count": 344357,
+      "sources": [
+          {"name": "591", "count": 344357}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  129997501, "download_url": "http://bit.ly/tw-rental-data-2019-Q3-raw-csv"},
+        {"format": "json", "size_byte": 712104168, "download_url": "http://bit.ly/tw-rental-data-2019-Q3-raw-json"}
+      ]
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "3",
+      "type": "消除重複住宅",
+      "total_count": 245975,
+      "sources": [
+          {"name": "591", "count": 245975}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":   90426938, "download_url": "http://bit.ly/tw-rental-data-2019-Q3-dedup-csv"},
+        {"format": "json", "size_byte": 507786820, "download_url": "http://bit.ly/tw-rental-data-2019-Q3-dedup-json"}
+      ]
     }
   ],
   "monthly": [
@@ -293,6 +321,34 @@
         "files": [
           {"format": "csv", "size_byte":   40917813, "download_url": "http://bit.ly/tw-rental-data-2019-08-dedup-csv"},
           {"format": "json", "size_byte": 248729831, "download_url": "http://bit.ly/tw-rental-data-2019-08-dedup-json"}
+        ]
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "9",
+        "type": "原始資料",
+        "total_count": 147420,
+        "sources": [
+            {"name": "591", "count": 147420}
+        ],
+        "files": [
+          {"format": "csv", "size_byte": 51616363, "download_url": "http://bit.ly/tw-rental-data-2019-09-raw-csv"},
+          {"format": "json", "size_byte": 304685635, "download_url": "http://bit.ly/tw-rental-data-2019-09-raw-json"}
+        ]
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "9",
+        "type": "消除重複住宅",
+        "total_count": 116027,
+        "sources": [
+            {"name": "591", "count": 116027}
+        ],
+        "files": [
+          {"format": "csv", "size_byte": 39421470, "download_url": "http://bit.ly/tw-rental-data-2019-09-dedup-csv"},
+          {"format": "json", "size_byte": 239346499, "download_url": "http://bit.ly/tw-rental-data-2019-09-dedup-json"}
         ]
       }
   ]
