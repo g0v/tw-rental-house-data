@@ -42,7 +42,7 @@ Automat = "==0.6.0"
 PyDispatcher = "==2.0.5"
 pyOpenSSL = "==17.5.0"
 Scrapy = "==1.5.0"
-Twisted = "==17.9.0"
+Twisted = "==19.7.0"
 "zope.interface" = "==4.4.3"
 psycopg2-binary = "==2.7.5"
 
