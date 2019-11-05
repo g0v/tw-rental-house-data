@@ -350,6 +350,36 @@
           {"format": "csv", "size_byte": 39421470, "download_url": "http://bit.ly/tw-rental-data-2019-09-dedup-csv"},
           {"format": "json", "size_byte": 239346499, "download_url": "http://bit.ly/tw-rental-data-2019-09-dedup-json"}
         ]
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "10",
+        "type": "原始資料",
+        "total_count": 153127,
+        "sources": [
+            {"name": "591", "count": 153127}
+        ],
+        "files": [
+          {"format": "csv", "size_byte": 53673979, "download_url": "http://bit.ly/tw-rental-data-2019-10-raw-csv"},
+          {"format": "json", "size_byte": 316491301, "download_url": "http://bit.ly/tw-rental-data-2019-10-raw-json"}
+        ],
+        "comment": "爬蟲在 11/17 - 11/19 期間沒有完整執行，詳細資訊請參見[部落格](/blog/post/data-issue-2019-02)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "10",
+        "type": "消除重複住宅",
+        "total_count": 118595,
+        "sources": [
+            {"name": "591", "count": 118595}
+        ],
+        "files": [
+          {"format": "csv", "size_byte": 40351286, "download_url": "http://bit.ly/tw-rental-data-2019-10-dedup-csv"},
+          {"format": "json", "size_byte": 244667042, "download_url": "http://bit.ly/tw-rental-data-2019-10-dedup-json"}
+        ],
+        "comment": "爬蟲在 11/17 - 11/19 期間沒有完整執行，詳細資訊請參見[部落格](/blog/post/data-issue-2019-02)"
       }
   ]
 }
