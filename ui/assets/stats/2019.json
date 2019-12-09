@@ -364,7 +364,7 @@
           {"format": "csv", "size_byte": 53673979, "download_url": "http://bit.ly/tw-rental-data-2019-10-raw-csv"},
           {"format": "json", "size_byte": 316491301, "download_url": "http://bit.ly/tw-rental-data-2019-10-raw-json"}
         ],
-        "comment": "爬蟲在 11/17 - 11/19 期間沒有完整執行，詳細資訊請參見[部落格](/blog/post/data-issue-2019-02)"
+        "comment": "爬蟲在 10/17 - 10/19 期間沒有完整執行，詳細資訊請參見[部落格](/blog/post/data-issue-2019-02)"
       },
       {
         "schema_ver": "1.0.0",
@@ -379,7 +379,37 @@
           {"format": "csv", "size_byte": 40351286, "download_url": "http://bit.ly/tw-rental-data-2019-10-dedup-csv"},
           {"format": "json", "size_byte": 244667042, "download_url": "http://bit.ly/tw-rental-data-2019-10-dedup-json"}
         ],
-        "comment": "爬蟲在 11/17 - 11/19 期間沒有完整執行，詳細資訊請參見[部落格](/blog/post/data-issue-2019-02)"
+        "comment": "爬蟲在 10/17 - 10/19 期間沒有完整執行，詳細資訊請參見[部落格](/blog/post/data-issue-2019-02)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "11",
+        "type": "原始資料",
+        "total_count": 152729,
+        "sources": [
+            {"name": "591", "count": 152729}
+        ],
+        "files": [
+          {"format": "csv", "size_byte": 53560608, "download_url": "http://bit.ly/tw-rental-data-2019-11-raw-csv"},
+          {"format": "json", "size_byte": 315678907, "download_url": "http://bit.ly/tw-rental-data-2019-11-raw-json2"}
+        ],
+        "comment": "爬蟲在 11/01 當天沒有完整執行，詳細資訊請參見[部落格](/blog/post/data-issue-2019-03)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "11",
+        "type": "消除重複住宅",
+        "total_count": 118097,
+        "sources": [
+            {"name": "591", "count": 118097}
+        ],
+        "files": [
+          {"format": "csv", "size_byte": 40200380, "download_url": "http://bit.ly/tw-rental-data-2019-11-dedup-csv"},
+          {"format": "json", "size_byte": 243643960, "download_url": "http://bit.ly/tw-rental-data-2019-11-dedup-json"}
+        ],
+        "comment": "爬蟲在 11/01 當天沒有完整執行，詳細資訊請參見[部落格](/blog/post/data-issue-2019-03)"
       }
   ]
 }
