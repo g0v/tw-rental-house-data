@@ -1,5 +1,36 @@
 {
-  "annual": [],
+  "annual": [
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "1",
+      "type": "原始資料",
+      "total_count": 1167509,
+      "sources": [
+          {"name": "591", "count": 1167509}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":   411240282, "download_url": "http://bit.ly/tw-rental-data-2019-raw-csv"},
+        {"format": "json", "size_byte": 2414757979, "download_url": "http://bit.ly/tw-rental-data-2019-raw-json"}
+      ],
+      "comment": "爬蟲在 2019 的 3、5、10、11 四個月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](https://rentalhouse.g0v.ddio.io/blog/tag/%E8%B3%87%E6%96%99%E9%8C%AF%E8%AA%A4/)"
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "1",
+      "type": "消除重複住宅",
+      "total_count": 747613,
+      "sources": [
+          {"name": "591", "count": 747613}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":   256562872, "download_url": "http://bit.ly/tw-rental-data-2019-dedup-csv"},
+        {"format": "json", "size_byte": 1544036530, "download_url": "http://bit.ly/tw-rental-data-2019-dedup-json"}
+      ],
+      "comment": "爬蟲在 2019 的 3、5、10、11 四個月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](https://rentalhouse.g0v.ddio.io/blog/tag/%E8%B3%87%E6%96%99%E9%8C%AF%E8%AA%A4/)"
+    }
+  ],
   "quarterly": [
     {
       "schema_ver": "1.0.0",
@@ -88,6 +119,36 @@
         {"format": "csv", "size_byte":   90426938, "download_url": "http://bit.ly/tw-rental-data-2019-Q3-dedup-csv"},
         {"format": "json", "size_byte": 507786820, "download_url": "http://bit.ly/tw-rental-data-2019-Q3-dedup-json"}
       ]
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "4",
+      "type": "原始資料",
+      "total_count": 344729,
+      "sources": [
+          {"name": "591", "count": 344729}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  130362408, "download_url": "http://bit.ly/tw-rental-data-2019-Q4-raw-csv"},
+        {"format": "json", "size_byte": 712899951, "download_url": "http://bit.ly/tw-rental-data-2019-Q4-raw-json"}
+      ],
+      "comment": "爬蟲在 [10/17 - 10/19](/blog/post/data-issue-2019-02) 以及 [11/01](/blog/post/data-issue-2019-03) 期間沒有完整執行，詳細資訊請參見"
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "4",
+      "type": "消除重複住宅",
+      "total_count": 238842,
+      "sources": [
+          {"name": "591", "count": 238842}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":   87990188, "download_url": "http://bit.ly/tw-rental-data-2019-Q4-dedup-csv"},
+        {"format": "json", "size_byte": 493122717, "download_url": "http://bit.ly/tw-rental-data-2019-Q4-dedup-json"}
+      ],
+      "comment": "爬蟲在 [10/17 - 10/19](/blog/post/data-issue-2019-02) 以及 [11/01](/blog/post/data-issue-2019-03) 期間沒有完整執行，詳細資訊請參見"
     }
   ],
   "monthly": [
@@ -410,6 +471,34 @@
           {"format": "json", "size_byte": 243643960, "download_url": "http://bit.ly/tw-rental-data-2019-11-dedup-json"}
         ],
         "comment": "爬蟲在 11/01 當天沒有完整執行，詳細資訊請參見[部落格](/blog/post/data-issue-2019-03)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "12",
+        "type": "原始資料",
+        "total_count": 152513,
+        "sources": [
+            {"name": "591", "count": 152513}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   53472771, "download_url": "http://bit.ly/tw-rental-data-2019-12-raw-csv"},
+          {"format": "json", "size_byte": 315215746, "download_url": "http://bit.ly/tw-rental-data-2019-12-raw-json"}
+        ]
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "12",
+        "type": "消除重複住宅",
+        "total_count": 117236,
+        "sources": [
+            {"name": "591", "count": 117236}
+        ],
+        "files": [
+          {"format": "csv", "size_byte": 39886485, "download_url": "http://bit.ly/tw-rental-data-2019-12-dedup-csv"},
+          {"format": "json", "size_byte": 241846084, "download_url": "http://bit.ly/tw-rental-data-2019-12-dedup-json"}
+        ]
       }
   ]
 }
