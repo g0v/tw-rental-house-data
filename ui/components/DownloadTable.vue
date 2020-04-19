@@ -15,7 +15,7 @@
         td.pv2.ph3
           nuxt-link(:to="dataUrl(row.data_ver)") 
             span.ttu(:title="dataDesp(row.data_ver)") {{row.data_ver}}
-        td.pv2.ph3 {{prettyNumber(row.total_count)}}
+        td.pv2.ph3 {{prettyTotal(row)}}
         td.pv2.ph3(v-for="source in sourceHeaders" :key="source") {{prettyCount(row, source)}}
         td.pv2.ph3
           div.pv1(v-for="file in row.files" :key="file.download_url")
@@ -47,12 +47,7 @@ export default {
         return (
           _.isArray(rows) &&
           rows.every(row => {
-            return (
-              row.time !== undefined &&
-              row.total_count &&
-              row.sources &&
-              row.files
-            )
+            return row.time !== undefined && row.sources && row.files
           })
         )
       }
@@ -90,6 +85,17 @@ export default {
     },
     prettyNumber(number) {
       return number.toLocaleString()
+    },
+    prettyTotal(row) {
+      let total = 0
+      if (row.total_count) {
+        total = row.total_count
+      } else {
+        row.sources.forEach(source => {
+          total += source.count
+        })
+      }
+      return this.prettyNumber(total)
     },
     prettyCount(row, sourceName) {
       const source = row.sources.find(source => source.name === sourceName)
