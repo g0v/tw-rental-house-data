@@ -42,7 +42,7 @@
     "eslint-plugin-vue": "^5.2.2",
     "eslint-config-prettier": "^4.1.0",
     "eslint-plugin-prettier": "^3.0.1",
-    "node-sass": "^4.11.0",
+    "node-sass": "^4.13.1",
     "nodemon": "^1.18.9",
     "prettier": "^1.16.4",
     "pug": "^2.0.3",
