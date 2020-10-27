@@ -6,7 +6,7 @@ certifi==2019.3.9
 cffi==1.12.3
 chardet==3.0.4
 constantly==15.1.0
-cryptography==2.7
+cryptography==3.2
 cssselect==1.0.3
 docutils==0.14
 hyperlink==19.0.0
