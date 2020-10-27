@@ -6,7 +6,7 @@ automat==0.6.0
 beautifulsoup4==4.6.3
 cffi==1.11.5
 constantly==15.1.0
-cryptography==2.3
+cryptography==3.2
 cssselect==1.0.3
 django==2.1.15
 hyperlink==18.0.0
