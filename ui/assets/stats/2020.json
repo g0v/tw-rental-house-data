@@ -56,6 +56,34 @@
         {"format": "csv", "size_byte":   92350551, "download_url": "http://bit.ly/tw-rental-data-2020-Q2-dedup-csv"},
         {"format": "json", "size_byte": 557429946, "download_url": "http://bit.ly/tw-rental-data-2020-Q2-dedup-json"}
       ]
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "3",
+      "type": "原始資料",
+      "total_count": 380161,
+      "sources": [
+          {"name": "591", "count": 380161}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  28211115, "download_url": "--"},
+        {"format": "json", "size_byte": 48138647, "download_url": "--"}
+      ]
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "3",
+      "type": "消除重複住宅",
+      "total_count": 271188,
+      "sources": [
+          {"name": "591", "count": 271188}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":   22131247, "download_url": "--"},
+        {"format": "json", "size_byte":  34459314, "download_url": "--"}
+      ]
     }
   ],
   "monthly": [
@@ -296,6 +324,66 @@
         "files": [
           {"format": "csv", "size_byte":   45064826, "download_url": "http://bit.ly/tw-rental-data-2020-08-dedup-csv"},
           {"format": "json", "size_byte": 273366338, "download_url": "http://bit.ly/tw-rental-data-2020-08-dedup-json"}
+        ],
+        "comment": ""
+      },
+    {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "9",
+        "type": "原始資料",
+        "total_count": 161185,
+        "sources": [
+            {"name": "591", "count": 161185}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":  11919702, "download_url": "--"},
+          {"format": "json", "size_byte": 20236871, "download_url": "--"}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "9",
+        "type": "消除重複住宅",
+        "total_count": 125815,
+        "sources": [
+            {"name": "591", "count": 125815}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   10118879, "download_url": "--"},
+          {"format": "json", "size_byte":  15750119, "download_url": "--"}
+        ],
+        "comment": ""
+      },
+        {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "10",
+        "type": "原始資料",
+        "total_count": 162858,
+        "sources": [
+            {"name": "591", "count": 162858}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":  12032007, "download_url": "--"},
+          {"format": "json", "size_byte": 20441581, "download_url": "--"}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "10",
+        "type": "消除重複住宅",
+        "total_count": 126773,
+        "sources": [
+            {"name": "591", "count": 126773}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   10207423, "download_url": "--"},
+          {"format": "json", "size_byte":  15896929, "download_url": "--"}
         ],
         "comment": ""
       }
