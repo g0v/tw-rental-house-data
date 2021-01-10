@@ -494,7 +494,7 @@
       {
         "schema_ver": "1.0.0",
         "data_ver": "0.2",
-        "time": "11",
+        "time": "12",
         "type": "消除重複住宅",
         "total_count": 124471,
         "sources": [
