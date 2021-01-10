@@ -67,8 +67,13 @@
           {"name": "591", "count": 380161}
       ],
       "files": [
+<<<<<<< HEAD
         {"format": "csv", "size_byte":  134008644, "download_url": "http://bit.ly/tw-rental-data-2020-Q3-raw-csv"},
         {"format": "json", "size_byte": 786560494, "download_url": "http://bit.ly/tw-rental-data-2020-Q3-raw-json"}
+=======
+        {"format": "csv", "size_byte":  28211115, "download_url": "--"},
+        {"format": "json", "size_byte": 48138647, "download_url": "--"}
+>>>>>>> 76cf406e47555170bb42e3d1df6adc501bbd5d8b
       ]
     },
     {
@@ -81,8 +86,13 @@
           {"name": "591", "count": 271188}
       ],
       "files": [
+<<<<<<< HEAD
         {"format": "csv", "size_byte":   92886480, "download_url": "http://bit.ly/tw-rental-data-2020-Q3-dedup-csv"},
         {"format": "json", "size_byte": 560118715, "download_url": "http://bit.ly/tw-rental-data-2020-Q3-dedup-json"}
+=======
+        {"format": "csv", "size_byte":   22131247, "download_url": "--"},
+        {"format": "json", "size_byte":  34459314, "download_url": "--"}
+>>>>>>> 76cf406e47555170bb42e3d1df6adc501bbd5d8b
       ]
     }
   ],
@@ -327,7 +337,11 @@
         ],
         "comment": ""
       },
+<<<<<<< HEAD
       {
+=======
+    {
+>>>>>>> 76cf406e47555170bb42e3d1df6adc501bbd5d8b
         "schema_ver": "1.0.0",
         "data_ver": "0.2",
         "time": "9",
@@ -337,8 +351,13 @@
             {"name": "591", "count": 161185}
         ],
         "files": [
+<<<<<<< HEAD
           {"format": "csv", "size_byte": 56602782, "download_url": "http://bit.ly/tw-rental-data-2020-09-raw-csv"},
           {"format": "json", "size_byte": 333324801, "download_url": "http://bit.ly/tw-rental-data-2020-09-raw-json"}
+=======
+          {"format": "csv", "size_byte":  11919702, "download_url": "--"},
+          {"format": "json", "size_byte": 20236871, "download_url": "--"}
+>>>>>>> 76cf406e47555170bb42e3d1df6adc501bbd5d8b
         ],
         "comment": ""
       },
@@ -352,12 +371,21 @@
             {"name": "591", "count": 125815}
         ],
         "files": [
+<<<<<<< HEAD
           {"format": "csv", "size_byte":   42860375, "download_url": "http://bit.ly/tw-rental-data-2020-09-dedup-csv"},
           {"format": "json", "size_byte": 259676937, "download_url": "http://bit.ly/tw-rental-data-2020-09-dedup-json"}
         ],
         "comment": ""
       },
       {
+=======
+          {"format": "csv", "size_byte":   10118879, "download_url": "--"},
+          {"format": "json", "size_byte":  15750119, "download_url": "--"}
+        ],
+        "comment": ""
+      },
+        {
+>>>>>>> 76cf406e47555170bb42e3d1df6adc501bbd5d8b
         "schema_ver": "1.0.0",
         "data_ver": "0.2",
         "time": "10",
@@ -367,8 +395,13 @@
             {"name": "591", "count": 162858}
         ],
         "files": [
+<<<<<<< HEAD
           {"format": "csv", "size_byte":   57314984, "download_url": "http://bit.ly/tw-rental-data-2020-10-raw-csv"},
           {"format": "json", "size_byte": 336866283, "download_url": "http://bit.ly/tw-rental-data-2020-10-raw-json"}
+=======
+          {"format": "csv", "size_byte":  12032007, "download_url": "--"},
+          {"format": "json", "size_byte": 20441581, "download_url": "--"}
+>>>>>>> 76cf406e47555170bb42e3d1df6adc501bbd5d8b
         ],
         "comment": ""
       },
@@ -382,6 +415,7 @@
             {"name": "591", "count": 126773}
         ],
         "files": [
+<<<<<<< HEAD
           {"format": "csv", "size_byte":   43295178, "download_url": "http://bit.ly/tw-rental-data-2020-10-dedup-csv"},
           {"format": "json", "size_byte": 261719952, "download_url": "http://bit.ly/tw-rental-data-2020-10-dedup-json"}
         ],
@@ -414,6 +448,10 @@
         "files": [
           {"format": "csv", "size_byte":  42333912, "download_url": "http://bit.ly/tw-rental-data-2020-11-dedup-csv"},
           {"format": "json", "size_byte": 254986016, "download_url": "http://bit.ly/tw-rental-data-2020-11-dedup-json"}
+=======
+          {"format": "csv", "size_byte":   10207423, "download_url": "--"},
+          {"format": "json", "size_byte":  15896929, "download_url": "--"}
+>>>>>>> 76cf406e47555170bb42e3d1df6adc501bbd5d8b
         ],
         "comment": ""
       }
