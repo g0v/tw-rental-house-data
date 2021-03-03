@@ -45,7 +45,7 @@
     "node-sass": "^4.11.0",
     "nodemon": "^1.18.9",
     "prettier": "^1.16.4",
-    "pug": "^2.0.3",
+    "pug": "^3.0.1",
     "pug-plain-loader": "^1.0.0",
     "push-dir": "^0.4.1",
     "babel-core": "7.0.0-bridge.0",
