@@ -13,7 +13,8 @@
       "files": [
         {"format": "csv", "size_byte":  122163781, "download_url": "http://bit.ly/tw-rental-data-2021-Q1-raw-csv"},
         {"format": "json", "size_byte": 712151409, "download_url": "http://bit.ly/tw-rental-data-2021-Q1-raw-json"}
-      ]
+      ],
+      "comment": "爬蟲在 2 月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](/blog/tag/%E8%B3%87%E6%96%99%E9%8C%AF%E8%AA%A4/)"
     },
     {
       "schema_ver": "1.0.0",
@@ -27,7 +28,8 @@
       "files": [
         {"format": "csv", "size_byte":   85158890, "download_url": "http://bit.ly/tw-rental-data-2021-Q1-dedup-csv"},
         {"format": "json", "size_byte": 509272899, "download_url": "http://bit.ly/tw-rental-data-2021-Q1-dedup-json"}
-      ]
+      ],
+      "comment": "爬蟲在 2 月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](/blog/tag/%E8%B3%87%E6%96%99%E9%8C%AF%E8%AA%A4/)"
     }
   ],
   "monthly": [
