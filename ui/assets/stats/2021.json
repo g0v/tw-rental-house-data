@@ -1,49 +1,18 @@
 {
-  "annual": [
-    {
-      "schema_ver": "1.0.0",
-      "data_ver": "0.2",
-      "time": "1",
-      "type": "原始資料",
-      "total_count": ,
-      "sources": [
-          {"name": "591", "count": }
-      ],
-      "files": [
-        {"format": "csv", "size_byte":   , "download_url": ""},
-        {"format": "json", "size_byte": , "download_url": ""}
-      ],
-      "comment": ""
-    },
-    {
-      "schema_ver": "1.0.0",
-      "data_ver": "0.2",
-      "time": "1",
-      "type": "消除重複住宅",
-      "total_count": ,
-      "sources": [
-          {"name": "591", "count": }
-      ],
-      "files": [
-        {"format": "csv", "size_byte":   , "download_url": ""},
-        {"format": "json", "size_byte": , "download_url": ""}
-      ],
-      "comment": ""
-    }
-  ],
+  "annual": [],
   "quarterly": [
     {
       "schema_ver": "1.0.0",
       "data_ver": "0.2",
       "time": "1",
       "type": "原始資料",
-      "total_count": ,
+      "total_count": 343773,
       "sources": [
-          {"name": "591", "count": }
+          {"name": "591", "count": 343773}
       ],
       "files": [
-        {"format": "csv", "size_byte":  , "download_url": ""},
-        {"format": "json", "size_byte": , "download_url": ""}
+        {"format": "csv", "size_byte":  122163781, "download_url": "http://bit.ly/tw-rental-data-2021-Q1-raw-csv"},
+        {"format": "json", "size_byte": 712151409, "download_url": "http://bit.ly/tw-rental-data-2021-Q1-raw-json"}
       ]
     },
     {
@@ -51,97 +20,13 @@
       "data_ver": "0.2",
       "time": "1",
       "type": "消除重複住宅",
-      "total_count": ,
+      "total_count": 246232,
       "sources": [
-          {"name": "591", "count": }
+          {"name": "591", "count": 246232}
       ],
       "files": [
-        {"format": "csv", "size_byte": , "download_url": ""},
-        {"format": "json", "size_byte": , "download_url": ""}
-      ]
-    },
-    {
-      "schema_ver": "1.0.0",
-      "data_ver": "0.2",
-      "time": "2",
-      "type": "原始資料",
-      "total_count": ,
-      "sources": [
-          {"name": "591", "count": }
-      ],
-      "files": [
-        {"format": "csv", "size_byte":  , "download_url": ""},
-        {"format": "json", "size_byte": , "download_url": ""}
-      ]
-    },
-    {
-      "schema_ver": "1.0.0",
-      "data_ver": "0.2",
-      "time": "2",
-      "type": "消除重複住宅",
-      "total_count":,
-      "sources": [
-          {"name": "591", "count": }
-      ],
-      "files": [
-        {"format": "csv", "size_byte":   , "download_url": ""},
-        {"format": "json", "size_byte": , "download_url": ""}
-      ]
-    },
-    {
-      "schema_ver": "1.0.0",
-      "data_ver": "0.2",
-      "time": "3",
-      "type": "原始資料",
-      "total_count": ,
-      "sources": [
-          {"name": "591", "count": }
-      ],
-      "files": [
-        {"format": "csv", "size_byte":  , "download_url": ""},
-        {"format": "json", "size_byte": , "download_url": ""}
-      ]
-    },
-    {
-      "schema_ver": "1.0.0",
-      "data_ver": "0.2",
-      "time": "3",
-      "type": "消除重複住宅",
-      "total_count": ,
-      "sources": [
-          {"name": "591", "count": }
-      ],
-      "files": [
-        {"format": "csv", "size_byte":   , "download_url": ""},
-        {"format": "json", "size_byte": , "download_url": ""}
-      ]
-    },
-    {
-      "schema_ver": "1.0.0",
-      "data_ver": "0.2",
-      "time": "4",
-      "type": "原始資料",
-      "total_count": ,
-      "sources": [
-          {"name": "591", "count": }
-      ],
-      "files": [
-        {"format": "csv", "size_byte":  , "download_url": ""},
-        {"format": "json", "size_byte": , "download_url": ""}
-      ]
-    },
-    {
-      "schema_ver": "1.0.0",
-      "data_ver": "0.2",
-      "time": "4",
-      "type": "消除重複住宅",
-      "total_count": ,
-      "sources": [
-          {"name": "591", "count": }
-      ],
-      "files": [
-        {"format": "csv", "size_byte":  , "download_url": ""},
-        {"format": "json", "size_byte": , "download_url": ""}
+        {"format": "csv", "size_byte":   85158890, "download_url": "http://bit.ly/tw-rental-data-2021-Q1-dedup-csv"},
+        {"format": "json", "size_byte": 509272899, "download_url": "http://bit.ly/tw-rental-data-2021-Q1-dedup-json"}
       ]
     }
   ],
@@ -156,8 +41,8 @@
             {"name": "591", "count": 157416}
         ],
         "files": [
-          {"format": "csv", "size_byte":   11663736, "download_url": ""},
-          {"format": "json", "size_byte":  19755682, "download_url": ""}
+          {"format": "csv", "size_byte":   55776559, "download_url": "http://bit.ly/tw-rentaldata-2021-01-raw-csv"},
+          {"format": "json", "size_byte": 325953131, "download_url": "http://bit.ly/tw-rental-data-2021-01-raw-json"}
         ],
         "comment": ""
       },
@@ -171,10 +56,70 @@
             {"name": "591", "count": 122008}
         ],
         "files": [
-          {"format": "csv", "size_byte":    9859225, "download_url": ""},
-          {"format": "json", "size_byte":  15330211, "download_url": ""}
+          {"format": "csv", "size_byte":   41982752, "download_url": "http://bit.ly/tw-rentaldata-2021-01-dedup-csv"},
+          {"format": "json", "size_byte": 252163294, "download_url": "http://bit.ly/tw-rental-data-2021-01-dedup-json"}
         ],
         "comment": ""
       },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "2",
+        "type": "原始資料",
+        "total_count": 137367,
+        "sources": [
+            {"name": "591", "count": 137367}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   48496230, "download_url": "http://bit.ly/tw-rental-data-2021-02-raw-csv"},
+          {"format": "json", "size_byte": 284314508, "download_url": "http://bit.ly/tw-rental-data-2021-02-raw-json"}
+        ],
+        "comment": "爬蟲在 [2/20 - 2/23 期間沒有完整執行](/blog/post/data-issue-2021-00)，只在這 4 天出現的物件可能會消失，其他物件在這段期間的新增、刪除、修改，也可能會有時間登記錯誤的問題。"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "2",
+        "type": "消除重複住宅",
+        "total_count": 108074,
+        "sources": [
+            {"name": "591", "count": 108074}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   37063844, "download_url": "http://bit.ly/tw-rental-data-2021-02-dedup-csv"},
+          {"format": "json", "size_byte": 223276613, "download_url": "http://bit.ly/tw-rental-data-2021-02-dedup-json"}
+        ],
+        "comment": "爬蟲在 [2/20 - 2/23 期間沒有完整執行](/blog/post/data-issue-2021-00)，只在這 4 天出現的物件可能會消失，其他物件在這段期間的新增、刪除、修改，也可能會有時間登記錯誤的問題。"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "3",
+        "type": "原始資料",
+        "total_count": 161679,
+        "sources": [
+            {"name": "591", "count": 161679}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   57250461, "download_url": "http://bit.ly/tw-rental-data-2021-03-raw-csv"},
+          {"format": "json", "size_byte": 334796242, "download_url": "http://bit.ly/tw-rental-data-2021-03-raw-json"}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "3",
+        "type": "消除重複住宅",
+        "total_count": 129362,
+        "sources": [
+            {"name": "591", "count": 129362}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   44532070, "download_url": "http://bit.ly/tw-rental-data-2021-03-dedup-csv"},
+          {"format": "json", "size_byte": 267407088, "download_url": "http://bit.ly/tw-rental-data-2021-03-dedup-json"}
+        ],
+        "comment": ""
+      }
   ]
 }

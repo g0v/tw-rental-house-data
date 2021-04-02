@@ -29,6 +29,7 @@ import Disqus from '~/components/Disqus'
 import def2018 from '~/assets/stats/2018.json'
 import def2019 from '~/assets/stats/2019.json'
 import def2020 from '~/assets/stats/2020.json'
+import def2021 from '~/assets/stats/2021.json'
 
 export default {
   components: {
@@ -51,6 +52,7 @@ export default {
   data() {
     return {
       years: [
+        { year: 2021, data: def2021 },
         { year: 2020, data: def2020 },
         { year: 2019, data: def2019 },
         { year: 2018, data: def2018 }
