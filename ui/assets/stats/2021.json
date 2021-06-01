@@ -122,6 +122,66 @@
           {"format": "json", "size_byte": 267407088, "download_url": "http://bit.ly/tw-rental-data-2021-03-dedup-json"}
         ],
         "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "4",
+        "type": "原始資料",
+        "total_count": 159624,
+        "sources": [
+            {"name": "591", "count": 159624}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   56501119, "download_url": "http://bit.ly/tw-rental-data-2021-04-raw-csv"},
+          {"format": "json", "size_byte": 330544392, "download_url": "http://bit.ly/tw-rental-data-2021-04-raw-json"}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "4",
+        "type": "消除重複住宅",
+        "total_count": 126265,
+        "sources": [
+            {"name": "591", "count": 126265}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   43418967, "download_url": "http://bit.ly/tw-rental-data-2021-04-dedup-csv"},
+          {"format": "json", "size_byte": 260985441, "download_url": "http://bit.ly/tw-rental-data-2021-04-dedup-json"}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "5",
+        "type": "原始資料",
+        "total_count": 148521,
+        "sources": [
+            {"name": "591", "count": 148521}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   52604899, "download_url": "http://bit.ly/tw-rental-data-2021-05-raw-csv"},
+          {"format": "json", "size_byte": 307625181, "download_url": "http://bit.ly/tw-rental-data-2021-05-raw-json"}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "5",
+        "type": "消除重複住宅",
+        "total_count": 117272,
+        "sources": [
+            {"name": "591", "count": 117272}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   40349266, "download_url": "http://bit.ly/tw-rental-data-2021-05-dedup-csv"},
+          {"format": "json", "size_byte": 242449922, "download_url": "http://bit.ly/tw-rental-data-2021-05-dedup-json"}
+        ],
+        "comment": ""
       }
   ]
 }
