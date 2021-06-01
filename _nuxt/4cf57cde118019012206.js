@@ -1,0 +1,1 @@
+(window.webpackJsonp=window.webpackJsonp||[]).push([[5],{449:function(t,n,e){"use strict";e.r(n);var o={fetch:function(t){t.params;(0,t.redirect)(307,"/about-data-set/0.2")}},c=e(16),component=Object(c.a)(o,void 0,void 0,!1,null,null,null);n.default=component.exports}}]);
