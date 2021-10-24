@@ -1,4 +1,6 @@
+import json
 import re
+from functools import reduce
 from urllib.parse import urlparse, parse_qs
 from decimal import Decimal
 from functools import partial
@@ -7,6 +9,17 @@ from scrapy_twrh.spiders.util import clean_number
 from scrapy_twrh.items import RawHouseItem, GenericHouseItem
 from .request_generator import RequestGenerator
 from .util import DetailRequestMeta, SITE_URL
+
+# copy from stackoverflow XD
+# https://stackoverflow.com/questions/25833613/safe-method-to-get-value-of-nested-dictionary
+def get(dictionary, keys, default=None):
+    return reduce(lambda d, key: d.get(key, default) if isinstance(d, dict) else default, keys.split("."), dictionary)
+
+def list_to_dict (list, name_field = 'name', value_field = 'value'):
+    ret = {}
+    for item in list:
+        ret[item[name_field]] = item[value_field]
+    return ret
 
 def dict_from_tuple(keys, values):
     min_length = min(len(keys), len(values))
@@ -42,7 +55,6 @@ class DetailMixin(RequestGenerator):
     apt_features = {
         'n_living_room': '廳',
         'n_bed_room': '房',
-        'n_balcony': '陽台',
         'n_bath_room': '衛'
     }
 
@@ -110,34 +122,32 @@ class DetailMixin(RequestGenerator):
                 is_list=False,
                 raw=response.body
             )
-
-            # sometime we got 200 but it's actually 30x...
-            browser_title = self.css_first(response, 'title::text')
-            if browser_title.startswith('等待跳轉'):
-                yield GenericHouseItem(
-                    vendor=self.vendor,
-                    vendor_house_id=house_id,
-                    deal_status=enums.DealStatusType.NOT_FOUND
+            jsonResp = json.loads(response.text)
+            if 'data' not in jsonResp:
+                self.logger.error('Invalid detail response for 591 house: {}'
+                    .format(response.meta['rental'].id)
                 )
-            else:
-                detail_dict = self.collect_dict(response)
+                return False
 
-                yield RawHouseItem(
-                    house_id=house_id,
-                    vendor=self.vendor,
-                    is_list=False,
-                    dict=detail_dict
-                )
+            detail_dict = jsonResp['data']
+            detail_dict['house_id'] = house_id
 
-                yield GenericHouseItem(
-                    **self.gen_detail_shared_attrs(detail_dict)
-                )
+            yield RawHouseItem(
+                house_id=house_id,
+                vendor=self.vendor,
+                is_list=False,
+                dict=detail_dict
+            )
 
-                # get gps only when the house existed
-                yield self.gen_detail_request(DetailRequestMeta(
-                    house_id,
-                    True
-                ))
+            yield GenericHouseItem(
+                **self.gen_detail_shared_attrs(detail_dict)
+            )
+
+            # get gps only when the house existed
+            # yield self.gen_detail_request(DetailRequestMeta(
+            #     house_id,
+            #     True
+            # ))
 
     def css_first(self, base, selector, default='', allow_empty=False, deep_text=False):
         # Check how to find if there's missing attribute
@@ -177,115 +187,72 @@ class DetailMixin(RequestGenerator):
         return strings
 
     def collect_dict(self, response):
-        # title
-        title = self.css_first(response, '.houseInfoTitle', deep_text=True)
+        '''
+        convert API response into normalized structured data
+        without converting string into machine readable format
+        '''
+        jsonResp = json.loads(response.text)
+        if 'data' not in jsonResp:
+            self.logger.error('Invalid detail response for 591 house: {}'
+                .format(response.meta['rental'].id)
+            )
+            return {}
 
-        # region 首頁/租屋/xx市/xx區
-        breadcromb = self.css(response, '#propNav a', deep_text=True)
-        if len(breadcromb) >= 4:
-            if breadcromb[2] == '出租' and len(breadcromb) >= 5:
-                # 首頁 > 店面 > 出租 > 台北市 > 大安區 > 台北市大安區安和路二段
-                top_region = breadcromb[3]
-                sub_region = breadcromb[4]
-            else:
-                # 首頁 > 租屋 > 台北市 > 大安區 > 獨立套房 > 20000-30000元 > 台北市大安區仁愛路四段50號
-                top_region = breadcromb[2]
-                sub_region = breadcromb[3]
-        else:
-            top_region = '__UNKNOWN__'
-            sub_region = '__UNKNOWN__'
+        data = jsonResp['data']
+        # title
+        title = data['title']
+
+        # region xx市/xx區/物件類型
+        breadcrumb = data['breadcrumb']
+        top_region = '__UNKNOWN__'
+        sub_region = '__UNKNOWN__'
+        if len(breadcrumb) >= 3:
+            if breadcrumb[0]['query'] is 'region':
+                top_region = breadcrumb[0]['name']
+            if breadcrumb[1]['query'] is 'section':
+                sub_region = breadcrumb[1]['name']
 
         # rough address
-        address = self.css_first(response, '#propNav .addr', deep_text=True)
+        address = get(data, 'favData.address')
 
-        # image, it's in a hidden input
-        imgs = self.css_first(
-            response,
-            '#hid_imgArr::attr(value)',
-            allow_empty=True
-        ).replace('"', '').split(',')
+        # TODO: get photo urls
 
-        if imgs[0] == "":
-            imgs.pop(0)
+        # cost data, including 租金含、押金、管理費
+        cost_data = list_to_dict(get(data, 'costData.data'))
+        price_includes = []
+        if '租金含' in cost_data:
+            price_includes = cost_data['租金含'].split('、')
 
-        # top meta, including 押金, 法定用途, etc..
-        top_meta_keys = self.css(response, '.labelList-1 .one', deep_text=True)
-        top_meta_values = self.css(response, '.labelList-1 .two em', deep_text=True)
-        top_metas = dict_from_tuple(top_meta_keys, top_meta_values)
-
-        if '身份要求' in top_metas:
-            top_metas['身份要求'] = top_metas['身份要求'].split('、')
+        # TODO: CHECK
+        # if '身份要求' in top_metas:
+        #     top_metas['身份要求'] = top_metas['身份要求'].split('、')
 
         # facilities, including 衣櫃、沙發, etc..
-        fa_status = self.css(response, '.facility li span::attr(class)')
-        fa_text = self.css(response, '.facility li', deep_text=True)
         fa = []
         without_fa = []
-        for index, key in enumerate(fa_text):
-            if fa_status[index] != 'no':
-                fa.append(key)
+        for facility in get(data, 'service.facility'):
+            if facility['active'] is 1:
+                fa.append(facility['name'])
             else:
-                without_fa.append(key)
+                without_fa.append(facility['name'])
 
-        # environment
-        # <p><strong>生活機能</strong>：近便利商店；傳統市場；夜市</p>
-        env_keys = self.css(response, '.lifeBox > p strong', deep_text=True)
-        env_desps = self.css(response, '.lifeBox > p', deep_text=True)
-        env_desps = list(map(lambda desp: re.sub('.*：', '', desp).split('；'), env_desps))
-        env = dict_from_tuple(env_keys, env_desps)
-
-        # neighbor
-        nei_selector = response.css('.lifeBox.community')
-        nei = {}
-        if nei_selector:
-            nei['name'] = self.css_first(nei_selector, '.communityName a', deep_text=True)
-            nei['desp'] = self.css_first(
-                nei_selector,
-                '.communityIntroduce::text',
-                deep_text=True,
-                allow_empty=True
-            )
-            nei['url'] = SITE_URL +\
-                self.css_first(nei_selector, '.communityIntroduce a::attr(href)', allow_empty=True)
-            nei_keys = self.css(nei_selector, '.communityDetail p::text')
-            nei_values = self.css(nei_selector, '.communityDetail p > *', deep_text=True)
-            nei['info'] = dict_from_tuple(nei_keys, nei_values)
+        # neighbor, gps
+        position = get(data, 'positionRound')
 
         # sublets 分租套房、雅房
-        sublets_keys = self.css(response, '.list-title span', deep_text=True)
-        sublets_list = response.css('.house-list')
-        sublets = []
-        for sublet in sublets_list:
-            texts = self.css(sublet, 'li', deep_text=True)
-            sublet_dict = dict_from_tuple(sublets_keys, texts)
-            if '租金' in sublet_dict:
-                sublet_dict['租金'] = clean_number(sublet_dict['租金'])
-            if '坪數' in sublet_dict:
-                sublet_dict['坪數'] = clean_number(sublet_dict['坪數'])
-
-            sublets.append(sublet_dict)
+        # name, kind, area, floor, price
+        sublets = get(data, 'rooms.data')
 
         # desp
-        desp = self.css(response, '.houseIntro *', deep_text=True)
-
-        # q and a
-        # TODO
-        # TODO: format correct
+        desp = get(data, 'remark.content')
 
         # price
         # <div class="price clearfix"><i>14,500 <b>元/月</b></i></div>
-        price = self.css_first(response, '.price i', deep_text=True)
-
-        # built-in facility
-        price_includes = self.css_first(
-            response,
-            '.detailInfo .price+.explain',
-            deep_text=True,
-            allow_empty=True
-        ).split('/')
+        price = get(data, 'price')
 
         # lease status
-        is_deal = len(response.css('.filled').extract()) > 0
+        # TODO: CHECK
+        # is_deal = len(response.css('.filled').extract()) > 0
         # house_state = 'OPENED'
         # deal_at = None
         # if is_deal:
@@ -293,6 +260,7 @@ class DetailMixin(RequestGenerator):
         #     deal_at = timezone.localtime()
 
         # side meta
+
         sides = self.css(response, '.detailInfo .attr li', deep_text=True)
         side_metas = {}
         for side in sides:
@@ -366,16 +334,15 @@ class DetailMixin(RequestGenerator):
             'address': address,
             'title': title,
             'imgs': imgs,
-            'top_metas': top_metas,
             'facilities': fa,
             'without_facilities': without_fa,
-            'environment': env,
             'sublets': sublets,
-            'neighbor': nei,
+            'position': position,
             'desp': desp,
             'price': price,
+            'cost': cost_data,
             'price_includes': price_includes,
-            'is_deal': is_deal,
+            # 'is_deal': is_deal,
             'side_metas': side_metas,
             'due_day': due_day,
             'owner': owner
@@ -390,9 +357,13 @@ class DetailMixin(RequestGenerator):
     def get_shared_price(self, detail_dict, basic_info):
         ret = {}
 
+        cost_data = list_to_dict(
+            get(detail_dict, 'costData.data', default=[])
+        )
+
         # deposit_type, n_month_deposit
-        if '押金' in detail_dict['top_metas']:
-            deposit = detail_dict['top_metas']['押金']
+        if '押金' in cost_data:
+            deposit = cost_data['押金']
             month_deposit = deposit.split('個月')
             if len(month_deposit) == 2:
                 ret['deposit_type'] = enums.DepositType.月
@@ -413,11 +384,15 @@ class DetailMixin(RequestGenerator):
                 ret['deposit'] = None
 
         # is_remanagement_fee, monthly_management_fee
-        if '管理費' in detail_dict['price_includes']:
+        price_includes = []
+        if '租金含' in cost_data:
+            price_includes = cost_data['租金含'].split('、')
+
+        if '管理費' in price_includes:
             ret['is_require_management_fee'] = False
             ret['monthly_management_fee'] = 0
-        elif '管理費' in detail_dict['top_metas']:
-            mgmt_fee = detail_dict['top_metas']['管理費']
+        elif '管理費' in cost_data:
+            mgmt_fee = cost_data['管理費']
             # could be xxx元/月, --, -, !@$#$%...
             if '元/月' in mgmt_fee:
                 ret['is_require_management_fee'] = True
@@ -427,10 +402,13 @@ class DetailMixin(RequestGenerator):
                 ret['monthly_management_fee'] = 0
 
         # *_parking*
-        if '車 位' in detail_dict['top_metas']:
-            parking_str = detail_dict['top_metas']['車 位']
+        if '車位費' in price_includes:
+            ret['has_parking'] = True
+            ret['is_require_parking_fee'] = False
+            ret['monthly_parking_fee'] = 0
+        elif '車位費' in cost_data:
+            parking_str = cost_data['車位費']
             parking = clean_number(parking_str)
-
             ret['has_parking'] = True
             if parking:
                 ret['is_require_parking_fee'] = True
@@ -457,41 +435,49 @@ class DetailMixin(RequestGenerator):
     def get_shared_basic(self, detail_dict):
         ret = {}
 
-        # top_region, sub_region
-        if 'top_region' in detail_dict:
-            ret['top_region'] = self.get_enum(
-                enums.TopRegionType,
-                detail_dict['house_id'],
-                detail_dict['top_region']
-            )
+        # region xx市/xx區/物件類型
+        breadcrumb = list_to_dict(
+            get(detail_dict, 'breadcrumb', default=[]),
+            name_field='query',
+            value_field='name'
+        )
+        top_region = get(breadcrumb, 'region', default='__UNKNOWN__')
+        sub_region = get(breadcrumb, 'section', default='__UNKNOWN__')
 
-            ret['sub_region'] = self.get_enum(
-                enums.SubRegionType,
-                detail_dict['house_id'],
-                '{}{}'.format(
-                    detail_dict['top_region'],
-                    detail_dict['sub_region']
-                )
-            )
+        ret['top_region'] = self.get_enum(
+            enums.TopRegionType,
+            detail_dict['house_id'],
+            top_region
+        )
 
-        if 'address' in detail_dict:
-            ret['rough_address'] = detail_dict['address']
+        ret['sub_region'] = self.get_enum(
+            enums.SubRegionType,
+            detail_dict['house_id'],
+            '{}{}'.format(
+                top_region,
+                sub_region
+            )
+        )
+
+        ret['rough_address'] = get(detail_dict, 'favData.address')
 
         # deal_status
-        if detail_dict['is_deal']:
-            # Issue #15, update only deal_status in crawler
-            # let `syncstateful` to update the rest
-            ret['deal_status'] = enums.DealStatusType.DEAL
-        else:
-            # Issue #14, always update deal status since item may be reopened
-            ret['deal_status'] = enums.DealStatusType.OPENED
+        # TODO: check new deal status rule
+        # if detail_dict['is_deal']:
+        #     # Issue #15, update only deal_status in crawler
+        #     # let `syncstateful` to update the rest
+        #     ret['deal_status'] = enums.DealStatusType.DEAL
+        # else:
+        #     # Issue #14, always update deal status since item may be reopened
+        #     ret['deal_status'] = enums.DealStatusType.OPENED
+        infoSection = list_to_dict(get(detail_dict, 'info', default=[]))
 
         # building_type, 公寓 / 電梯大樓 / 透天
-        if '型態' in detail_dict['side_metas']:
-            building_type = detail_dict['side_metas']['型態']
+        if '型態' in infoSection:
+            building_type = infoSection['型態']
             if building_type == '別墅' or building_type == '透天厝':
                 ret['building_type'] = enums.BuildingType.透天
-            elif building_type == '住宅大樓':
+            elif building_type == '住宅大樓' or building_type == '電梯大樓':
                 ret['building_type'] = enums.BuildingType.電梯大樓
             else:
                 ret['building_type'] = self.get_enum(
@@ -501,19 +487,22 @@ class DetailMixin(RequestGenerator):
                 )
 
         # property type
-        if '現況' in detail_dict['side_metas']:
+        if '類型' in infoSection:
             ret['property_type'] = self.get_enum(
                 enums.PropertyType,
                 detail_dict['house_id'],
-                detail_dict['side_metas']['現況']
+                infoSection['類型']
             )
+        elif '格局' in infoSection:
+            ret['property_type'] = enums.PropertyType.整層住家
 
         # is_rooftop, floor, total_floor
         # TODO: use title to detect rooftop
-        if '樓層' in detail_dict['side_metas']:
+        if '樓層' in infoSection:
             # floor_info = 1F/2F or 頂樓加蓋/2F or 整棟/2F
-            floor_info = detail_dict['side_metas']['樓層'].split('/')
+            floor_info = infoSection['樓層'].split('/')
             floor = clean_number(floor_info[0])
+            # mark 整棟 as floor 0
             ret['floor'] = 0
             ret['total_floor'] = clean_number(floor_info[1])
             ret['is_rooftop'] = False
@@ -529,12 +518,28 @@ class DetailMixin(RequestGenerator):
 
             ret['dist_to_highest_floor'] = ret['total_floor'] - ret['floor']
 
-        if '坪數' in detail_dict['side_metas']:
-            ret['floor_ping'] = clean_number(
-                detail_dict['side_metas']['坪數'])
+        if '坪數' in infoSection:
+            ret['floor_ping'] = clean_number(infoSection['坪數'])
 
-        if '格局' in detail_dict['side_metas']:
-            apt_feature = detail_dict['side_metas']['格局']
+        facilityKeys = list_to_dict(
+            get(detail_dict, 'service.facility'),
+            name_field='key',
+            # For 陽台 only, 
+            # When no 陽台， name is '陽台'
+            # When there's 陽台， name is 'x陽台'...
+            value_field='name'
+        )
+        nBalcony = clean_number(get(facilityKeys, 'balcony', default=''))
+        ret['n_balcony'] = nBalcony or 0
+
+        if '格局' in infoSection:
+            apt_parts = re.findall(
+                r'(\d)([^\d]+)',
+                infoSection['格局']
+            )
+            apt_feature = {}
+            for part in apt_parts:
+                apt_feature[part[1]] = part[0]
 
             for name in self.apt_features:
                 if self.apt_features[name] in apt_feature:
@@ -549,8 +554,6 @@ class DetailMixin(RequestGenerator):
                 ret['n_bed_room'],
                 ret['n_living_room']
             )
-
-        # TODO: rough_address
 
         return ret
 
@@ -568,6 +571,10 @@ class DetailMixin(RequestGenerator):
 
     def get_shared_environment(self, detail_dict):
         # additional fee
+        cost_data = list_to_dict(get(detail_dict, 'costData.data'))
+        # if '租金含' in cost_data:
+        #     ret['price_includes'] = cost_data['租金含'].split('、')
+
         price_includes = detail_dict['price_includes']
 
         additional_fee = {
@@ -702,40 +709,24 @@ class DetailMixin(RequestGenerator):
 
     def gen_detail_shared_attrs(self, detail_dict):
         detail_dict['price'] = clean_number(detail_dict['price'])
-
-        detail_dict['price_includes'] = list(map(
-            lambda x: x.replace('含', ''),
-            detail_dict['price_includes']
-        ))
-
-        if '生活機能' in detail_dict['environment']:
-            detail_dict['environment']['生活機能'] = list(map(
-                lambda x: x.replace('近', ''),
-                detail_dict['environment']['生活機能']
-            ))
-
-        if '附近交通' in detail_dict['environment']:
-            detail_dict['environment']['附近交通'] = list(map(
-                lambda x: re.sub('[ 　]', '', x.replace('近', '')),
-                detail_dict['environment']['附近交通']
-            ))
-
         basic_info = self.get_shared_basic(detail_dict)
         price_info = self.get_shared_price(detail_dict, basic_info)
-        env_info = self.get_shared_environment(detail_dict)
-        boolean_info = self.get_shared_boolean_info(detail_dict)
-        misc_info = self.get_shared_misc(detail_dict)
+        # env_info = self.get_shared_environment(detail_dict)
+        # boolean_info = self.get_shared_boolean_info(detail_dict)
+        # misc_info = self.get_shared_misc(detail_dict)
 
         ret = {
             'vendor': self.vendor,
             'vendor_house_id': detail_dict['house_id'],
             'monthly_price': detail_dict['price'],
-            'imgs': detail_dict['imgs'],
+            # 'imgs': detail_dict['imgs'],
             **price_info,
             **basic_info,
-            **env_info,
-            **boolean_info,
-            **misc_info
+            # **env_info,
+            # **boolean_info,
+            # **misc_info
         }
+
+        # self.logger.info(ret)
 
         return ret
