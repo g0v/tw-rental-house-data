@@ -186,168 +186,6 @@ class DetailMixin(RequestGenerator):
         strings = map(lambda str: str.replace(u'\xa0', '').strip(), strings)
         return strings
 
-    def collect_dict(self, response):
-        '''
-        convert API response into normalized structured data
-        without converting string into machine readable format
-        '''
-        jsonResp = json.loads(response.text)
-        if 'data' not in jsonResp:
-            self.logger.error('Invalid detail response for 591 house: {}'
-                .format(response.meta['rental'].id)
-            )
-            return {}
-
-        data = jsonResp['data']
-        # title
-        title = data['title']
-
-        # region xx市/xx區/物件類型
-        breadcrumb = data['breadcrumb']
-        top_region = '__UNKNOWN__'
-        sub_region = '__UNKNOWN__'
-        if len(breadcrumb) >= 3:
-            if breadcrumb[0]['query'] is 'region':
-                top_region = breadcrumb[0]['name']
-            if breadcrumb[1]['query'] is 'section':
-                sub_region = breadcrumb[1]['name']
-
-        # rough address
-        address = get(data, 'favData.address')
-
-        # TODO: get photo urls
-
-        # cost data, including 租金含、押金、管理費
-        cost_data = list_to_dict(get(data, 'costData.data'))
-        price_includes = []
-        if '租金含' in cost_data:
-            price_includes = cost_data['租金含'].split('、')
-
-        # TODO: CHECK
-        # if '身份要求' in top_metas:
-        #     top_metas['身份要求'] = top_metas['身份要求'].split('、')
-
-        # facilities, including 衣櫃、沙發, etc..
-        fa = []
-        without_fa = []
-        for facility in get(data, 'service.facility'):
-            if facility['active'] is 1:
-                fa.append(facility['name'])
-            else:
-                without_fa.append(facility['name'])
-
-        # neighbor, gps
-        position = get(data, 'positionRound')
-
-        # sublets 分租套房、雅房
-        # name, kind, area, floor, price
-        sublets = get(data, 'rooms.data')
-
-        # desp
-        desp = get(data, 'remark.content')
-
-        # price
-        # <div class="price clearfix"><i>14,500 <b>元/月</b></i></div>
-        price = get(data, 'price')
-
-        # lease status
-        # TODO: CHECK
-        # is_deal = len(response.css('.filled').extract()) > 0
-        # house_state = 'OPENED'
-        # deal_at = None
-        # if is_deal:
-        #     house_state = 'DEAL'
-        #     deal_at = timezone.localtime()
-
-        # side meta
-
-        sides = self.css(response, '.detailInfo .attr li', deep_text=True)
-        side_metas = {}
-        for side in sides:
-            tokens = side.split(':')
-            if len(tokens) >= 2:
-                side_metas[tokens[0]] = ':'.join(tokens[1::])
-
-        # 格局 :    3房2廳2衛2陽台
-        if '格局' in side_metas:
-            # TODO: 開放式格局
-            parts = re.findall(
-                r'(\d)([^\d]+)',
-                side_metas['格局']
-            )
-            parts_dict = {}
-            for part in parts:
-                parts_dict[part[1]] = part[0]
-            side_metas['格局'] = parts_dict
-        if '坪數' in side_metas:
-            side_metas['坪數'] = clean_number(side_metas['坪數'])
-        if '權狀坪數' in side_metas:
-            side_metas['權狀坪數'] = clean_number(side_metas['權狀坪數'])
-
-        # due day
-        due_day = self.css_first(response, '.explain .ft-rt', deep_text=True)
-        due_day = due_day.replace('有效期：', '')
-
-        # owner
-        owner = {}
-        owner['name'] = self.css_first(response, '.avatarRight i', deep_text=True)
-        owner['comment'] = self.css_first(response, '.avatarRight div', deep_text=True)
-        agent_info = self.css(response, '.avatarRight .auatarSonBox p', deep_text=True)
-        make_agent_info = partial(split_string_to_dict, seperator='：')
-        agent_info = list(map(make_agent_info, agent_info))
-        owner['isAgent'] = len(agent_info) > 0
-        owner['agent'] = agent_info
-
-        phone_ext = self.css_first(response, '.phone-hide .num', deep_text=True, allow_empty=True)
-        phone_url = response.css('.phone-hide .num img').xpath('@src').extract_first()
-
-        if phone_ext:
-            # phone will be pure text when owner use 591 built-in phone number
-            # TODO: check is the ext is identical for the same owner
-            owner['id'] = phone_ext
-        elif phone_url:
-            # or it will be an img, the src would be identical for the same owner
-            # url is sth like
-            # statics.591.com.tw/tools/showPhone.php?info_data=%2BbRfNLlKoLNhHOKui2zb%2FBxYO6A&type=rLEFMu4XrrpgEw
-            parsed_url = urlparse(phone_url)
-            qs = parse_qs(parsed_url.query)
-            if 'info_data' in qs and qs['info_data']:
-                owner['id'] = qs['info_data'][0]
-        else:
-            # sth strange happened, such as it's already dealt
-            # let's try if there's avatar
-            avatar = response.css('.userInfo .avatar img').xpath('@src').extract_first()
-            if avatar and 'no-photo-new.png' not in avatar:
-                owner['id'] = avatar
-            else:
-                # last try, search description to see if there's phone number
-                phone = re.search(r'09[0-9]{8}', ' '.join(desp))
-                if phone:
-                    phone = phone.group()
-                    owner['id'] = phone
-
-        return {
-            'house_id': response.meta['rental'].id,
-            'n_views': self.css_first(response, '.pageView b', deep_text=True),
-            'top_region': top_region,
-            'sub_region': sub_region,
-            'address': address,
-            'title': title,
-            'imgs': imgs,
-            'facilities': fa,
-            'without_facilities': without_fa,
-            'sublets': sublets,
-            'position': position,
-            'desp': desp,
-            'price': price,
-            'cost': cost_data,
-            'price_includes': price_includes,
-            # 'is_deal': is_deal,
-            'side_metas': side_metas,
-            'due_day': due_day,
-            'owner': owner
-        }
-
     def from_zh_number(self, zh_number):
         if zh_number in self.zh_number_dict:
             return self.zh_number_dict[zh_number]
@@ -462,14 +300,15 @@ class DetailMixin(RequestGenerator):
         ret['rough_address'] = get(detail_dict, 'favData.address')
 
         # deal_status
-        # TODO: check new deal status rule
-        # if detail_dict['is_deal']:
-        #     # Issue #15, update only deal_status in crawler
-        #     # let `syncstateful` to update the rest
-        #     ret['deal_status'] = enums.DealStatusType.DEAL
-        # else:
-        #     # Issue #14, always update deal status since item may be reopened
-        #     ret['deal_status'] = enums.DealStatusType.OPENED
+        dealDay = get(detail_dict, 'dealTime', 0)
+        if dealDay > 0:
+            # Issue #15, update only deal_status in crawler
+            # let `syncstateful` to update the rest
+            ret['deal_status'] = enums.DealStatusType.DEAL
+        else:
+            # Issue #14, always update deal status since item may be reopened
+            ret['deal_status'] = enums.DealStatusType.OPENED
+
         infoSection = list_to_dict(get(detail_dict, 'info', default=[]))
 
         # building_type, 公寓 / 電梯大樓 / 透天
@@ -572,10 +411,9 @@ class DetailMixin(RequestGenerator):
     def get_shared_environment(self, detail_dict):
         # additional fee
         cost_data = list_to_dict(get(detail_dict, 'costData.data'))
-        # if '租金含' in cost_data:
-        #     ret['price_includes'] = cost_data['租金含'].split('、')
-
-        price_includes = detail_dict['price_includes']
+        price_includes = []
+        if '租金含' in cost_data:
+            price_includes = cost_data['租金含'].split('、')
 
         additional_fee = {
             'eletricity': '電費' not in price_includes,
@@ -585,85 +423,62 @@ class DetailMixin(RequestGenerator):
             'cable_tv': '第四台' not in price_includes
         }
 
-        # living_functions
-        living_functions = {}
-        if '生活機能' in detail_dict['environment']:
-            living = detail_dict['environment']['生活機能']
-            living_functions = {
-                'school': '學校' in living,
-                'park': '公園綠地' in living,
-                'dept_store': '百貨公司' in living,
-                'conv_store': '便利商店' in living,
-                'traditional_mkt': '傳統市場' in living,
-                'night_mkt': '夜市' in living,
-                'hospital': '醫療機構' in living,
-                # not provided XDDD
-                'police_office': False
-            }
-
-        lower_desp = []
-        for line in detail_dict['desp']:
-            lower_desp.append(line.lower())
-
-        transportation = {}
-        if '附近交通' in detail_dict['environment']:
-            tp_list = detail_dict['environment']['附近交通']
-            transportation = {
-                'subway': self.count_keyword_in_list('捷運站', tp_list),
-                'bus': self.count_keyword_in_list('公車站', tp_list) +
-                       self.count_keyword_in_list('路', tp_list),
-                'train': self.count_keyword_in_list('火車站', tp_list),
-                'hsr': self.count_keyword_in_list('高速鐵路', tp_list),
-                'public_bike': self.count_keyword_in_list('bike', lower_desp)
-            }
+        # living_functions & transportation
+        # remove for now, as 2021 591 API doesn't provide necessary info #89
 
         ret = {
-            'additional_fee': additional_fee,
-            'living_functions': living_functions,
-            'transportation': transportation
+            'additional_fee': additional_fee
         }
 
         return ret
 
     def get_shared_boolean_info(self, detail_dict):
         ret = {}
+        features = list_to_dict(
+            get(detail_dict, 'tags', default=[]),
+            name_field='value',
+            value_field='id'
+        )
 
         # has_tenant_restriction
-        ret['has_tenant_restriction'] = False
-        if '身份要求' in detail_dict['top_metas']:
-            if detail_dict['top_metas']['身份要求']:
-                ret['has_tenant_restriction'] = True
+        rule = get(detail_dict, 'service.rule')
+
+        # 2021 591 API use more soft word, with the same meaning...
+        # 適合學生 === 限學生
+        # 適合上班族及家庭 === 限上班族及家庭
+        ret['has_tenant_restriction'] = '適合' in rule
 
         # has_gender_restriction
+        # 2021 591 API use 此房屋限男生租住 / 此房屋限女生租住 / 此房屋男女皆可租住 / None
         ret['has_gender_restriction'] = False
         ret['gender_restriction'] = enums.GenderType.不限
-        if '性別要求' in detail_dict['top_metas']:
-            gender = detail_dict['top_metas']['性別要求']
-            if gender == '女生':
+        if '此房屋限' in rule:
+            if '女生' in rule:
                 ret['has_gender_restriction'] = True
                 ret['gender_restriction'] = enums.GenderType.女
-            elif gender == '男生':
+            elif '男生' in rule:
                 ret['has_gender_restriction'] = True
                 ret['gender_restriction'] = enums.GenderType.男
-            elif '不限' not in gender and '男女生皆可' not in gender:
-                ret['has_gender_restriction'] = True
-                ret['gender_restriction'] = enums.GenderType.其他
 
         # can_cook
-        if '開伙' in detail_dict['top_metas']:
-            ret['can_cook'] = detail_dict['top_metas']['開伙'] == '可以'
+        if '不可開伙' in rule:
+            ret['can_cook'] = False
+        elif '可開伙' in features:
+            ret['can_cook'] = True
         else:
             ret['can_cook'] = None
 
         # allow pet
-        if '養寵物' in detail_dict['top_metas']:
-            ret['allow_pet'] = detail_dict['top_metas']['養寵物'] == '可以'
+        if '不可養寵物' in rule:
+            ret['allow_pet'] = False
+        elif '可養寵物' in features:
+            ret['allow_pet'] = True
         else:
             ret['allow_pet'] = None
 
         # has_perperty_registration
-        ret['has_perperty_registration'] = detail_dict['top_metas']\
-            .get('產權登記', '') == '已辦'
+        properMetaTitle = get(detail_dict, 'infoData.title')
+        ret['has_perperty_registration'] = properMetaTitle == '房屋已辦產權登記'
 
         return ret
 
@@ -672,38 +487,38 @@ class DetailMixin(RequestGenerator):
 
         # facilities
         facilities = {}
-        for item in detail_dict['facilities']:
-            facilities[item] = True
-
-        for item in detail_dict['without_facilities']:
-            facilities[item] = False
+        for item in get(detail_dict, 'service.facility', default=[]):
+            if item['key'] == 'balcony':
+                continue
+            doProvide = item['active'] == 1
+            if item['key'] == 'table_chairs':
+                facilities['桌子'] = doProvide
+                facilities['椅子'] = doProvide
+            else:
+                facilities[item['name']] = doProvide
 
         ret['facilities'] = facilities
 
         # contact, agent, and author
-        owner = detail_dict['owner']
-        if '代理人' in owner['comment']:
-            ret['contact'] = enums.ContactType.代理人
-        elif owner['isAgent']:
+        owner = get(detail_dict, 'linkInfo', default={})
+        if owner['roleName'] == '仲介':
             ret['contact'] = enums.ContactType.房仲
         else:
-            ret['contact'] = enums.ContactType.屋主
+            ret['contact'] = self.get_enum(
+                enums.ContactType,
+                detail_dict['house_id'],
+                owner['roleName']
+            )
 
-        if owner['isAgent']:
-            agent = {}
-            for item in owner['agent']:
-                for key in item:
-                    agent[key] = item[key]
+        if owner['mobile'] != '':
+            ret['author'] = owner['mobile'].replace('-', '')
+        else:
+            ret['author'] = owner['uid'] or owner['imUid']
 
-            if '公司名' in agent:
-                ret['agent_org'] = agent['公司名']
-            elif '經濟業' in agent:
-                ret['agent_org'] = agent['經濟業']
-            else:
-                ret['agent_org'] = '/'.join(agent.values())
-
-        if 'id' in detail_dict['owner'] and detail_dict['owner']['id']:
-            ret['author'] = detail_dict['owner']['id']
+        if ret['contact'] == enums.ContactType.房仲:
+            ret['agent_org'] = owner['roleTxt'] or owner['certificateTxt']
+            if ret['agent_org'] == '經紀業: 不動產經紀業':
+                ret['agent_org'] = '未認證'
 
         return ret
 
@@ -711,22 +526,21 @@ class DetailMixin(RequestGenerator):
         detail_dict['price'] = clean_number(detail_dict['price'])
         basic_info = self.get_shared_basic(detail_dict)
         price_info = self.get_shared_price(detail_dict, basic_info)
-        # env_info = self.get_shared_environment(detail_dict)
-        # boolean_info = self.get_shared_boolean_info(detail_dict)
-        # misc_info = self.get_shared_misc(detail_dict)
+        env_info = self.get_shared_environment(detail_dict)
+        boolean_info = self.get_shared_boolean_info(detail_dict)
+        misc_info = self.get_shared_misc(detail_dict)
 
         ret = {
             'vendor': self.vendor,
             'vendor_house_id': detail_dict['house_id'],
             'monthly_price': detail_dict['price'],
-            # 'imgs': detail_dict['imgs'],
             **price_info,
             **basic_info,
-            # **env_info,
-            # **boolean_info,
-            # **misc_info
+            **env_info,
+            **boolean_info,
+            **misc_info
         }
 
-        # self.logger.info(ret)
+        self.logger.info(ret)
 
         return ret

@@ -2,7 +2,7 @@ import json
 from scrapy_twrh.items import RawHouseItem, GenericHouseItem
 from scrapy_twrh.spiders.enums import PropertyType, TopRegionType, SubRegionType
 from scrapy_twrh.spiders.util import clean_number
-from .util import SITE_URL, ListRequestMeta, DetailRequestMeta
+from .util import API_URL, ListRequestMeta, DetailRequestMeta
 from .request_generator import RequestGenerator
 
 def get_list_val(house, regular_attr, top_attr=None, to_number=False):
@@ -52,7 +52,6 @@ class ListMixin(RequestGenerator):
         houses = data['data']['topData'] + data['data']['data']
 
         for house in houses:
-            house['is_vip'] = 'id' not in house
             house_item = self.gen_shared_attrs(house, meta)
             yield RawHouseItem(
                 house_id=house_item['vendor_house_id'],
@@ -66,7 +65,7 @@ class ListMixin(RequestGenerator):
     def gen_shared_attrs(self, house, meta: ListRequestMeta):
         house_id = get_list_val(house, 'id', 'post_id')
 
-        url = '{}/rent-detail-{}.html'.format(SITE_URL, house_id)
+        url = "{}/v1/house/rent/detail?id={}".format(API_URL, house_id)
 
         if 'region_name' in house:
             # topData doesn't contain region_name for some reason..
@@ -88,17 +87,34 @@ class ListMixin(RequestGenerator):
         property_type = self.get_enum(
             PropertyType, house_id, get_list_val(house, 'kind_name', 'kind_str'))
 
+        floor = None
+        total_floor = None
+        if 'floor_str' in house:
+            floor_info = house['floor_str'].split('/')
+            if len(floor_info) >= 2:
+                floor = clean_number(floor_info[0])
+                total_floor = clean_number(floor_info[1])
+
+                if floor == '頂樓加蓋':
+                    floor = total_floor +1
+                elif 'B' in floor_info[0] and floor:
+                    # basement
+                    floor = -floor
+                elif floor is None:
+                    # 整棟
+                    floor = 0
+
         generic_house = {
             'vendor': self.vendor,
             'vendor_house_id': house_id,
             'vendor_house_url': url,
-            'imgs': [get_list_val(house, 'cover', 'img_src')],
+            'imgs': get_list_val(house, 'photo_list'),
             'top_region': top_region,
             'sub_region': sub_region,
             'property_type': property_type,
             'floor_ping': clean_number(house['area']),
-            'floor': get_list_val(house, 'floor', to_number=True),
-            'total_floor': get_list_val(house, 'allfloor', to_number=True),
+            'floor': floor,
+            'total_floor': total_floor,
             'monthly_price': get_list_val(house, 'price', to_number=True)
         }
 
@@ -117,4 +133,5 @@ class ListMixin(RequestGenerator):
         for key in empty_keys:
             del generic_house[key]
 
+        self.logger.info(generic_house)
         return generic_house

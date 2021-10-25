@@ -7,6 +7,7 @@ backup
 datas/*
 !datas/.keep
 .env
+.venv
 *.db*
 *.sqlite3
 *.tgz
