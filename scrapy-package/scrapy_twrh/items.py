@@ -19,6 +19,7 @@ class GenericHouseItem(Item):
     vendor_house_url = Field()
     # price related
     monthly_price = Field()
+    min_monthly_price = Field()
     deposit_type = Field()
     n_month_deposit = Field()
     deposit = Field()

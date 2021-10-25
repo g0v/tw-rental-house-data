@@ -1,13 +1,10 @@
 from scrapy.spidermiddlewares.httperror import HttpError
 from scrapy_twrh.spiders.rental_spider import RentalSpider
-from .util import SITE_URL, LIST_ENDPOINT, ListRequestMeta, DetailRequestMeta
+from .util import SITE_URL, API_URL, LIST_ENDPOINT, ListRequestMeta, DetailRequestMeta
 
 class RequestGenerator(RentalSpider):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-
-        self.csrf_token = None
-        self.session_token = None
 
     def gen_list_request_args(self, rental_meta: ListRequestMeta):
         # don't filter as 591 use 30x to indicate house status...
@@ -20,9 +17,10 @@ class RequestGenerator(RentalSpider):
                 rental_meta.page * self.N_PAGE
             ),
             'headers': {
-                'Cookie': 'urlJumpIp={}; 591_new_session={};'.format(
+                'Cookie': 'urlJumpIp={}; 591_new_session={}; PHPSESSID={}'.format(
                     rental_meta.id,
-                    self.session_token
+                    self.session['591_new_session'],
+                    self.session['PHPSESSID']
                 ),
                 'X-CSRF-TOKEN': self.csrf_token
             }
@@ -30,38 +28,23 @@ class RequestGenerator(RentalSpider):
         return ret
 
     def gen_detail_request_args(self, rental_meta: DetailRequestMeta):
-        if rental_meta.gps:
-            # https://rent.591.com.tw/map-houseRound.html?type=1&detail=detail&version=1&post_id=6635655
-            url = "{}/map-houseRound.html?type=1&detail=detail&version=1&post_id={}".format(
-                SITE_URL, rental_meta.id)
+        # https://bff.591.com.tw/v1/house/rent/detail?id=11501075
+        url = "{}/v1/house/rent/detail?id={}".format(API_URL, rental_meta.id)
 
-            #19, the house may be closed in 3 hours when we found it....
-            # retrieve gps in lowest priority
-            # don't filter as 591 use 30x to indicate house status...
-            return {
-                'dont_filter': True,
-                'url': url,
-                'priority': -1,
-                'errback': self.error_handler,
-                'meta': {
-                    'rental': rental_meta,
-                    'handle_httpstatus_list': [404]
-                }
+        # don't filter as 591 use 30x to indicate house status...
+        return {
+            'dont_filter': True,
+            'url': url,
+            'errback': self.error_handler,
+            'meta': {
+                'rental': rental_meta,
+                'handle_httpstatus_list': [400, 404, 302, 301]
+            },
+            'headers': {
+                'device': 'pc',
+                'deviceid': self.session['PHPSESSID']
             }
-        else:
-            # https://rent.591.com.tw/rent-detail-6635655.html
-            url = "{}/rent-detail-{}.html".format(SITE_URL, rental_meta.id)
-
-            # don't filter as 591 use 30x to indicate house status...
-            return {
-                'dont_filter': True,
-                'url': url,
-                'errback': self.error_handler,
-                'meta': {
-                    'rental': rental_meta,
-                    'handle_httpstatus_list': [400, 404, 302, 301]
-                }
-            }
+        }
 
     def error_handler(self, failure):
         if failure.check(HttpError):
