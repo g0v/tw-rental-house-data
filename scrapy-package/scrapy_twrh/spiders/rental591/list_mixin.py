@@ -2,7 +2,7 @@ import json
 from scrapy_twrh.items import RawHouseItem, GenericHouseItem
 from scrapy_twrh.spiders.enums import PropertyType, TopRegionType, SubRegionType
 from scrapy_twrh.spiders.util import clean_number
-from .util import API_URL, ListRequestMeta, DetailRequestMeta
+from .util import API_URL, ListRequestMeta, DetailRequestMeta, parse_price
 from .request_generator import RequestGenerator
 
 def get_list_val(house, regular_attr, top_attr=None, to_number=False):
@@ -105,6 +105,8 @@ class ListMixin(RequestGenerator):
                     # 整棟
                     floor = 0
 
+        price_range = parse_price(get_list_val(house, 'price'))
+
         generic_house = {
             'vendor': self.vendor,
             'vendor_house_id': house_id,
@@ -116,7 +118,7 @@ class ListMixin(RequestGenerator):
             'floor_ping': clean_number(house['area']),
             'floor': floor,
             'total_floor': total_floor,
-            'monthly_price': get_list_val(house, 'price', to_number=True)
+            **price_range
         }
 
         # 99 and 100 are magic number in 591...

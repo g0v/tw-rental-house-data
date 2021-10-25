@@ -8,7 +8,7 @@ from scrapy_twrh.spiders import enums
 from scrapy_twrh.spiders.util import clean_number
 from scrapy_twrh.items import RawHouseItem, GenericHouseItem
 from .request_generator import RequestGenerator
-from .util import DetailRequestMeta, SITE_URL
+from .util import parse_price
 
 # copy from stackoverflow XD
 # https://stackoverflow.com/questions/25833613/safe-method-to-get-value-of-nested-dictionary
@@ -474,7 +474,8 @@ class DetailMixin(RequestGenerator):
         return ret
 
     def gen_detail_shared_attrs(self, detail_dict):
-        detail_dict['price'] = clean_number(detail_dict['price'])
+        price_range = parse_price(detail_dict['price'])
+        detail_dict['price'] = price_range['monthly_price']
         basic_info = self.get_shared_basic(detail_dict)
         price_info = self.get_shared_price(detail_dict, basic_info)
         env_info = self.get_shared_environment(detail_dict)
@@ -485,13 +486,13 @@ class DetailMixin(RequestGenerator):
             'vendor': self.vendor,
             'vendor_house_id': detail_dict['house_id'],
             'monthly_price': detail_dict['price'],
+            **price_range,
             **price_info,
             **basic_info,
             **env_info,
             **boolean_info,
-            **misc_info
-        }
+            **misc_info,
 
-        self.logger.info(ret)
+        }
 
         return ret
