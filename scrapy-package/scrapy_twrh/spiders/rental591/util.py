@@ -7,4 +7,4 @@ SESSION_ENDPOINT = '{}/?kind=0&region=6'.format(SITE_URL)
 
 ListRequestMeta = namedtuple('ListRequestMeta', ['id', 'name', 'page'])
 
-DetailRequestMeta = namedtuple('DetailRequestMeta', ['id', 'gps'])
+DetailRequestMeta = namedtuple('DetailRequestMeta', ['id'])

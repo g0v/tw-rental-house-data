@@ -28,42 +28,23 @@ class RequestGenerator(RentalSpider):
         return ret
 
     def gen_detail_request_args(self, rental_meta: DetailRequestMeta):
-        if rental_meta.gps:
-            # https://rent.591.com.tw/map-houseRound.html?type=1&detail=detail&version=1&post_id=6635655
-            url = "{}/map-houseRound.html?type=1&detail=detail&version=1&post_id={}".format(
-                SITE_URL, rental_meta.id)
+        # https://bff.591.com.tw/v1/house/rent/detail?id=11501075
+        url = "{}/v1/house/rent/detail?id={}".format(API_URL, rental_meta.id)
 
-            #19, the house may be closed in 3 hours when we found it....
-            # retrieve gps in lowest priority
-            # don't filter as 591 use 30x to indicate house status...
-            return {
-                'dont_filter': True,
-                'url': url,
-                'priority': -1,
-                'errback': self.error_handler,
-                'meta': {
-                    'rental': rental_meta,
-                    'handle_httpstatus_list': [404]
-                }
+        # don't filter as 591 use 30x to indicate house status...
+        return {
+            'dont_filter': True,
+            'url': url,
+            'errback': self.error_handler,
+            'meta': {
+                'rental': rental_meta,
+                'handle_httpstatus_list': [400, 404, 302, 301]
+            },
+            'headers': {
+                'device': 'pc',
+                'deviceid': self.session['PHPSESSID']
             }
-        else:
-            # https://bff.591.com.tw/v1/house/rent/detail?id=11501075
-            url = "{}/v1/house/rent/detail?id={}".format(API_URL, rental_meta.id)
-
-            # don't filter as 591 use 30x to indicate house status...
-            return {
-                'dont_filter': True,
-                'url': url,
-                'errback': self.error_handler,
-                'meta': {
-                    'rental': rental_meta,
-                    'handle_httpstatus_list': [400, 404, 302, 301]
-                },
-                'headers': {
-                    'device': 'pc',
-                    'deviceid': self.session['PHPSESSID']
-                }
-            }
+        }
 
     def error_handler(self, failure):
         if failure.check(HttpError):

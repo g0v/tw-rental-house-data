@@ -58,48 +58,7 @@ class DetailMixin(RequestGenerator):
         'n_bath_room': '衛'
     }
 
-
     def default_parse_detail(self, response):
-        meta = response.meta['rental']
-        if meta.gps:
-            return self.parse_gps_response(response)
-
-        return self.parse_main_response(response)
-
-    def parse_gps_response(self, response):
-        house_id = response.meta['rental'].id
-
-        if response.status == 404:
-            self.logger.info(
-                'GPS {} not found by receiving status code {}'
-                .format(house_id, response.status)
-            )
-            yield True
-            return
-
-        gmap_url = self.css_first(response, '#main .propMapBarMap iframe::attr(src)')
-        # example //maps.google.com.tw/maps?f=q&hl=zh-TW&q=25.0268980,121.5542323&z=17&output=embed
-
-        parsed_url = urlparse(gmap_url)
-        qs = parse_qs(parsed_url.query)
-        if 'q' not in qs or not qs['q']:
-            self.logger.info(
-                'Invalid GPS page in house: {}'
-                .format(house_id)
-            )
-            return
-
-        gps_str = qs['q'][0]
-        coordinate = list(map(Decimal, gps_str.split(',')))
-
-        if len(coordinate) == 2:
-            yield GenericHouseItem(
-                vendor=self.vendor,
-                vendor_house_id=house_id,
-                rough_coordinate=coordinate
-            )
-
-    def parse_main_response(self, response):
         house_id = response.meta['rental'].id
 
         if response.status == 400:
@@ -143,29 +102,8 @@ class DetailMixin(RequestGenerator):
                 **self.gen_detail_shared_attrs(detail_dict)
             )
 
-            # get gps only when the house existed
-            # yield self.gen_detail_request(DetailRequestMeta(
-            #     house_id,
-            #     True
-            # ))
-
-    def css_first(self, base, selector, default='', allow_empty=False, deep_text=False):
-        # Check how to find if there's missing attribute
-        css = self.css(base, selector, [default], deep_text=deep_text)
-        if css:
-            return css[0]
-
-        if not allow_empty:
-            self.logger.info(
-                'Fail to get css first from {}({})'.format(
-                    base,
-                    selector
-                )
-            )
-
-        return ''
-
     def css(self, base, selector, default=None, deep_text=False):
+        # keep this for now, in case we meet this issue again.. #89
         # Issue #30, we may get innerHTML like "some of <kkkk></kkkk>target <qqq></qqq>string"
         # deep_text=True retrieve text in the way different from ::text,
         # which will also get all child text.
@@ -221,7 +159,7 @@ class DetailMixin(RequestGenerator):
                 ret['n_month_deposit'] = None
                 ret['deposit'] = None
 
-        # is_remanagement_fee, monthly_management_fee
+        # is_management_fee, monthly_management_fee
         price_includes = []
         if '租金含' in cost_data:
             price_includes = cost_data['租金含'].split('、')
@@ -484,6 +422,19 @@ class DetailMixin(RequestGenerator):
 
     def get_shared_misc(self, detail_dict):
         ret = {}
+
+        # rough_coordinate
+        position = get(detail_dict, 'positionRound')
+        coordinate = [
+            Decimal(position['lat']),
+            Decimal(position['lng'])
+        ]
+
+        if (coordinate[0] > 20 and coordinate[0] < 30):
+            # simple lat validator
+            # 東沙島 = 20.7036471,116.719958
+            # 馬祖 = 26.402385,119.8869727
+            ret['rough_coordinate'] = coordinate
 
         # facilities
         facilities = {}

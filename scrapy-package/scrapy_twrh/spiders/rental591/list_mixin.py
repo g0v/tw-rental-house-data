@@ -60,7 +60,7 @@ class ListMixin(RequestGenerator):
                 raw=json.dumps(house, ensure_ascii=False)
             )
             yield GenericHouseItem(**house_item)
-            yield self.gen_detail_request(DetailRequestMeta(house_item['vendor_house_id'], False))
+            yield self.gen_detail_request(DetailRequestMeta(house_item['vendor_house_id']))
 
     def gen_shared_attrs(self, house, meta: ListRequestMeta):
         house_id = get_list_val(house, 'id', 'post_id')
@@ -84,8 +84,9 @@ class ListMixin(RequestGenerator):
             )
         )
 
-        property_type = self.get_enum(
-            PropertyType, house_id, get_list_val(house, 'kind_name', 'kind_str'))
+        property_type = None
+        if 'kind_name' in house:
+            self.get_enum(PropertyType, house_id, get_list_val(house, 'kind_name'))
 
         floor = None
         total_floor = None
@@ -133,5 +134,4 @@ class ListMixin(RequestGenerator):
         for key in empty_keys:
             del generic_house[key]
 
-        self.logger.info(generic_house)
         return generic_house
