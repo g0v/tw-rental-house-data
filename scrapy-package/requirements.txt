@@ -26,7 +26,7 @@ queuelib==1.5.0
 readme-renderer==24.0
 requests==2.22.0
 requests-toolbelt==0.9.1
-Scrapy==1.6.0
+Scrapy==1.8.1
 service-identity==18.1.0
 six==1.12.0
 tqdm==4.32.1
