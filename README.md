@@ -28,9 +28,9 @@
 
 #### 環境需求
 
-1. Python3.5+
+1. Python3.8+
 2. pip
-3. pipenv (選用)
+3. pipenv
 4. [PostgreSQL](https://www.postgresql.org) 9.5+
    - 使用 PostgresSQL 以外的資料庫時，爬蟲可以順利執行，但使用內建的匯出指令時無法用 `-u --unique` 去除重複物件
 5. GeoDjango ，目前[主要的關聯式資料庫都有支援](https://docs.djangoproject.com/en/2.1/ref/contrib/gis/db-api/)
@@ -39,13 +39,9 @@
 #### 資料庫設定
 
 ```sh
-# 使用 virtualenv 安裝相關套件
-virtualenv -p python3 .
-pip install -r requirements.txt
-. ./bin/activate
-
-# 也可使用 pipenv 安裝相關套件
+# 使用 pipenv 安裝相關套件
 pipenv install
+pipenv shell
 
 cd backend
 # 設定資料庫（預設使用 sqlite）

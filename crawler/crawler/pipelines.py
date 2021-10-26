@@ -8,13 +8,23 @@
 import logging
 import traceback
 from django.utils import timezone
-from rental.models import HouseTS, House, HouseEtc
+from rental.models import HouseTS, House, HouseEtc, Vendor, Author
 from rental.enums import DealStatusType
-from .items import GenericHouseItem, RawHouseItem
+from scrapy_twrh.items import GenericHouseItem, RawHouseItem
+from django.contrib.gis.geos import Point
 from crawler.utils import now_tuple
 
 
 class CrawlerPipeline(object):
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.vendorMap = {}
+        for vendor in Vendor.objects.all():
+            self.vendorMap[vendor.name] = vendor
+
+    def item_vendor (self, item):
+        return self.vendorMap[item['vendor']]
 
     def process_item(self, item, spider):
         y, m, d, h = now_tuple()
@@ -24,13 +34,13 @@ class CrawlerPipeline(object):
 
                 house, created = House.objects.get_or_create(
                     vendor_house_id=item['house_id'],
-                    vendor=item['vendor']
+                    vendor=self.item_vendor(item)
                 )
 
                 house_etc, created = HouseEtc.objects.get_or_create(
                     house=house,
                     vendor_house_id=item['house_id'],
-                    vendor=item['vendor']
+                    vendor=self.item_vendor(item)
                 )
 
                 if 'raw' in item:
@@ -49,12 +59,12 @@ class CrawlerPipeline(object):
                 house_ts, created = HouseTS.objects.get_or_create(
                     year=y, month=m, day=d, hour=h,
                     vendor_house_id=item['vendor_house_id'],
-                    vendor=item['vendor']
+                    vendor=self.item_vendor(item)
                 )
 
                 house, created = House.objects.get_or_create(
                     vendor_house_id=item['vendor_house_id'],
-                    vendor=item['vendor']
+                    vendor=self.item_vendor(item)
                 )
 
                 to_db = item.copy()
@@ -68,6 +78,12 @@ class CrawlerPipeline(object):
                     to_db['deal_status'] == DealStatusType.NOT_FOUND and \
                     house.deal_status == DealStatusType.DEAL:
                     should_rollback_house_deal_status = True
+
+                if 'rough_coordinate' in to_db:
+                    to_db['rough_coordinate'] = Point(to_db['rough_coordinate'], srid=4326)
+                if 'author' in to_db:
+                    author_info, created = Author.objects.get_or_create(truth=to_db['author'])
+                    to_db['author'] = author_info
 
                 for attr in to_db:
                     setattr(house_ts, attr, to_db[attr])

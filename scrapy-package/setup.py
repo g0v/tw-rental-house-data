@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="scrapy-tw-rental-house",
-    version="1.0.0",
+    version="1.1.0",
     author="ddio",
     author_email="ddio@ddio.io",
     description="Scrapy spider for TW Rental House",
@@ -17,7 +17,7 @@ setuptools.setup(
         exclude=['trial', 'examples']
     ),
     install_requires=[
-        'Scrapy>=1'
+        'Scrapy>=2.5'
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
