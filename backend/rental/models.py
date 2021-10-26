@@ -92,6 +92,7 @@ class BaseHouse(models.Model):
     vendor_house_url = models.URLField(null=True)
     # price related
     monthly_price = models.IntegerField(null=True)
+    min_monthly_price = models.IntegerField(null=True)
     deposit_type = models.IntegerField(
         choices = [(tag, tag.value) for tag in DepositType],
         null=True
