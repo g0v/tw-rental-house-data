@@ -132,12 +132,18 @@ class PersistQueue(object):
 
         request_args = {
             **self.generate_request_args(rental_meta),
-            'callback': self.parser_wrapper,
-            'meta': {
+            # overwrite callback directly, 
+            # as we know where to find real parser
+            'callback': self.parser_wrapper
+        }
+
+        if 'meta' not in request_args:
+            request_args['meta'] = {
                 'rental': rental_meta,
                 'db_request': next_row
             }
-        }
+        elif 'db_request' not in request_args['meta']:
+            request_args['meta']['db_request'] = next_row
 
         return scrapy.Request(**request_args)
 
@@ -146,7 +152,7 @@ class PersistQueue(object):
         db_request.last_status = response.status
         db_request.save()
 
-        seed = response.meta.get('seed', {})
+        meta = response.meta.get('rental', {})
 
         try:
             for item in self.parse_response(response):
@@ -158,7 +164,7 @@ class PersistQueue(object):
             self.logger.error(
                 'Parser error in {} when handle meta {}. [{}] - {:.128}'.format(
                     self.vendor.name,
-                    seed,
+                    meta,
                     response.status,
                     response.text
                 )

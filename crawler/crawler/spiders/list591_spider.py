@@ -8,7 +8,6 @@ class List591Spider(Rental591Spider):
     def __init__(self, **kwargs):
         super().__init__(
             start_list=self.start_list_from_persist_queue,
-            # parse_list=self.parse_list_and_stop,
             **kwargs
         )
 
