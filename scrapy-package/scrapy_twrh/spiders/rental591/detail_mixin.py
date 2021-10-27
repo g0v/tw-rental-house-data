@@ -99,7 +99,7 @@ class DetailMixin(RequestGenerator):
                         'House {} not found by receiving status code {}'
                         .format(house_id, response.status)
                     )
-                    return None
+                return None
 
             detail_dict = jsonResp['data']
             detail_dict['house_id'] = house_id

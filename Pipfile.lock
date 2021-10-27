@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "b550970a17bba890cd0aaf2996af64f185cb29f35eea0aab6837232a80ea72b9"
+            "sha256": "ff1dfcfbb8f590c849421d7b440a7ba02ee38c5715d1cbb22350bb276693706b"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -403,11 +403,11 @@
         },
         "scrapy-tw-rental-house": {
             "hashes": [
-                "sha256:2639ad2747b986b534b84025739d42aee856d0b14569c6d493dc5844b22ed6e5",
-                "sha256:4f9e191299f5440fb9b84fa77359f3e2aff0c530c0c1a03ef453b51a4ff3d32f"
+                "sha256:02a4ddc1e1fb78deded0273236f4c681855a1bbb17ab5889883ca9bb100b6339",
+                "sha256:c5231be11f29280cab54ef93505d829e5d819f168c04061fc29ad9e8e210f43c"
             ],
             "index": "pypi",
-            "version": "==1.1.1"
+            "version": "==1.1.2"
         },
         "service-identity": {
             "hashes": [

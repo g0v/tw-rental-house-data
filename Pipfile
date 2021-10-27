@@ -14,7 +14,7 @@ django = "==2.1.15"
 jsonfield = "==2.0.2"
 raven = "==6.9.0"
 psycopg2-binary = "==2.8.6"
-scrapy-tw-rental-house = "==1.1.1"
+scrapy-tw-rental-house = "==1.1.2"
 
 [requires]
 python_version = "3"

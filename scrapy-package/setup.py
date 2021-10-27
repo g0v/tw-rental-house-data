@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="scrapy-tw-rental-house",
-    version="1.1.1",
+    version="1.1.2",
     author="ddio",
     author_email="ddio@ddio.io",
     description="Scrapy spider for TW Rental House",
