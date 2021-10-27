@@ -86,7 +86,20 @@ class DetailMixin(RequestGenerator):
                 self.logger.error('Invalid detail response for 591 house: {}'
                     .format(response.meta['rental'].id)
                 )
-                return False
+                return None
+            if isinstance(jsonResp['data'], str):
+                if jsonResp.get('msg', '') == '物件不存在':
+                    yield GenericHouseItem(
+                        vendor=self.vendor,
+                        vendor_house_id=house_id,
+                        deal_status=enums.DealStatusType.NOT_FOUND
+                    )
+                else:
+                    self.logger.error(
+                        'House {} not found by receiving status code {}'
+                        .format(house_id, response.status)
+                    )
+                return None
 
             detail_dict = jsonResp['data']
             detail_dict['house_id'] = house_id

@@ -36,13 +36,13 @@ class Field():
         if self.fn:
             val = self.fn(val)
 
-        if type(val) is datetime:
+        if isinstance(val, datetime):
             val = timezone.localtime(val).strftime('%Y-%m-%d %H:%M:%S %Z')
-        elif val is '' or val is None:
+        elif val == '' or val is None:
             val = '-'
-        elif val is True or val == 'true':
+        elif val == True or val == 'true':
             val = 'T' if use_tf else 1
-        elif val is False or val == 'false':
+        elif val == False or val == 'false':
             val = 'F' if use_tf else 0
 
         return val
@@ -51,13 +51,13 @@ class Field():
         if self.fn:
             val = self.fn(val)
 
-        if type(val) is datetime:
+        if isinstance(val, datetime):
             pass
-        elif val is '' or val is None:
+        elif val == '' or val is None:
             val = None
-        elif val is True or val == 'true':
+        elif val == True or val == 'true':
             val = True
-        elif val is False or val == 'false':
+        elif val == False or val == 'false':
             val = False
 
         return val

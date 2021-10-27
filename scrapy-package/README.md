@@ -7,12 +7,12 @@ Although this package provide the ability to crawl rental house website, it's de
 
 ## Requirement
 
-1. Python 3.5+
+1. Python 3.8+
 
 ## Installation
 
 ```bash
-pip install scrapy-tw-rental-house
+pipenv install scrapy-tw-rental-house
 ```
 
 ## Basic Usage
