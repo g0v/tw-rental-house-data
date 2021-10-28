@@ -2,6 +2,7 @@ import traceback
 from django.db import transaction
 from rental.models import House
 from rental import enums
+from scrapy_twrh.items import GenericHouseItem, RawHouseItem
 from scrapy_twrh.spiders.rental591 import Rental591Spider, util
 from .persist_queue import PersistQueue
 
@@ -20,11 +21,17 @@ class Detail591Spider(Rental591Spider):
             logger=self.logger,
             seed_parser=self.parse_seed,
             generate_request_args=self.gen_detail_request_args,
-            parse_response=self.parse_detail
+            parse_response=self.parse_detail_and_done
         )
 
     def parse_seed(self, seed):
         return util.DetailRequestMeta(*seed)
+
+    def parse_detail_and_done (self, response):
+        for item in self.default_parse_detail(response):
+            if item:
+                yield item
+        yield True
 
     def start_detail_requests(self):
 
