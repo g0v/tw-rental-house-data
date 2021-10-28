@@ -27,7 +27,5 @@ import os
 
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
-# USER_AGENT = '{} ({})'.format(
-#     os.environ.get('SCRAPY_AGENT', 'who-am-i'),
-#     os.environ.get('SCRAPY_AGENT_DOMAIN', '-'))
+# USER_AGENT = 'who-am-i (https://who.am.i.com)'
 
