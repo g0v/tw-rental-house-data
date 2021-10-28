@@ -95,6 +95,14 @@ class Command(BaseCommand):
         )
 
         parser.add_argument(
+            '--both',
+            default=False,
+            const=True,
+            nargs='?',
+            help='do all in one'
+        )
+
+        parser.add_argument(
             '-01',
             '--01-instead-of-truefalse',
             dest='use_01',
@@ -112,6 +120,7 @@ class Command(BaseCommand):
         big6 = options['big6'] is not False
         from_date = options['from_date']
         to_date = options['to_date']
+        all_in_one = options['both'] is not False
 
         if from_date is None:
             from_date = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -124,20 +133,23 @@ class Command(BaseCommand):
 
         to_date += timedelta(days=1)
 
-        if need_uniq:
-            tool = UniqExport()
+        if all_in_one:
+          self.export_everything(from_date, to_date, options['outfile'])
         else:
-            tool = RawExport()
+          if need_uniq:
+              tool = UniqExport()
+          else:
+              tool = RawExport()
 
-        tool.print(
-            from_date,
-            to_date,
-            print_enum=print_enum,
-            only_big6=big6,
-            outfile=options['outfile'],
-            export_json=want_json,
-            use_tf=use_tf
-        )
+          tool.print(
+              from_date,
+              to_date,
+              print_enum=print_enum,
+              only_big6=big6,
+              outfile=options['outfile'],
+              export_json=want_json,
+              use_tf=use_tf
+          )
 
     def is_end_of_sth(self):
         today = timezone.localdate()
@@ -228,18 +240,20 @@ class Command(BaseCommand):
         month_prefix = month_ago.strftime('%Y%m')
         self.export_everything(month_ago, today, month_prefix)
 
+        # don't do quarterly & annual export during periodic task,
+        # as this task has to be run in a more powerful instance
         # quarterly export
-        if end_of_sth['quarter']:
-            # we are at the end of quarter, no month underflow :)
-            quarter_ago = today.replace(month=today.month-2, day=1)
-            quarter_prefix = '{}Q{}'.format(today.year, int(today.month/3))
-            self.export_everything(quarter_ago, today, quarter_prefix)
+        # if end_of_sth['quarter']:
+        #     # we are at the end of quarter, no month underflow :)
+        #     quarter_ago = today.replace(month=today.month-2, day=1)
+        #     quarter_prefix = '{}Q{}'.format(today.year, int(today.month/3))
+        #     self.export_everything(quarter_ago, today, quarter_prefix)
 
         # annual export
-        if end_of_sth['year']:
-            year_ago = today.replace(month=1, day=1)
-            year_prefix = '{}'.format(today.year)
-            self.export_everything(year_ago, today, year_prefix)
+        # if end_of_sth['year']:
+        #     year_ago = today.replace(month=1, day=1)
+        #     year_prefix = '{}'.format(today.year)
+        #     self.export_everything(year_ago, today, year_prefix)
 
     def handle(self, *args, **options):
         is_periodic = options['is_periodic'] is not False
