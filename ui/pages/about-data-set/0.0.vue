@@ -6,7 +6,7 @@
       #data-set-toc
     article
       .white.br3.ph3.pv2.bg-green 本版本已經不是最新版囉！！請盡快使用
-        nuxt-link(to="/aboute-data-set") 新版資料集
+        nuxt-link(to="/about-data-set") 新版資料集
       h1 關於資料集
       about-data-brief
       vue-markdown(:breaks="false", :html="true", :toc="true", tocId="data-set-toc").

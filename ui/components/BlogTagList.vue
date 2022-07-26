@@ -1,7 +1,7 @@
 <template lang="pug">
   .tags
     nuxt-link.tag.mr1.dim.no-underline.outline-0(
-      v-for="tag in tagTexts"
+      v-for="tag in tags"
       :key="tag"
       :to="`/blog/tag/${tag}/`"
     ) {{tag}}
@@ -12,18 +12,6 @@ export default {
     tags: {
       required: true,
       type: Array
-    }
-  },
-  computed: {
-    tagTexts () {
-      return this.tags.map((tag) => {
-        if (typeof tag === 'string') {
-          return tag
-        } else if (tag.name) {
-          return tag.name
-        }
-        return tag.toString()
-      })
     }
   }
 }
