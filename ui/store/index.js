@@ -3,13 +3,13 @@ export const state = () => ({
 })
 
 export const mutations = {
-  updateBlogPosts(state, posts) {
+  updateBlogPosts (state, posts) {
     state.blogPosts = posts
   }
 }
 
 export const actions = {
-  nuxtClientInit({ commit }) {
+  nuxtClientInit ({ commit }) {
     // don't use nuxtServerInit since we are using gh-page
     if (process.server) {
       const { listPosts } = require('@/utils/blog')

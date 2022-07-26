@@ -28,10 +28,10 @@ export default {
     }
   },
   methods: {
-    contentHead(post) {
+    contentHead (post) {
       return post.content.slice(0, 300)
     },
-    contentCreated(post) {
+    contentCreated (post) {
       return new Date(post.meta.created).toLocaleDateString()
     }
   }

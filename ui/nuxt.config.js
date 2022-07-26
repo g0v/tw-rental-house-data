@@ -1,6 +1,11 @@
-const { listRoutes } = require('./utils/blog')
+// const { listRoutes } = require('./utils/blog')
 
-module.exports = {
+// TODO: friendly header
+// TODO: add sentry and plausible
+
+export default {
+  // Target: https://go.nuxtjs.dev/config-target
+  target: 'static',
   /*
    ** Headers of the page
    */
@@ -11,6 +16,9 @@ module.exports = {
       } else {
         return '開放台灣民間租屋資料'
       }
+    },
+    htmlAttrs: {
+      lang: 'zh-Hant-TW'
     },
     meta: [
       { charset: 'utf-8' },
@@ -38,33 +46,50 @@ module.exports = {
    */
   loading: { color: '#3B8070' },
   css: [
-    'normalize.css/normalize.css',
+    '@fortawesome/fontawesome-free/css/all.css',
     'tachyons/css/tachyons.css',
     'assets/css/common.scss'
   ],
-  /*
-   ** Build configuration
-   */
-  build: {
-    /*
-     ** Run ESLint on save
-     */
-    extend(config, { isDev, isClient }) {
-      if (isDev && isClient) {
-        config.module.rules.push({
-          enforce: 'pre',
-          test: /\.(js|vue)$/,
-          loader: 'eslint-loader',
-          exclude: /(node_modules)/
-        })
-      }
-    }
+
+  // Auto import components: https://go.nuxtjs.dev/config-components
+  components: true,
+
+  // Modules for dev and build (recommended): https://go.nuxtjs.dev/config-modules
+  buildModules: [
+    // https://go.nuxtjs.dev/eslint
+    '@nuxtjs/eslint-module',
+    '@nuxtjs/style-resources'
+  ],
+
+  // Modules: https://go.nuxtjs.dev/config-modules
+  modules: [
+    // https://go.nuxtjs.dev/axios
+    '@nuxtjs/axios',
+    // https://go.nuxtjs.dev/content
+    '@nuxt/content'
+    // 'vue-plausible',
+    // '@nuxtjs/sentry',
+  ],
+
+  // Axios module configuration: https://go.nuxtjs.dev/config-axios
+  axios: {
+    // Workaround to avoid enforcing hard-coded localhost:3000: https://github.com/nuxt-community/axios-module/issues/308
+    baseURL: '/'
   },
+
+  // Content module configuration: https://go.nuxtjs.dev/config-content
+  content: {},
+
+  server: {
+    port: process.env.SERVER_PORT || 3000,
+    host: process.env.SERVER_HOST || 'localhost'
+  },
+
   generate: {
-    fallback: true,
-    routes: listRoutes()
+    concurrency: 10
+    // routes: listRoutes()
   },
-  modules: ['modules/blog', '@nuxtjs/font-awesome'],
+  // modules: ['modules/blog', '@nuxtjs/font-awesome'],
   plugins: [
     'plugins/vue-markdown',
     'plugins/vue-observe-visibility',

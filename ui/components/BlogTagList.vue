@@ -15,8 +15,8 @@ export default {
     }
   },
   computed: {
-    tagTexts() {
-      return this.tags.map(tag => {
+    tagTexts () {
+      return this.tags.map((tag) => {
         if (typeof tag === 'string') {
           return tag
         } else if (tag.name) {

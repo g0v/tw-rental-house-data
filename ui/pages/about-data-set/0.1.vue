@@ -6,7 +6,7 @@
       #data-set-toc
     article
       h1 關於資料集
-      AboutDataBrief
+      about-data-brief
       vue-markdown(:breaks="false", :html="true", :toc="true", tocId="data-set-toc").
         ## 版本資訊
         1. 版本： 0.1
@@ -193,7 +193,7 @@
         ## 已知的問題
 
         1. 本資料集以 utf8 編碼釋出，使用微軟 Excel 需另外匯入或轉檔才可開啟（話說 Excel 打得開 10+ 萬行的表格嘛..）。詳細步驟請參考[行政院農委會資料開放平台](http://data.coa.gov.tw/FAQ/View.aspx?id=17)
-        2. 目前發現有些 591 的物件在已出租後，依然還是可以被搜尋到，所以雖然出租狀態可以確定是否出租，但出租天數有可能是錯的 XD 
+        2. 目前發現有些 591 的物件在已出租後，依然還是可以被搜尋到，所以雖然出租狀態可以確定是否出租，但出租天數有可能是錯的 XD
 
         ## 編碼表
 
@@ -228,30 +228,23 @@
         | 可炊       | 開伙必須是「可以」 |
         | 可寵       | 養寵物必須是「可以」 |
         | 產權登記    | 產權登記必須是「已辦」 |
-    Disqus
+    twrh-disqus
 
 </template>
 <script>
-import AboutDataBrief from '~/components/AboutDataBrief'
-import Disqus from '~/components/Disqus'
-
 export default {
-  components: {
-    AboutDataBrief,
-    Disqus
-  },
-  head() {
-    return {
-      title: '關於資料集'
-    }
-  },
-  data() {
+  data () {
     return {
       isHeaderVisible: true
     }
   },
+  head () {
+    return {
+      title: '關於資料集'
+    }
+  },
   methods: {
-    visibilityChanged(isVisible) {
+    visibilityChanged (isVisible) {
       this.isHeaderVisible = isVisible
     }
   }
@@ -263,7 +256,7 @@ export default {
     display: none;
   }
 
-  /deep/ {
+  :deep() {
     table {
       width: calc(100% + 3rem);
       position: relative;
@@ -306,7 +299,7 @@ export default {
         font-size: 1.2em;
       }
 
-      /deep/ ul {
+      :deep() ul {
         line-height: 1.5;
         padding-left: 1rem;
 
@@ -315,7 +308,7 @@ export default {
         }
       }
 
-      /deep/ ul.table-of-contents > li {
+      :deep() ul.table-of-contents > li {
         margin-bottom: 0.5rem;
       }
 
