@@ -37,11 +37,11 @@ export default {
       required: true
     }
   },
-  data() {
+  data () {
     return {}
   },
   computed: {
-    jsonContent() {
+    jsonContent () {
       return (
         'data:text/plain;charset=utf-8,' +
         encodeURIComponent(JSON.stringify(this.definition, null, 2))

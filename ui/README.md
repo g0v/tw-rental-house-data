@@ -2,6 +2,13 @@
 
 > UI for TW Rental House Data
 
+## Environment setting
+
+1. SENTRY_DSN
+1. SENTRY_AUTH_TOKEN
+1. SENTRY_ORG
+1. SENTRY_PROJECT
+
 ## Build Setup
 
 ``` bash

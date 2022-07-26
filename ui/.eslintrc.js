@@ -5,22 +5,25 @@ module.exports = {
     node: true
   },
   parserOptions: {
-    parser: 'babel-eslint'
+    parser: '@babel/eslint-parser',
+    requireConfigFile: false
   },
   extends: [
     '@nuxtjs',
-    'plugin:nuxt/recommended',
-    'plugin:prettier/recommended',
-    'prettier',
-    'prettier/vue'
+    'plugin:nuxt/recommended'
   ],
   plugins: [
-    'prettier'
   ],
   // add your custom rules here
   rules: {
-    "no-trailing-spaces": "off",
-    "no-console": "off",
-    "space-before-function-paren": "off"
-  }
+    'no-console': ['error', { allow: ['warn', 'error', 'info'] }]
+  },
+  overrides: [
+    {
+      files: ['pages/**/*.vue', 'layouts/*.vue'],
+      rules: {
+        'vue/multi-word-component-names': 'off'
+      }
+    }
+  ]
 }

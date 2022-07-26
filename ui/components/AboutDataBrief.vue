@@ -1,8 +1,8 @@
 <template lang="pug">
   vue-markdown.brief(:breaks="false", :anchorAttributes="{target: '_blank', rel: 'noopener'}").
     「開放民間租屋資料」希望提供對租屋議題有興趣的單位，一份長期、開放，而且詳細的租屋資料集，
-    去除有著作權與隱私疑慮的資料後，以 
-    [CC0](https://creativecommons.org/publicdomain/zero/1.0/deed.zh_TW) 
+    去除有著作權與隱私疑慮的資料後，以
+    [CC0](https://creativecommons.org/publicdomain/zero/1.0/deed.zh_TW)
     釋出，為台灣的租賃市場與居住議題建立研究的基礎資料。
 
     本資料集的來源目前為[591 租屋網](https://rent.591.com.tw/)，

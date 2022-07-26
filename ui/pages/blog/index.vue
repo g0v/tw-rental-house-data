@@ -4,42 +4,26 @@
     .tc.gray.f6
       i.fa.fa-tags.mr1
       blog-tag-list.dib(:tags="tags")
-    blog-post-list(:posts="blogPosts")
+    blog-post-list(:posts="posts")
 </template>
 <script>
-import { mapState } from 'vuex'
-import BlogPostList from '@/components/BlogPostList'
-import BlogTagList from '@/components/BlogTagList'
+import { uniq } from 'lodash'
 
 export default {
-  components: {
-    BlogPostList,
-    BlogTagList
-  },
   layout: 'blog',
-  head() {
+  async asyncData ({ $content, params, redirect }) {
+    const posts = await $content('blog')
+      .only(['slug', 'cover', 'title', 'author', 'created', 'tags', 'excerpt'])
+      .sortBy('created', 'desc')
+      .fetch()
+
+    const tags = uniq(posts.flatMap(post => post.tags))
+
+    return { posts, tags }
+  },
+  head () {
     return {
       title: '部落格'
-    }
-  },
-  computed: {
-    ...mapState(['blogPosts']),
-    tags() {
-      const counter = {}
-      this.blogPosts.forEach(post => {
-        post.meta.tags.forEach(tag => {
-          if (!counter[tag]) {
-            counter[tag] = 0
-          }
-          counter[tag] += 1
-        })
-      })
-      return Object.keys(counter).map(tag => {
-        return {
-          name: tag,
-          count: counter[tag]
-        }
-      })
     }
   }
 }

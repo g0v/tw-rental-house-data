@@ -3,53 +3,43 @@
     h1.tc
       span.gray 包含
       i.fa.fa-tag.mh2
-      | {{tag}} 
+      | {{tag}}
       span.gray 的貼文
     .tc.gray.f6
       | 其他標籤：
       blog-tag-list.dib(:tags="tags")
     blog-post-list(v-if="posts.length" :posts="posts")
     div(v-else)
-      .f3.b.pa3.mt6.tc 這是國王的標籤嗎？ ~"~ 
+      .f3.b.pa3.mt6.tc 這是國王的標籤嗎？ ~"~
       nuxt-link.tc.db(to="/blog") 回部落格首頁
 </template>
 <script>
-import { mapState } from 'vuex'
-import BlogPostList from '@/components/BlogPostList'
-import BlogTagList from '@/components/BlogTagList'
+import { uniq } from 'lodash'
 
 export default {
-  components: {
-    BlogPostList,
-    BlogTagList
-  },
   layout: 'blog',
-  computed: {
-    ...mapState(['blogPosts']),
-    tag() {
-      return this.$route.params.name
-    },
-    posts() {
-      return this.blogPosts.filter(post => post.meta.tags.includes(this.tag))
-    },
-    tags() {
-      const counter = {}
-      this.blogPosts.forEach(post => {
-        post.meta.tags.forEach(tag => {
-          if (!counter[tag]) {
-            counter[tag] = 0
-          }
-          counter[tag] += 1
-        })
+  async asyncData ({ $content, params, redirect }) {
+    const targetTag = params.name
+    const posts = await $content('blog')
+      .only(['slug', 'cover', 'title', 'author', 'created', 'tags', 'excerpt'])
+      .where({
+        tags: { $contains: targetTag }
       })
-      return Object.keys(counter)
-        .map(tag => {
-          return {
-            name: tag,
-            count: counter[tag]
-          }
-        })
-        .filter(tag => tag.name !== this.tag)
+      .sortBy('created', 'desc')
+      .fetch()
+
+    const allPosts = await $content('blog')
+      .only(['tags'])
+      .sortBy('created', 'desc')
+      .fetch()
+
+    const tags = uniq(allPosts.flatMap(post => post.tags)).filter(tag => tag !== targetTag)
+
+    return { posts, tags }
+  },
+  computed: {
+    tag () {
+      return this.$route.params.name
     }
   }
 }
