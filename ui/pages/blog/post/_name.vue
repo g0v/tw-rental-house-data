@@ -62,3 +62,19 @@ export default {
   }
 }
 </script>
+<style lang="scss" scoped>
+article {
+  ::v-deep(.nuxt-content) {
+    code {
+      font-size: 0.75rem;
+      padding: 0.125rem 0.25rem;
+      background: #ddd;
+      border-radius: 0.125rem;
+    }
+
+    li + li {
+      margin-top: 0.25rem;
+    }
+  }
+}
+</style>
