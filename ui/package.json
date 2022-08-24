@@ -46,7 +46,7 @@
     "babel-runtime": "^6.26.0",
     "eslint": "^8.17.0",
     "eslint-plugin-nuxt": "^3.2.0",
-    "eslint-plugin-vue": "^8.7.1",
+    "eslint-plugin-vue": "^9.4.0",
     "pug": "^3.0.2",
     "pug-plain-loader": "^1.1.0",
     "sass": "^1.53.0",
