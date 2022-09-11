@@ -75,6 +75,24 @@ article {
     li + li {
       margin-top: 0.25rem;
     }
+
+    table {
+      border-spacing: 0;
+      border: 1px solid #aaa;
+      thead th {
+        background: #eee;
+        padding: 0.25rem 0.5rem;
+        text-align: left;
+        border-bottom: 1px solid #aaa;
+      }
+      td {
+        border-bottom: 1px solid #aaa;
+        padding: 0.25rem 0.5rem;
+      }
+      tr:last-child td {
+        border: none;
+      }
+    }
   }
 }
 </style>
