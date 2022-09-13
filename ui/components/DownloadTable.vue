@@ -18,9 +18,9 @@
         td.pv2.ph3 {{prettyTotal(row)}}
         td.pv2.ph3(v-for="source in sourceHeaders" :key="source") {{prettyCount(row, source)}}
         td.pv2.ph3
-          div.pv1(v-for="file in row.files" :key="file.download_url")
+          div.pv1(v-for="file in row.files" :key="file.format")
             | [
-            a.ttu(:href="file.download_url" target="_blank" rel="noopener")
+            a.ttu(:href="downloadUrl(file, row)" target="_blank" rel="noopener")
               | {{file.format || 'csv'}}
               span.f7.black-50 {{filesize(file.size_byte)}}
             |]
@@ -33,6 +33,8 @@
 import _ from 'lodash'
 import filesize from 'filesize'
 
+const S3_BASE = 'https://tw-rental-data.s3.us-west-2.amazonaws.com/'
+
 const RELEASE_STAGE = {
   beta:
     '本次資料集有新增欄位，但由於資料更新的限制，並非整個月的的物件都有此資料'
@@ -40,6 +42,10 @@ const RELEASE_STAGE = {
 
 export default {
   props: {
+    year: {
+      type: Number,
+      required: true
+    },
     rows: {
       type: Array,
       required: true,
@@ -59,6 +65,10 @@ export default {
     idFormatter: {
       type: Function,
       default: null
+    },
+    periodPrefix: {
+      type: String,
+      default: '0'
     }
   },
   data () {
@@ -116,6 +126,20 @@ export default {
       const versionTokens = dataVer.split(' ')
       if (versionTokens.length > 1) {
         return RELEASE_STAGE[versionTokens[1].toLowerCase()]
+      }
+      return ''
+    },
+    downloadUrl (file, row) {
+      const config = file.download_url
+      if (typeof config === 'string') {
+        return config
+      }
+      if (config.isS3) {
+        const period = row.time.padStart(2, this.periodPrefix)
+        const type = row.type === '原始資料' ? 'Raw' : 'Deduplicated'
+        const format = file.format.toUpperCase()
+        const fileName = `[${this.year}${period}][${format}][${type}] TW-Rental-Data.zip`
+        return `${S3_BASE}${fileName}`
       }
       return ''
     }
