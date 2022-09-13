@@ -9,23 +9,18 @@
     .annual__seg.seg(v-if="definition.annual.length")
       .seg__title 年度資料
       .seg__table
-        DownloadTable(idHeader="年度", :rows="definition.annual")
+        DownloadTable(idHeader="年度", :rows="definition.annual" :year="year")
     .annual__seg.seg(v-if="definition.quarterly.length")
       .seg__title 每季資料
       .seg__table
-        DownloadTable(idHeader="季度", :rows="definition.quarterly")
+        DownloadTable(idHeader="季度", :rows="definition.quarterly" :year="year" period-prefix="Q")
     .annual__seg.seg
       .seg__title 每月資料
       .seg__table
-        DownloadTable(idHeader="月份", :rows="definition.monthly")
+        DownloadTable(idHeader="月份", :rows="definition.monthly" :year="year")
 </template>
 <script>
-import DownloadTable from '~/components/DownloadTable'
-
 export default {
-  components: {
-    DownloadTable
-  },
   props: {
     year: {
       type: Number,

@@ -30,6 +30,96 @@
         {"format": "json", "size_byte": 509272899, "download_url": "http://bit.ly/tw-rental-data-2021-Q1-dedup-json"}
       ],
       "comment": "爬蟲在 2 月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](/blog/tag/%E8%B3%87%E6%96%99%E9%8C%AF%E8%AA%A4/)"
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "2",
+      "type": "原始資料",
+      "total_count": 320458,
+      "sources": [
+          {"name": "591", "count": 320458}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  113986224, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 664129314, "download_url": { "isS3": true }}
+      ],
+      "comment": "爬蟲在 6/17 - 10/30 期間沒有完整執行，估計遺失 4.5% 的物件，詳情[請見影響評估](/blog/post/data-issue-2021-01)"
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "2",
+      "type": "消除重複住宅",
+      "total_count": 235311,
+      "sources": [
+          {"name": "591", "count": 235311}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":   81468973, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 486882020, "download_url": { "isS3": true }}
+      ],
+      "comment": "爬蟲在 6/17 - 10/30 期間沒有完整執行，估計遺失 4.5% 的物件，詳情[請見影響評估](/blog/post/data-issue-2021-01)"
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "3",
+      "type": "原始資料",
+      "total_count": 226115,
+      "sources": [
+          {"name": "591", "count": 226115}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  80486066, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 468860011, "download_url": { "isS3": true }}
+      ],
+      "comment": "爬蟲在 6/17 - 10/30 期間沒有完整執行，估計遺失 39% 的物件，詳情[請見影響評估](/blog/post/data-issue-2021-01)"
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "3",
+      "type": "消除重複住宅",
+      "total_count": 173641,
+      "sources": [
+          {"name": "591", "count": 173641}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":   60263700, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 359527500, "download_url": { "isS3": true }}
+      ],
+      "comment": "爬蟲在 6/17 - 10/30 期間沒有完整執行，估計遺失 39% 的物件，詳情[請見影響評估](/blog/post/data-issue-2021-01)"
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "4",
+      "type": "原始資料",
+      "total_count": 452018,
+      "sources": [
+          {"name": "591", "count": 452018}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  167235305, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 954161951, "download_url": { "isS3": true }}
+      ],
+      "comment": "爬蟲在 6/17 - 10/30 期間沒有完整執行，不建議使用本季資料，詳情[請見影響評估](/blog/post/data-issue-2021-01)"
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "4",
+      "type": "消除重複住宅",
+      "total_count": 352688,
+      "sources": [
+          {"name": "591", "count": 352688}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  125548352, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 742612018, "download_url": { "isS3": true }}
+      ],
+      "comment": "爬蟲在 6/17 - 10/30 期間沒有完整執行，不建議使用本季資料，詳情[請見影響評估](/blog/post/data-issue-2021-01)"
     }
   ],
   "monthly": [
@@ -180,6 +270,201 @@
         "files": [
           {"format": "csv", "size_byte":   40349266, "download_url": "http://bit.ly/tw-rental-data-2021-05-dedup-csv"},
           {"format": "json", "size_byte": 242449922, "download_url": "http://bit.ly/tw-rental-data-2021-05-dedup-json"}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "6",
+        "type": "原始資料",
+        "total_count": 117609,
+        "sources": [
+            {"name": "591", "count": 117609}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   41612990, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 243608929, "download_url": { "isS3": true }}
+        ],
+        "comment": "爬蟲在 6/17 - 10/30 期間沒有完整執行，估計遺失 6% 的物件，詳情[請見影響評估](/blog/post/data-issue-2021-01)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "6",
+        "type": "消除重複住宅",
+        "total_count": 96274,
+        "sources": [
+            {"name": "591", "count": 96274}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   33124970, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 199061500, "download_url": { "isS3": true }}
+        ],
+        "comment": "爬蟲在 6/17 - 10/30 期間沒有完整執行，估計遺失 6% 的物件，詳情[請見影響評估](/blog/post/data-issue-2021-01)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "7",
+        "type": "原始資料",
+        "total_count": 105879,
+        "sources": [
+            {"name": "591", "count": 105879}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   37493423, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 219394671, "download_url": { "isS3": true }}
+        ],
+        "comment": "爬蟲在 6/17 - 10/30 期間沒有完整執行，估計遺失 35% 的物件，詳情[請見影響評估](/blog/post/data-issue-2021-01)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "7",
+        "type": "消除重複住宅",
+        "total_count": 87455,
+        "sources": [
+            {"name": "591", "count": 87455}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   30133751, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 180910107, "download_url": { "isS3": true }}
+        ],
+        "comment": "爬蟲在 6/17 - 10/30 期間沒有完整執行，估計遺失 35% 的物件，詳情[請見影響評估](/blog/post/data-issue-2021-01)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "8",
+        "type": "原始資料",
+        "total_count": 102070,
+        "sources": [
+            {"name": "591", "count": 102070}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   36127502, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 211484083, "download_url": { "isS3": true }}
+        ],
+        "comment": "爬蟲在 6/17 - 10/30 期間沒有完整執行，估計遺失 37% 的物件，詳情[請見影響評估](/blog/post/data-issue-2021-01)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "8",
+        "type": "消除重複住宅",
+        "total_count": 82878,
+        "sources": [
+            {"name": "591", "count": 82878}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   28535087, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 171423696, "download_url": { "isS3": true }}
+        ],
+        "comment": "爬蟲在 6/17 - 10/30 期間沒有完整執行，估計遺失 37% 的物件，詳情[請見影響評估](/blog/post/data-issue-2021-01)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "9",
+        "type": "原始資料",
+        "total_count": 88451,
+        "sources": [
+            {"name": "591", "count": 88451}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   31312732, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 183250279, "download_url": { "isS3": true }}
+        ],
+        "comment": "爬蟲在 6/17 - 10/30 期間沒有完整執行，估計遺失 45% 的物件，詳情[請見影響評估](/blog/post/data-issue-2021-01)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "9",
+        "type": "消除重複住宅",
+        "total_count": 73581,
+        "sources": [
+            {"name": "591", "count": 73581}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   25332594, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 152172959, "download_url": { "isS3": true }}
+        ],
+        "comment": "爬蟲在 6/17 - 10/30 期間沒有完整執行，估計遺失 45% 的物件，詳情[請見影響評估](/blog/post/data-issue-2021-01)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "10",
+        "type": "原始資料",
+        "total_count": 233026,
+        "sources": [
+            {"name": "591", "count": 233026}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   84765453, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 490677273, "download_url": { "isS3": true }}
+        ],
+        "comment": "爬蟲在 6/17 - 10/30 期間沒有完整執行，不建議使用本月資料，詳情[請見影響評估](/blog/post/data-issue-2021-01)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "11",
+        "type": "原始資料",
+        "total_count": 161329,
+        "sources": [
+            {"name": "591", "count": 161329}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   59999262, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 340987212, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "11",
+        "type": "消除重複住宅",
+        "total_count": 137251,
+        "sources": [
+            {"name": "591", "count": 137251}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   48833175, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 289085568, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "12",
+        "type": "原始資料",
+        "total_count": 168006,
+        "sources": [
+            {"name": "591", "count": 168006}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   62565743, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 355167092, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "12",
+        "type": "消除重複住宅",
+        "total_count": 139330,
+        "sources": [
+            {"name": "591", "count": 139330}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   49635067, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 293515873, "download_url": { "isS3": true }}
         ],
         "comment": ""
       }
