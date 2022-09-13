@@ -111,7 +111,8 @@ export default {
   },
 
   plausible: {
-    domain: 'rentalhouse.g0v.ddio.io'
+    domain: 'rentalhouse.g0v.ddio.io',
+    enableAutoOutboundTracking: true
   },
 
   // Content module configuration: https://go.nuxtjs.dev/config-content
