@@ -18,19 +18,6 @@
 
 
 /*!
-  * vue-router v3.5.4
-  * (c) 2022 Evan You
-  * @license MIT
-  */
-
-/*!
- * Vue.js v2.7.8
- * (c) 2014-2022 Evan You
- * Released under the MIT License.
- */
-
-
-/*!
  * The buffer module from node.js, for the browser.
  *
  * @author   Feross Aboukhadijeh <http://feross.org>
@@ -67,6 +54,28 @@ PERFORMANCE OF THIS SOFTWARE.
 /*! https://mths.be/punycode v1.4.1 by @mathias */
 
 /*! ieee754. BSD-3-Clause License. Feross Aboukhadijeh <https://feross.org/opensource> */
+
+
+/*!
+  * vue-router v3.5.4
+  * (c) 2022 Evan You
+  * @license MIT
+  */
+
+/*!
+ * Vue.js v2.7.8
+ * (c) 2014-2022 Evan You
+ * Released under the MIT License.
+ */
+
+
+/**
+ * filesize
+ *
+ * @copyright 2018 Jason Mulligan <jason.mulligan@avoidwork.com>
+ * @license BSD-3-Clause
+ * @version 3.6.1
+ */
 
 
 /**
