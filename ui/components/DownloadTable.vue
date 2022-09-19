@@ -139,7 +139,7 @@ export default {
         const type = row.type === '原始資料' ? 'Raw' : 'Deduplicated'
         const format = file.format.toUpperCase()
         const fileName = `[${this.year}${period}][${format}][${type}] TW-Rental-Data.zip`
-        return `${S3_BASE}${fileName}`
+        return `${S3_BASE}${this.year}/${fileName}`
       }
       return ''
     }
