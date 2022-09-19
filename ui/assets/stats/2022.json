@@ -1,0 +1,248 @@
+{
+  "annual": [
+  ],
+  "quarterly": [
+  ],
+  "monthly": [
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "1",
+        "type": "原始資料",
+        "total_count": 151565,
+        "sources": [
+            {"name": "591", "count": 151565}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   56501843, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 320455894, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "1",
+        "type": "消除重複住宅",
+        "total_count": 126341,
+        "sources": [
+            {"name": "591", "count": 126341}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   45072855, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 266194335, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "2",
+        "type": "原始資料",
+        "total_count": 143136,
+        "sources": [
+            {"name": "591", "count": 143136}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   53188837, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 302522458, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "2",
+        "type": "消除重複住宅",
+        "total_count": 120551,
+        "sources": [
+            {"name": "591", "count": 120551}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   42847303, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 253892448, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "3",
+        "type": "原始資料",
+        "total_count": 174600,
+        "sources": [
+            {"name": "591", "count": 174600}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   65115377, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 369190938, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "3",
+        "type": "消除重複住宅",
+        "total_count": 145093,
+        "sources": [
+            {"name": "591", "count": 145093}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   51734312, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 305698563, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "4",
+        "type": "原始資料",
+        "total_count": 172116,
+        "sources": [
+            {"name": "591", "count": 172116}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   64173478, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 363929041, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "4",
+        "type": "消除重複住宅",
+        "total_count": 142174,
+        "sources": [
+            {"name": "591", "count": 142174}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   50690929, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 299548440, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "5",
+        "type": "原始資料",
+        "total_count": 168006,
+        "sources": [
+            {"name": "591", "count": 168006}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   61386267, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 347556684, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "5",
+        "type": "消除重複住宅",
+        "total_count": 136366,
+        "sources": [
+            {"name": "591", "count": 136366}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   48761445, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 287418494, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "6",
+        "type": "原始資料",
+        "total_count": 166180,
+        "sources": [
+            {"name": "591", "count": 166180}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   62304969, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 351641485, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "6",
+        "type": "消除重複住宅",
+        "total_count": 135872,
+        "sources": [
+            {"name": "591", "count": 135872}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   48700912, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 286465885, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "7",
+        "type": "原始資料",
+        "total_count": 172023,
+        "sources": [
+            {"name": "591", "count": 172023}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   64414126, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 363935988, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "7",
+        "type": "消除重複住宅",
+        "total_count": 141377,
+        "sources": [
+            {"name": "591", "count": 141377}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   50600137, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 298014731, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "8",
+        "type": "原始資料",
+        "total_count": 171625,
+        "sources": [
+            {"name": "591", "count": 171625}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   64206930, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 363007947, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "8",
+        "type": "消除重複住宅",
+        "total_count": 140709,
+        "sources": [
+            {"name": "591", "count": 140709}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   50294632, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 296531414, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      }
+  ]
+}
