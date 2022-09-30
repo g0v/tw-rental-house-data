@@ -22,7 +22,7 @@
     "@nuxtjs/sentry": "^5.1.7",
     "core-js": "^3.23.3",
     "dotenv": "^16.0.1",
-    "filesize": "^3.6.1",
+    "filesize": "^10.0.5",
     "intersection-observer": "^0.12.2",
     "lodash": "^4.17.21",
     "nuxt": "^2.15.8",
