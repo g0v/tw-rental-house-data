@@ -40,9 +40,9 @@ class Field():
             val = timezone.localtime(val).strftime('%Y-%m-%d %H:%M:%S %Z')
         elif val == '' or val is None:
             val = '-'
-        elif val == True or val == 'true':
+        elif val is True or val == 'true':
             val = 'T' if use_tf else 1
-        elif val == False or val == 'false':
+        elif val is False or val == 'false':
             val = 'F' if use_tf else 0
 
         return val
@@ -55,9 +55,9 @@ class Field():
             pass
         elif val == '' or val is None:
             val = None
-        elif val == True or val == 'true':
+        elif val is True or val == 'true':
             val = True
-        elif val == False or val == 'false':
+        elif val is False or val == 'false':
             val = False
 
         return val
