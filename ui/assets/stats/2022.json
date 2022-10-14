@@ -2,6 +2,36 @@
   "annual": [
   ],
   "quarterly": [
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "3",
+      "type": "原始資料",
+      "total_count": 400502,
+      "sources": [
+          {"name": "591", "count": 400502}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  150720515, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 837703427, "download_url": { "isS3": true }}
+      ],
+      "comment": ""
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "3",
+      "type": "消除重複住宅",
+      "total_count": 301334,
+      "sources": [
+          {"name": "591", "count": 301334}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  108356491, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 627002391, "download_url": { "isS3": true }}
+      ],
+      "comment": ""
+    }
   ],
   "monthly": [
       {
@@ -241,6 +271,36 @@
         "files": [
           {"format": "csv", "size_byte":   50294632, "download_url": { "isS3": true }},
           {"format": "json", "size_byte": 296531414, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "9",
+        "type": "原始資料",
+        "total_count": 160045,
+        "sources": [
+            {"name": "591", "count": 160045}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   59732668, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 310647497, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "9",
+        "type": "消除重複住宅",
+        "total_count": 160045,
+        "sources": [
+            {"name": "591", "count": 132366}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   47217474, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 255462522, "download_url": { "isS3": true }}
         ],
         "comment": ""
       }
