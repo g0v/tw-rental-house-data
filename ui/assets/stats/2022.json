@@ -355,7 +355,7 @@
         "data_ver": "0.2",
         "time": "9",
         "type": "消除重複住宅",
-        "total_count": 160045,
+        "total_count": 132366,
         "sources": [
             {"name": "591", "count": 132366}
         ],
