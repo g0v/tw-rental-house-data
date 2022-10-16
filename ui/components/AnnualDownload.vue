@@ -9,7 +9,7 @@
     .annual__seg.seg(v-if="definition.annual.length")
       .seg__title 年度資料
       .seg__table
-        DownloadTable(idHeader="年度", :rows="definition.annual" :year="year")
+        DownloadTable(idHeader="年度", :rows="definition.annual" :year="year" period-prefix="")
     .annual__seg.seg(v-if="definition.quarterly.length")
       .seg__title 每季資料
       .seg__table

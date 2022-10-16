@@ -1,0 +1,7 @@
+$green-100: #9EEBCF80;
+
+@mixin large-screen {
+  @media screen and (min-width: 60em) {
+    @content
+  }
+};
