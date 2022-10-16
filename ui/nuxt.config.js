@@ -54,6 +54,12 @@ export default {
     'assets/css/common.scss'
   ],
 
+  styleResources: {
+    scss: [
+      '~/assets/css/variables.scss'
+    ]
+  },
+
   // Auto import components: https://go.nuxtjs.dev/config-components
   components: true,
 
@@ -61,6 +67,7 @@ export default {
   buildModules: [
     // https://go.nuxtjs.dev/eslint
     '@nuxtjs/eslint-module',
+    '@nuxtjs/style-resources',
     '@nuxtjs/style-resources'
   ],
 

@@ -32,8 +32,7 @@
 <script>
 import _ from 'lodash'
 import filesize from 'filesize'
-
-const S3_BASE = 'https://tw-rental-data.s3.us-west-2.amazonaws.com/'
+import { S3_BASE } from '~/libs/defs'
 
 const RELEASE_STAGE = {
   beta:
@@ -135,7 +134,7 @@ export default {
         return config
       }
       if (config.isS3) {
-        const period = row.time.padStart(2, this.periodPrefix)
+        const period = this.periodPrefix ? row.time.padStart(2, this.periodPrefix) : ''
         const type = row.type === '原始資料' ? 'Raw' : 'Deduplicated'
         const format = file.format.toUpperCase()
         const fileName = `[${this.year}${period}][${format}][${type}] TW-Rental-Data.zip`

@@ -1,12 +1,12 @@
 <template lang="pug">
   .wrapper.flex.flex-column
-    header.bb.b--black-10.flex.items-baseline.pa2.ph3.bg-light-gray
+    header.bb.b--black-10.flex.items-baseline.pa2.ph3
       nuxt-link.header__menu.f4.b(to='/') 開放台灣民間租屋資料
       nuxt-link.header__menu(to='/download') 打包回家玩
       nuxt-link.header__menu(to='/about-data-set') 關於資料集
       nuxt-link.header__menu(to='/blog') 部落格
     nuxt.flex-auto
-    footer.bt.b--black-10.pa3.flex.space-between.bg-light-gray
+    footer.bt.b--black-10.pa3.flex.space-between
       section
         p.pa1.ma0
           | 本網站的所有資料，除另外註明，皆以
@@ -22,6 +22,10 @@
       //   p.pa1.ma0 隱私權說明
 </template>
 <style lang="scss">
+header, footer {
+  background: $green-100;
+}
+
 .wrapper {
   min-height: 100vh;
 }
