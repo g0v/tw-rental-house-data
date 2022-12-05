@@ -364,6 +364,66 @@
           {"format": "json", "size_byte": 255462522, "download_url": { "isS3": true }}
         ],
         "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "10",
+        "type": "原始資料",
+        "total_count": 167582,
+        "sources": [
+            {"name": "591", "count": 167582}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   62824880, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 350278886, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "10",
+        "type": "消除重複住宅",
+        "total_count": 136326,
+        "sources": [
+            {"name": "591", "count": 136326}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   48861108, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 283494250, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "11",
+        "type": "原始資料",
+        "total_count": 168157,
+        "sources": [
+            {"name": "591", "count": 168157}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   63154916, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 351569626, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "11",
+        "type": "消除重複住宅",
+        "total_count": 136882,
+        "sources": [
+            {"name": "591", "count": 136882}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   49147043, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 284719624, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
       }
   ]
 }
