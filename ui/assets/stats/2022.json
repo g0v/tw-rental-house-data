@@ -1,6 +1,36 @@
 {
   "year": 2022,
   "annual": [
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "1",
+      "type": "原始資料",
+      "total_count": 1404009,
+      "sources": [
+          {"name": "591", "count": 1404009}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":   529506996, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 2937437362, "download_url": { "isS3": true }}
+      ],
+      "comment": ""
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "1",
+      "type": "消除重複住宅",
+      "total_count": 960723,
+      "sources": [
+          {"name": "591", "count": 960723}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":   347152559, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 2000273062, "download_url": { "isS3": true }}
+      ],
+      "comment": ""
+    }
   ],
   "quarterly": [
     {
@@ -90,6 +120,36 @@
       "files": [
         {"format": "csv", "size_byte":  108356491, "download_url": { "isS3": true }},
         {"format": "json", "size_byte": 627002391, "download_url": { "isS3": true }}
+      ],
+      "comment": ""
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "4",
+      "type": "原始資料",
+      "total_count": 401038,
+      "sources": [
+          {"name": "591", "count": 401038}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  151358039, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 839088096, "download_url": { "isS3": true }}
+      ],
+      "comment": ""
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "3",
+      "type": "消除重複住宅",
+      "total_count": 293255,
+      "sources": [
+          {"name": "591", "count": 293255}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  105794366, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 610403612, "download_url": { "isS3": true }}
       ],
       "comment": ""
     }
@@ -422,6 +482,36 @@
         "files": [
           {"format": "csv", "size_byte":   49147043, "download_url": { "isS3": true }},
           {"format": "json", "size_byte": 284719624, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "12",
+        "type": "原始資料",
+        "total_count": 174528,
+        "sources": [
+            {"name": "591", "count": 174528}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   65645741, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 364975982, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "11",
+        "type": "消除重複住宅",
+        "total_count": 140950,
+        "sources": [
+            {"name": "591", "count": 140950}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   50661745, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 293226587, "download_url": { "isS3": true }}
         ],
         "comment": ""
       }
