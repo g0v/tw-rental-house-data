@@ -21,15 +21,6 @@
  */
 
 
-/**
- * filesize
- *
- * @copyright 2018 Jason Mulligan <jason.mulligan@avoidwork.com>
- * @license BSD-3-Clause
- * @version 3.6.1
- */
-
-
 /*!
  * The buffer module from node.js, for the browser.
  *
@@ -67,6 +58,15 @@ PERFORMANCE OF THIS SOFTWARE.
 /*! https://mths.be/punycode v1.4.1 by @mathias */
 
 /*! ieee754. BSD-3-Clause License. Feross Aboukhadijeh <https://feross.org/opensource> */
+
+
+/**
+ * filesize
+ *
+ * @copyright 2018 Jason Mulligan <jason.mulligan@avoidwork.com>
+ * @license BSD-3-Clause
+ * @version 3.6.1
+ */
 
 
 /**
