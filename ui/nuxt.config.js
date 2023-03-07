@@ -51,7 +51,7 @@ export default {
   css: [
     '@fortawesome/fontawesome-free/css/all.css',
     'tachyons/css/tachyons.css',
-    'assets/css/common.scss'
+    '~assets/css/common.scss'
   ],
 
   styleResources: {
@@ -67,7 +67,6 @@ export default {
   buildModules: [
     // https://go.nuxtjs.dev/eslint
     '@nuxtjs/eslint-module',
-    '@nuxtjs/style-resources',
     '@nuxtjs/style-resources'
   ],
 

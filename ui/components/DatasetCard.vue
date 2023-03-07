@@ -25,7 +25,6 @@ export default {
   },
   methods: {
     downloadUrl (file) {
-      console.warn(file)
       const config = file.download_url
       if (typeof config === 'string') {
         return config
