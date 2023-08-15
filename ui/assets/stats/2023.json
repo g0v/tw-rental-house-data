@@ -3,6 +3,36 @@
   "annual": [
   ],
   "quarterly": [
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "1",
+      "type": "原始資料",
+      "total_count": 374338,
+      "sources": [
+          {"name": "591", "count": 374338}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  141196254, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 783167760, "download_url": { "isS3": true }}
+      ],
+      "comment": ""
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "1",
+      "type": "消除重複住宅",
+      "total_count": 275767,
+      "sources": [
+          {"name": "591", "count": 275767}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  99407950, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 573943864, "download_url": { "isS3": true }}
+      ],
+      "comment": ""
+    }
   ],
   "monthly": [
       {
@@ -62,6 +92,156 @@
         "files": [
           {"format": "csv", "size_byte":   48531049, "download_url": { "isS3": true }},
           {"format": "json", "size_byte": 281070306, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "3",
+        "type": "原始資料",
+        "total_count": 174120,
+        "sources": [
+            {"name": "591", "count": 174120}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   65385385, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 364043115, "download_url": { "isS3": true }}
+        ],
+        "comment": "爬蟲在 3 月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](/blog/post/data-issue-2023-00)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "3",
+        "type": "消除重複住宅",
+        "total_count": 141925,
+        "sources": [
+            {"name": "591", "count": 141925}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   50935216, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 295196245, "download_url": { "isS3": true }}
+        ],
+        "comment": "爬蟲在 3 月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](/blog/post/data-issue-2023-00)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "4",
+        "type": "原始資料",
+        "total_count": 181193,
+        "sources": [
+            {"name": "591", "count": 181193}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   67630485, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 378477097, "download_url": { "isS3": true }}
+        ],
+        "comment": "爬蟲在 4 月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](/blog/post/data-issue-2023-00)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "4",
+        "type": "消除重複住宅",
+        "total_count": 150881,
+        "sources": [
+            {"name": "591", "count": 150881}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   53894295, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 313599510, "download_url": { "isS3": true }}
+        ],
+        "comment": "爬蟲在 4 月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](/blog/post/data-issue-2023-00)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "5",
+        "type": "原始資料",
+        "total_count": 197599,
+        "sources": [
+            {"name": "591", "count": 197599}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   74305330, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 413220556, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "5",
+        "type": "消除重複住宅",
+        "total_count": 157663,
+        "sources": [
+            {"name": "591", "count": 157663}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   56694345, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 328027713, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "6",
+        "type": "原始資料",
+        "total_count": 185605,
+        "sources": [
+            {"name": "591", "count": 185605}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   69693935, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 388059630, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "6",
+        "type": "消除重複住宅",
+        "total_count": 151460,
+        "sources": [
+            {"name": "591", "count": 151460}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   54421438, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 315091976, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "7",
+        "type": "原始資料",
+        "total_count": 191276,
+        "sources": [
+            {"name": "591", "count": 191276}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   71495613, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 399629920, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "7",
+        "type": "消除重複住宅",
+        "total_count": 156195,
+        "sources": [
+            {"name": "591", "count": 156195}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   55960994, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 324800746, "download_url": { "isS3": true }}
         ],
         "comment": ""
       }
