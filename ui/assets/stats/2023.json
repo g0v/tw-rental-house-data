@@ -3,36 +3,6 @@
   "annual": [
   ],
   "quarterly": [
-    {
-      "schema_ver": "1.0.0",
-      "data_ver": "0.2",
-      "time": "1",
-      "type": "原始資料",
-      "total_count": 374338,
-      "sources": [
-          {"name": "591", "count": 374338}
-      ],
-      "files": [
-        {"format": "csv", "size_byte":  141196254, "download_url": { "isS3": true }},
-        {"format": "json", "size_byte": 783167760, "download_url": { "isS3": true }}
-      ],
-      "comment": ""
-    },
-    {
-      "schema_ver": "1.0.0",
-      "data_ver": "0.2",
-      "time": "1",
-      "type": "消除重複住宅",
-      "total_count": 275767,
-      "sources": [
-          {"name": "591", "count": 275767}
-      ],
-      "files": [
-        {"format": "csv", "size_byte":  99407950, "download_url": { "isS3": true }},
-        {"format": "json", "size_byte": 573943864, "download_url": { "isS3": true }}
-      ],
-      "comment": ""
-    }
   ],
   "monthly": [
       {
