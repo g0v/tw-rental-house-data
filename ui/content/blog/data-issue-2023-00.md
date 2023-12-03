@@ -1,5 +1,5 @@
 ---
-title: 2023 3&4 月資料更新異常情況解釋 （2023-03 號爬蟲錯誤）
+title: 2023 3&4 月資料更新異常情況解釋 （2023-00 號爬蟲錯誤）
 author: ddio
 created: 2023-08-15
 cover: /imgs/blog/data-issue-2023-00.png

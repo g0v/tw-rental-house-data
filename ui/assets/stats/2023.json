@@ -3,6 +3,90 @@
   "annual": [
   ],
   "quarterly": [
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "1",
+      "type": "原始資料",
+      "total_count": 374338,
+      "sources": [
+          {"name": "591", "count": 374338}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  163104873, "download_url": { "isS3": true }}
+      ],
+      "comment": ""
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "1",
+      "type": "消除重複住宅",
+      "total_count": 261639,
+      "sources": [
+          {"name": "591", "count": 261639}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  108256201, "download_url": { "isS3": true }}
+      ],
+      "comment": ""
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "2",
+      "type": "原始資料",
+      "total_count": 438943,
+      "sources": [
+          {"name": "591", "count": 438943}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  190934617, "download_url": { "isS3": true }}
+      ],
+      "comment": "爬蟲在 3-4 月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](/blog/post/data-issue-2023-00)"
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "2",
+      "type": "消除重複住宅",
+      "total_count": 308702,
+      "sources": [
+          {"name": "591", "count": 308702}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  127628256, "download_url": { "isS3": true }}
+      ],
+      "comment": "爬蟲在 3-4 月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](/blog/post/data-issue-2023-00)"
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "3",
+      "type": "原始資料",
+      "total_count": 448536,
+      "sources": [
+          {"name": "591", "count": 448536}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  194350501, "download_url": { "isS3": true }}
+      ],
+      "comment": ""
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.2",
+      "time": "3",
+      "type": "消除重複住宅",
+      "total_count": 318439,
+      "sources": [
+          {"name": "591", "count": 318439}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  131518367, "download_url": { "isS3": true }}
+      ],
+      "comment": ""
+    }
   ],
   "monthly": [
       {
@@ -212,6 +296,126 @@
         "files": [
           {"format": "csv", "size_byte":   55960994, "download_url": { "isS3": true }},
           {"format": "json", "size_byte": 324800746, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "8",
+        "type": "原始資料",
+        "total_count": 194940,
+        "sources": [
+            {"name": "591", "count": 194940}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   72870650, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 407277466, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "8",
+        "type": "消除重複住宅",
+        "total_count": 160012,
+        "sources": [
+            {"name": "591", "count": 160012}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   57387726, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 332783125, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "9",
+        "type": "原始資料",
+        "total_count": 184585,
+        "sources": [
+            {"name": "591", "count": 184585}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   69048552, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 385658648, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "9",
+        "type": "消除重複住宅",
+        "total_count": 152100,
+        "sources": [
+            {"name": "591", "count": 152100}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   54555038, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 316310019, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "10",
+        "type": "原始資料",
+        "total_count": 171122,
+        "sources": [
+            {"name": "591", "count": 171122}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   63983854, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 357495685, "download_url": { "isS3": true }}
+        ],
+        "comment": "爬蟲在 10 月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](/blog/post/data-issue-2023-01)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "10",
+        "type": "消除重複住宅",
+        "total_count": 146992,
+        "sources": [
+            {"name": "591", "count": 146992}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   52708606, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 305659843, "download_url": { "isS3": true }}
+        ],
+        "comment": "爬蟲在 10 月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](/blog/post/data-issue-2023-01)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "11",
+        "type": "原始資料",
+        "total_count": 190215,
+        "sources": [
+            {"name": "591", "count": 190215}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   71459992, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 397675273, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "11",
+        "type": "消除重複住宅",
+        "total_count": 153405,
+        "sources": [
+            {"name": "591", "count": 153405}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   55273104, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 319232964, "download_url": { "isS3": true }}
         ],
         "comment": ""
       }
