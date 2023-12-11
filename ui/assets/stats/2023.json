@@ -5,7 +5,7 @@
   "quarterly": [
     {
       "schema_ver": "1.0.0",
-      "data_ver": "0.2",
+      "data_ver": "0.3",
       "time": "1",
       "type": "原始資料",
       "total_count": 374338,
@@ -19,7 +19,7 @@
     },
     {
       "schema_ver": "1.0.0",
-      "data_ver": "0.2",
+      "data_ver": "0.3",
       "time": "1",
       "type": "消除重複住宅",
       "total_count": 261639,
@@ -33,7 +33,7 @@
     },
     {
       "schema_ver": "1.0.0",
-      "data_ver": "0.2",
+      "data_ver": "0.3",
       "time": "2",
       "type": "原始資料",
       "total_count": 438943,
@@ -47,7 +47,7 @@
     },
     {
       "schema_ver": "1.0.0",
-      "data_ver": "0.2",
+      "data_ver": "0.3",
       "time": "2",
       "type": "消除重複住宅",
       "total_count": 308702,
@@ -61,7 +61,7 @@
     },
     {
       "schema_ver": "1.0.0",
-      "data_ver": "0.2",
+      "data_ver": "0.3",
       "time": "3",
       "type": "原始資料",
       "total_count": 448536,
@@ -75,7 +75,7 @@
     },
     {
       "schema_ver": "1.0.0",
-      "data_ver": "0.2",
+      "data_ver": "0.3",
       "time": "3",
       "type": "消除重複住宅",
       "total_count": 318439,
