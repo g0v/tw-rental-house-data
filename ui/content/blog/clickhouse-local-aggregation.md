@@ -5,6 +5,7 @@ created: 2023-12-11
 cover: /imgs/blog/clickhouse-local.jpg
 tags:
   - 定期紀錄
+  - 封面圖片使用 AI 生成
 ---
 
 為了節省計算資源、簡化季度、年度資料處理流程，我們將從「使用 PostgresSQL 合併跨月資料」，改為「使用  [ClickHouse local](https://clickhouse.com/docs/en/operations/utilities/clickhouse-local) 合併跨月資料」。除了少數欄位名稱更改外，使用上並無其餘影響。
