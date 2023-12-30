@@ -1,4 +1,4 @@
-from django.contrib.postgres.fields.jsonb import KeyTextTransform
+from django.db.models.fields.json import KeyTextTransform
 from datetime import datetime
 from django.utils import timezone
 

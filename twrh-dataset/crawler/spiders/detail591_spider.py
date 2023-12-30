@@ -2,7 +2,6 @@ import traceback
 from django.db import transaction
 from rental.models import House
 from rental import enums
-from scrapy_twrh.items import GenericHouseItem, RawHouseItem
 from scrapy_twrh.spiders.rental591 import Rental591Spider, util
 from .persist_queue import PersistQueue
 

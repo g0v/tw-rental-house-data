@@ -5,8 +5,8 @@ import os
 import django
 
 # Allow Scrapy to use Django
-sys.path.append('{}/../../backend'.format(os.path.dirname(os.path.realpath(__file__))))
-os.environ['DJANGO_SETTINGS_MODULE'] = 'backend.settings'
+sys.path.append('{}/../django'.format(os.path.dirname(os.path.realpath(__file__))))
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
 django.setup()
 
 BOT_NAME = 'tw-rental-house-data'

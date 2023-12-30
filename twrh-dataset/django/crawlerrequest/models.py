@@ -1,8 +1,7 @@
-import uuid
 from django.db import models
-from rental.models import JSONField
-from .enums import RequestType
+from django.db.models import JSONField
 from rental.models import BaseTimeSeries, Vendor
+from .enums import RequestType
 
 # Create your models here.
 
