@@ -1,18 +1,18 @@
 # TW Rental House Utility for Scrapy
 
 This package is built for crawling Taiwanese rental house related website using [Scrapy](https://scrapy.org/).
-As behaviour of crawlers may differ from their goal, scale, and pipeline, this package provides only minimun feature set, which allow developer to list and decode a rental house web page into structured data, without knowning too much about detail HTML and API structure of each website. In addition, this package is also designed for extensibility, which allow developers to insert customized callback, manipulate data, and integrate with existing crawler structure.
+As behaviour of crawlers may differ from their goal, scale, and pipeline, this package provides only minimum feature set, which allow developer to list and decode a rental house web page into structured data, without knowing too much about detail HTML and API structure of each website. In addition, this package is also designed for extensibility, which allow developers to insert customized callback, manipulate data, and integrate with existing crawler structure.
 
 Although this package provide the ability to crawl rental house website, it's developer's responsibility to ensure crawling mechanism and usage of data. Please be friendly to target website, such as consider using [DOWNLOAD_DELAY](https://doc.scrapy.org/en/latest/topics/settings.html#std:setting-DOWNLOAD_DELAY) or [AUTO_THROTTLING](https://doc.scrapy.org/en/latest/topics/autothrottle.html) to prevent bulk requesting.
 
 ## Requirement
 
-1. Python 3.8+
+1. Python 3.10+
 
 ## Installation
 
 ```bash
-pipenv install scrapy-tw-rental-house
+poetry add scrapy-tw-rental-house
 ```
 
 ## Basic Usage
@@ -34,7 +34,7 @@ And than start crawling by
 scrapy crawl awesome
 ```
 
-Please see [example](https://github.com/g0v/tw-rental-house-data/tree/master/scrapy-package/examples) for detail usage.
+Please see [example](https://github.com/g0v/tw-rental-house-data/tree/master/scrapy-twrh-example) for detail usage.
 
 ## Items
 
@@ -48,7 +48,7 @@ Note that both item are super set of schema. It developer's responsibility to ch
 For example, in `Rental591Spider`, for a single rental house, Scrapy will get:
 
 1. 1x `RawHouseItem` + 1x `GenericHouseItem` during listing all houses, which provide only minimun data field for `GenericHouseItem`
-2. 1x `RawHouseItem` + 2x `GenericHouseItem` during retrieving house detail. The 2nd `GenericHouseItem` contains only location info.
+2. 1x `RawHouseItem` + 1x `GenericHouseItem` during retrieving house detail.
 
 ## Handlers
 
@@ -58,5 +58,5 @@ All spiders in this package provide the following handlers:
 2. `parse_list`, similiar to `parse` in Scrapy, control how crawler handles response from `start_list` and generate request for detail house info page.
 3. `parse_detail`, control how crawler parse detail page.
 
-All spiders implements their own default handler, say, `default_start_list`, `default_parse_list`, and `default_parse_detail`, and can be overwrite during `__init__`. Please see [example](https://github.com/g0v/tw-rental-house-data/tree/master/scrapy-package/examples) for how to control spider behavior using handlers.
+All spiders implements their own default handler, say, `default_start_list`, `default_parse_list`, and `default_parse_detail`, and can be overwrite during `__init__`. Please see [example](https://github.com/g0v/tw-rental-house-data/tree/master/scrapy-twrh-example) for how to control spider behavior using handlers.
 

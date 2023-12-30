@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "scrapy-tw-rental-house"
+version = "1.2.1"
+description = "Scrapy spider for TW Rental House"
+readme = "README.md"
+authors = ["ddio <ddio@ddio.io>"]
+license = "MIT"
+repository="https://github.com/g0v/tw-rental-house-data/tree/master/scrapy_twrh"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+Scrapy = "^2.11.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -1,17 +1,17 @@
 # Scrapy TW Rental House Example / 範例
 
-This folder illustrate all example usage of `scrapy_twrh`.
+This package illustrate all example usage of latest (main/master) `scrapy-tw-rental-house`.
+
+## System requirement / 系統需求
+
+1. Python 3.10+
+2. [Poetry](https://python-poetry.org/)
 
 ## Installation / 安裝步驟
 
 ```bash
-cd examples
-# Create python 3 virtual env
-virtualenv -p /usr/bin/python3 .venv
-# Enable virtual env
-. .venv/bin/activate
-# Install package
-pip install scrapy-tw-rental-house --upgrade
+# Install package with poetry
+poetry install
 ```
 
 ## Example 0 - Simplest usage / 直接用
@@ -20,7 +20,6 @@ This example uses all default setting.
 Debug log can be access in scrapy.log
 
 ```bash
-cd basic
 scrapy crawl simple -L INFO
 ```
 
@@ -30,7 +29,6 @@ This example specifies the big 6 cities on init.
 Debug log can be access in scrapy.log
 
 ```bash
-cd basic
 scrapy crawl big6 -L INFO
 ```
 
@@ -40,7 +38,6 @@ This example retrieve first 90 results for each city.
 Debug log can be access in scrapy.log
 
 ```bash
-cd basic
 scrapy crawl first90 -L INFO
 ```
 
@@ -50,7 +47,6 @@ This example ignores house item not containing location info.
 You can see the spirder doesn't populate any item until requesting location related page.
 
 ```bash
-cd basic
 scrapy crawl location-only
 ```
 
