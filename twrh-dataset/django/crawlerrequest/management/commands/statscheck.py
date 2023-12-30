@@ -2,7 +2,7 @@ from datetime import timedelta
 from django.utils import timezone
 from django.core.management.base import BaseCommand
 from django.db.models import Count, IntegerField
-# from raven.contrib.django.raven_compat.models import client
+import sentry_sdk
 from crawlerrequest.models import RequestTS, Stats
 from crawlerrequest.enums import RequestType
 from rental import models
@@ -114,7 +114,7 @@ class Command(BaseCommand):
                     vendor_stats.n_fail
                 )
                 print(errmsg)
-                # client.captureMessage(errmsg)
+                sentry_sdk.capture_message(errmsg)
             else:
                 print('{}/{}/{}: Vendor {} get total/closed/dealt ({}/{}/{}) requests'.format(
                     self.this_ts['year'],

@@ -1,15 +1,16 @@
 import logging
-from raven.handlers.logging import SentryHandler
-from raven.conf import setup_logging
+import sentry_sdk
 from scrapy.exceptions import NotConfigured
 
 class SentryLogger(object):
     def __init__(self, dsn):
         if dsn:
-            # ref: https://blog.windrunner.me/tool/sentry.html#%E5%92%8C-scrapy-%E9%9B%86%E6%88%90
-            handler = SentryHandler(dsn)
-            handler.setLevel(logging.ERROR)
-            setup_logging(handler)
+            sentry_sdk.init(
+                dsn=dsn,
+                traces_sample_rate=0.1,
+                profiles_sample_rate=0.1,
+            )
+            sentry_sdk.set_level(logging.ERROR)
 
     @classmethod
     def from_crawler(cls, crawler):

@@ -13,6 +13,7 @@ django = "^5"
 scrapy-tw-rental-house = "==1.2.1"
 psycopg2-binary = "^2.9.9"
 pylint-django = "^2.5.5"
+sentry-sdk = "^1.39.1"
 
 
 [tool.poetry.group.dev.dependencies]
