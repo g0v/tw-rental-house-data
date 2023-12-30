@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "crawler"
+version = "0.1.0"
+description = "Example for scrapy-tw-rental-house"
+authors = ["ddio <ddio@ddio.io>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+Scrapy = "^2.11.0"
+scrapy-tw-rental-house = {path = "../scrapy-tw-rental-house"}
+
+[tool.poetry.group.dev.dependencies]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
