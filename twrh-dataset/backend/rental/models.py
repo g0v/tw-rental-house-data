@@ -1,20 +1,14 @@
 from django.contrib.gis.db import models
 from django.utils import timezone
+from django.db.models import JSONField
+import uuid
+
 from .enums import DealStatusType, BuildingType, PropertyType, ContactType, \
     DepositType, GenderType, TopRegionType, SubRegionType
 
-from django.conf import settings
-import uuid
-
 # Since django doesn't support general JSONField that utilize json type in all DB,
 # It's better to let user to determine which column type s/he want
-if hasattr(settings, 'USE_NATIVE_JSONFIELD') and settings.USE_NATIVE_JSONFIELD:
-    from django.contrib.postgres.fields import JSONField as superJSONField
-else:
-    from jsonfield import JSONField as superJSONField
 
-class JSONField(superJSONField):
-    pass
 
 def current_year():
     return timezone.localtime().year
@@ -43,7 +37,7 @@ class BaseTimeSeries(BaseModel):
     month = models.IntegerField(default=current_month)
     day = models.IntegerField(default=current_day)
     hour = models.IntegerField(default=current_stepped_hour)
-    
+
     class Meta:
         abstract = True
 
@@ -99,10 +93,10 @@ class BaseHouse(models.Model):
     )
     n_month_deposit = models.FloatField(null=True)
     deposit = models.IntegerField(null=True)
-    is_require_management_fee = models.NullBooleanField(null=True)
+    is_require_management_fee = models.BooleanField(null=True)
     monthly_management_fee = models.IntegerField(null=True)
-    has_parking = models.NullBooleanField(null=True)
-    is_require_parking_fee = models.NullBooleanField(null=True)
+    has_parking = models.BooleanField(null=True)
+    is_require_parking_fee = models.BooleanField(null=True)
     monthly_parking_fee = models.IntegerField(null=True)
     per_ping_price = models.FloatField(null=True)
     # other basic info
@@ -114,7 +108,7 @@ class BaseHouse(models.Model):
         choices = [(tag, tag.value) for tag in PropertyType],
         null=True
     )
-    is_rooftop = models.NullBooleanField(null=True)
+    is_rooftop = models.BooleanField(null=True)
     floor = models.IntegerField(null=True)
     total_floor = models.IntegerField(null=True)
     dist_to_highest_floor = models.IntegerField(null=True)
@@ -134,15 +128,15 @@ class BaseHouse(models.Model):
     living_functions = JSONField(null=True)
     # subway, bus, public_bike, train, hsr
     transportation = JSONField(null=True)
-    has_tenant_restriction = models.NullBooleanField(null=True)
-    has_gender_restriction = models.NullBooleanField(null=True)
+    has_tenant_restriction = models.BooleanField(null=True)
+    has_gender_restriction = models.BooleanField(null=True)
     gender_restriction = models.IntegerField(
         choices = [(tag, tag.value) for tag in GenderType],
         null=True
     )
-    can_cook = models.NullBooleanField(null=True)
-    allow_pet = models.NullBooleanField(null=True)
-    has_perperty_registration = models.NullBooleanField(null=True)
+    can_cook = models.BooleanField(null=True)
+    allow_pet = models.BooleanField(null=True)
+    has_perperty_registration = models.BooleanField(null=True)
     # undermined for now
     facilities = JSONField(null=True)
     contact = models.IntegerField(
@@ -180,7 +174,7 @@ class HouseEtc(BaseModel):
     detail_dict = JSONField(null=True)
     list_raw = models.TextField(null=True)
     detail_raw = models.TextField(null=True)
-    could_be_rooftop = models.NullBooleanField(null=True)
+    could_be_rooftop = models.BooleanField(null=True)
 
     class Meta:
         db_table = 'house_etc'

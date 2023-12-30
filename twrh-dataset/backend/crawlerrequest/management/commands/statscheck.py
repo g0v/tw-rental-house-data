@@ -1,15 +1,13 @@
 from datetime import timedelta
 from django.utils import timezone
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 from django.db.models import Count, IntegerField
-from raven.contrib.django.raven_compat.models import client
+# from raven.contrib.django.raven_compat.models import client
 from crawlerrequest.models import RequestTS, Stats
 from crawlerrequest.enums import RequestType
 from rental import models
 from rental.models import House, HouseTS, Vendor
 from rental.enums import DealStatusType
-
-import json
 
 class Command(BaseCommand):
     help = 'Generate daily crawler statistics and error, if any'
@@ -116,7 +114,7 @@ class Command(BaseCommand):
                     vendor_stats.n_fail
                 )
                 print(errmsg)
-                client.captureMessage(errmsg)
+                # client.captureMessage(errmsg)
             else:
                 print('{}/{}/{}: Vendor {} get total/closed/dealt ({}/{}/{}) requests'.format(
                     self.this_ts['year'],
