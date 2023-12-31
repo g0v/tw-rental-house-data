@@ -4,3 +4,5 @@ crawler/settings.py
 *.log
 *.csv
 rental_house.json
+devop
+datas/*.zip
