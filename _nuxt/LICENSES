@@ -1,12 +1,3 @@
-/**
- * filesize
- *
- * @copyright 2018 Jason Mulligan <jason.mulligan@avoidwork.com>
- * @license BSD-3-Clause
- * @version 3.6.1
- */
-
-
 /*!
   * vue-router v3.5.4
   * (c) 2022 Evan You
@@ -76,6 +67,15 @@ PERFORMANCE OF THIS SOFTWARE.
 /*! https://mths.be/punycode v1.4.1 by @mathias */
 
 /*! ieee754. BSD-3-Clause License. Feross Aboukhadijeh <https://feross.org/opensource> */
+
+
+/**
+ * filesize
+ *
+ * @copyright 2018 Jason Mulligan <jason.mulligan@avoidwork.com>
+ * @license BSD-3-Clause
+ * @version 3.6.1
+ */
 
 
 /**

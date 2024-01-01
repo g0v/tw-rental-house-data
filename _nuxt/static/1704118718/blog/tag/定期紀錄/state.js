@@ -1,0 +1,1 @@
+window.__NUXT__=(function(a){return {staticAssetsBase:"\u002F_nuxt\u002Fstatic\u002F1704118718",layout:"blog",error:a,serverRendered:true,routePath:"\u002Fblog\u002Ftag\u002F%E5%AE%9A%E6%9C%9F%E7%B4%80%E9%8C%84",config:{_app:{basePath:"\u002F",assetsPath:"\u002F_nuxt\u002F",cdnURL:a},content:{dbHash:"c384a416"}}}}(null));
