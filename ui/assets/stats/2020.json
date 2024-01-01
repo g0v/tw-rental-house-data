@@ -10,8 +10,8 @@
           {"name": "591", "count": 1285681}
       ],
       "files": [
-        {"format": "csv", "size_byte":   454731213, "download_url": "http://bit.ly/tw-rental-data-2020-raw-csv"},
-        {"format": "json", "size_byte": 2660914792, "download_url": "http://bit.ly/tw-rental-data-2020-raw-json"}
+        {"format": "csv", "size_byte":   454731213, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 2660914792, "download_url": { "isS3": true }}
       ],
       "comment": ""
     },
@@ -25,8 +25,8 @@
           {"name": "591", "count": 826718}
       ],
       "files": [
-        {"format": "csv", "size_byte":   284934216, "download_url": "http://bit.ly/tw-rental-data-2020-dedup-csv"},
-        {"format": "json", "size_byte": 1708650356, "download_url": "http://bit.ly/tw-rental-data-2020-dedup-json"}
+        {"format": "csv", "size_byte":   284934216, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 1708650356, "download_url": { "isS3": true }}
       ],
       "comment": ""
     }
@@ -42,8 +42,8 @@
           {"name": "591", "count": 334876}
       ],
       "files": [
-        {"format": "csv", "size_byte":  126456849, "download_url": "http://bit.ly/tw-rental-data-2020-Q1-raw-csv"},
-        {"format": "json", "size_byte": 692445549, "download_url": "http://bit.ly/tw-rental-data-2020-Q1-raw-json"}
+        {"format": "csv", "size_byte":  126456849, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 692445549, "download_url": { "isS3": true }}
       ]
     },
     {
@@ -56,8 +56,8 @@
           {"name": "591", "count": 238680}
       ],
       "files": [
-        {"format": "csv", "size_byte": 352865876, "download_url": "http://bit.ly/tw-rental-data-2020-Q1-dedup-csv"},
-        {"format": "json", "size_byte": 492679283, "download_url": "http://bit.ly/tw-rental-data-2020-Q1-dedup-json"}
+        {"format": "csv", "size_byte": 352865876, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 492679283, "download_url": { "isS3": true }}
       ]
     },
     {
@@ -70,8 +70,8 @@
           {"name": "591", "count": 385231}
       ],
       "files": [
-        {"format": "csv", "size_byte":  135597419, "download_url": "http://bit.ly/tw-rental-data-2020-Q2-raw-csv"},
-        {"format": "json", "size_byte": 796677029, "download_url": "http://bit.ly/tw-rental-data-2020-Q2-raw-json"}
+        {"format": "csv", "size_byte":  135597419, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 796677029, "download_url": { "isS3": true }}
       ]
     },
     {
@@ -84,8 +84,8 @@
           {"name": "591", "count": 269997}
       ],
       "files": [
-        {"format": "csv", "size_byte":   92350551, "download_url": "http://bit.ly/tw-rental-data-2020-Q2-dedup-csv"},
-        {"format": "json", "size_byte": 557429946, "download_url": "http://bit.ly/tw-rental-data-2020-Q2-dedup-json"}
+        {"format": "csv", "size_byte":   92350551, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 557429946, "download_url": { "isS3": true }}
       ]
     },
     {
@@ -98,8 +98,8 @@
           {"name": "591", "count": 380161}
       ],
       "files": [
-        {"format": "csv", "size_byte":  134008644, "download_url": "http://bit.ly/tw-rental-data-2020-Q3-raw-csv"},
-        {"format": "json", "size_byte": 786560494, "download_url": "http://bit.ly/tw-rental-data-2020-Q3-raw-json"}
+        {"format": "csv", "size_byte":  134008644, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 786560494, "download_url": { "isS3": true }}
       ]
     },
     {
@@ -112,8 +112,8 @@
           {"name": "591", "count": 271188}
       ],
       "files": [
-        {"format": "csv", "size_byte":   92886480, "download_url": "http://bit.ly/tw-rental-data-2020-Q3-dedup-csv"},
-        {"format": "json", "size_byte": 560118715, "download_url": "http://bit.ly/tw-rental-data-2020-Q3-dedup-json"}
+        {"format": "csv", "size_byte":   92886480, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 560118715, "download_url": { "isS3": true }}
       ]
     },
     {
@@ -126,8 +126,8 @@
           {"name": "591", "count": 366093}
       ],
       "files": [
-        {"format": "csv", "size_byte":  129875785, "download_url": "http://bit.ly/tw-rental-data-2020-Q4-raw-csv"},
-        {"format": "json", "size_byte": 758104222, "download_url": "http://bit.ly/tw-rental-data-2020-Q4-raw-json"}
+        {"format": "csv", "size_byte":  129875785, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 758104222, "download_url": { "isS3": true }}
       ]
     },
     {
@@ -140,8 +140,8 @@
           {"name": "591", "count": 257815}
       ],
       "files": [
-        {"format": "csv", "size_byte":  88936239, "download_url": "http://bit.ly/tw-rental-data-2020-Q4-dedup-csv"},
-        {"format": "json", "size_byte": 532989653, "download_url": "http://bit.ly/tw-rental-data-2020-Q4-dedup-json"}
+        {"format": "csv", "size_byte":  88936239, "download_url": { "isS3": true }},
+        {"format": "json", "size_byte": 532989653, "download_url": { "isS3": true }}
       ]
     }
   ],
@@ -156,8 +156,8 @@
             {"name": "591", "count": 129114}
         ],
         "files": [
-          {"format": "csv", "size_byte":   45157668, "download_url": "http://bit.ly/tw-rental-data-2020-01-raw-csv"},
-          {"format": "json", "size_byte": 266785175, "download_url": "http://bit.ly/tw-rental-data-2020-01-raw-json"}
+          {"format": "csv", "size_byte":   45157668, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 266785175, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -171,8 +171,8 @@
             {"name": "591", "count": 100425}
         ],
         "files": [
-          {"format": "csv", "size_byte":   34079504, "download_url": "http://bit.ly/tw-rental-data-2020-01-dedup-csv"},
-          {"format": "json", "size_byte": 207105796, "download_url": "http://bit.ly/tw-rental-data-2020-01-dedup-json"}
+          {"format": "csv", "size_byte":   34079504, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 207105796, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -186,8 +186,8 @@
             {"name": "591", "count": 143264}
         ],
         "files": [
-          {"format": "csv", "size_byte":  50168802, "download_url": "http://bit.ly/tw-rental-data-2020-02-raw-csv"},
-          {"format": "json", "size_byte": 296090982, "download_url": "http://bit.ly/tw-rental-data-2020-02-raw-json"}
+          {"format": "csv", "size_byte":  50168802, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 296090982, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -201,8 +201,8 @@
             {"name": "591", "count": 115642}
         ],
         "files": [
-          {"format": "csv", "size_byte": 39316873, "download_url": "http://bit.ly/tw-rental-data-2020-02-dedup-csv"},
-          {"format": "json", "size_byte": 238556133, "download_url": "http://bit.ly/tw-rental-data-2020-02-dedup-json"}
+          {"format": "csv", "size_byte": 39316873, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 238556133, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -216,8 +216,8 @@
             {"name": "591", "count": 170735}
         ],
         "files": [
-          {"format": "csv", "size_byte": 59798293, "download_url": "http://bit.ly/tw-rental-data-2020-03-raw-csv"},
-          {"format": "json", "size_byte": 352865876, "download_url": "http://bit.ly/tw-rental-data-2020-03-raw-json"}
+          {"format": "csv", "size_byte": 59798293, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 352865876, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -231,8 +231,8 @@
             {"name": "591", "count": 133329}
         ],
         "files": [
-          {"format": "csv", "size_byte":   45314326, "download_url": "http://bit.ly/tw-rental-data-2020-03-dedup-csv"},
-          {"format": "json", "size_byte": 275028324, "download_url": "http://bit.ly/tw-rental-data-2020-03-dedup-json"}
+          {"format": "csv", "size_byte":   45314326, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 275028324, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -246,8 +246,8 @@
             {"name": "591", "count": 169102}
         ],
         "files": [
-          {"format": "csv", "size_byte": 59218473, "download_url": "http://bit.ly/tw-rental-data-2020-04-raw-csv"},
-          {"format": "json", "size_byte": 349450489, "download_url": "http://bit.ly/tw-rental-data-2020-04-raw-json"}
+          {"format": "csv", "size_byte": 59218473, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 349450489, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -261,8 +261,8 @@
             {"name": "591", "count": 131845}
         ],
         "files": [
-          {"format": "csv", "size_byte":   44803192, "download_url": "http://bit.ly/tw-rental-data-2020-04-dedup-csv"},
-          {"format": "json", "size_byte": 271940497, "download_url": "http://bit.ly/tw-rental-data-2020-04-dedup-json"}
+          {"format": "csv", "size_byte":   44803192, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 271940497, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -276,8 +276,8 @@
             {"name": "591", "count": 174726}
         ],
         "files": [
-          {"format": "csv", "size_byte": 61204437, "download_url": "http://bit.ly/tw-rental-data-2020-05-raw-csv"},
-          {"format": "json", "size_byte": 361104156, "download_url": "http://bit.ly/tw-rental-data-2020-05-raw-json"}
+          {"format": "csv", "size_byte": 61204437, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 361104156, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -291,8 +291,8 @@
             {"name": "591", "count": 134563}
         ],
         "files": [
-          {"format": "csv", "size_byte":  45745320, "download_url": "http://bit.ly/tw-rental-data-2020-05-dedup-csv"},
-          {"format": "json", "size_byte": 277586686, "download_url": "http://bit.ly/tw-rental-data-2020-05-dedup-json"}
+          {"format": "csv", "size_byte":  45745320, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 277586686, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -306,8 +306,8 @@
             {"name": "591", "count": 168115}
         ],
         "files": [
-          {"format": "csv", "size_byte": 58956597, "download_url": "http://bit.ly/tw-rental-data-2020-06-raw-csv"},
-          {"format": "json", "size_byte": 347560217, "download_url": "http://bit.ly/tw-rental-data-2020-06-raw-json"}
+          {"format": "csv", "size_byte": 58956597, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 347560217, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -321,8 +321,8 @@
             {"name": "591", "count": 131907}
         ],
         "files": [
-          {"format": "csv", "size_byte":   44882562, "download_url": "http://bit.ly/tw-rental-data-2020-06-dedup-csv"},
-          {"format": "json", "size_byte": 272186079, "download_url": "http://bit.ly/tw-rental-data-2020-06-dedup-json"}
+          {"format": "csv", "size_byte":   44882562, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 272186079, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -336,8 +336,8 @@
             {"name": "591", "count": 170543}
         ],
         "files": [
-          {"format": "csv", "size_byte": 59808733, "download_url": "http://bit.ly/tw-rental-data-2020-07-raw-csv"},
-          {"format": "json", "size_byte": 352609352, "download_url": "http://bit.ly/tw-rental-data-2020-07-raw-json"}
+          {"format": "csv", "size_byte": 59808733, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 352609352, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -351,8 +351,8 @@
             {"name": "591", "count": 134329}
         ],
         "files": [
-          {"format": "csv", "size_byte":   45710914, "download_url": "http://bit.ly/tw-rental-data-2020-07-dedup-csv"},
-          {"format": "json", "size_byte": 277201480, "download_url": "http://bit.ly/tw-rental-data-2020-07-dedup-json"}
+          {"format": "csv", "size_byte":   45710914, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 277201480, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -366,8 +366,8 @@
             {"name": "591", "count": 168450}
         ],
         "files": [
-          {"format": "csv", "size_byte": 348305241, "download_url": "http://bit.ly/tw-rental-data-2020-08-raw-csv"},
-          {"format": "json", "size_byte": 348305241, "download_url": "http://bit.ly/tw-rental-data-2020-08-raw-json"}
+          {"format": "csv", "size_byte": 348305241, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 348305241, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -381,8 +381,8 @@
             {"name": "591", "count": 132469}
         ],
         "files": [
-          {"format": "csv", "size_byte":   45064826, "download_url": "http://bit.ly/tw-rental-data-2020-08-dedup-csv"},
-          {"format": "json", "size_byte": 273366338, "download_url": "http://bit.ly/tw-rental-data-2020-08-dedup-json"}
+          {"format": "csv", "size_byte":   45064826, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 273366338, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -396,8 +396,8 @@
             {"name": "591", "count": 161185}
         ],
         "files": [
-          {"format": "csv", "size_byte": 56602782, "download_url": "http://bit.ly/tw-rental-data-2020-09-raw-csv"},
-          {"format": "json", "size_byte": 333324801, "download_url": "http://bit.ly/tw-rental-data-2020-09-raw-json"}
+          {"format": "csv", "size_byte": 56602782, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 333324801, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -411,8 +411,8 @@
             {"name": "591", "count": 125815}
         ],
         "files": [
-          {"format": "csv", "size_byte":   42860375, "download_url": "http://bit.ly/tw-rental-data-2020-09-dedup-csv"},
-          {"format": "json", "size_byte": 259676937, "download_url": "http://bit.ly/tw-rental-data-2020-09-dedup-json"}
+          {"format": "csv", "size_byte":   42860375, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 259676937, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -426,8 +426,8 @@
             {"name": "591", "count": 162858}
         ],
         "files": [
-          {"format": "csv", "size_byte":   57314984, "download_url": "http://bit.ly/tw-rental-data-2020-10-raw-csv"},
-          {"format": "json", "size_byte": 336866283, "download_url": "http://bit.ly/tw-rental-data-2020-10-raw-json"}
+          {"format": "csv", "size_byte":   57314984, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 336866283, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -441,8 +441,8 @@
             {"name": "591", "count": 126773}
         ],
         "files": [
-          {"format": "csv", "size_byte":   43295178, "download_url": "http://bit.ly/tw-rental-data-2020-10-dedup-csv"},
-          {"format": "json", "size_byte": 261719952, "download_url": "http://bit.ly/tw-rental-data-2020-10-dedup-json"}
+          {"format": "csv", "size_byte":   43295178, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 261719952, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -456,8 +456,8 @@
             {"name": "591", "count": 159694}
         ],
         "files": [
-          {"format": "csv", "size_byte": 56429557, "download_url": "http://bit.ly/tw-rental-data-2020-11-raw-csv"},
-          {"format": "json", "size_byte": 330535305, "download_url": "http://bit.ly/tw-rental-data-2020-11-raw-json"}
+          {"format": "csv", "size_byte": 56429557, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 330535305, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -471,8 +471,8 @@
             {"name": "591", "count": 123428}
         ],
         "files": [
-          {"format": "csv", "size_byte":  42333912, "download_url": "http://bit.ly/tw-rental-data-2020-11-dedup-csv"},
-          {"format": "json", "size_byte": 254986016, "download_url": "http://bit.ly/tw-rental-data-2020-11-dedup-json"}
+          {"format": "csv", "size_byte":  42333912, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 254986016, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -486,8 +486,8 @@
             {"name": "591", "count": 160948}
         ],
         "files": [
-          {"format": "csv", "size_byte": 57007509, "download_url": "http://bit.ly/tw-rental-data-2020-12-raw-csv"},
-          {"format": "json", "size_byte": 333255381, "download_url": "http://bit.ly/tw-rental-data-2020-12-raw-json"}
+          {"format": "csv", "size_byte": 57007509, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 333255381, "download_url": { "isS3": true }}
         ],
         "comment": ""
       },
@@ -501,8 +501,8 @@
             {"name": "591", "count": 124471}
         ],
         "files": [
-          {"format": "csv", "size_byte":  42824330, "download_url": "http://bit.ly/tw-rental-data-2020-12-dedup-csv"},
-          {"format": "json", "size_byte": 257253241, "download_url": "http://bit.ly/tw-rental-data-2020-12-dedup-json"}
+          {"format": "csv", "size_byte":  42824330, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 257253241, "download_url": { "isS3": true }}
         ],
         "comment": ""
       }

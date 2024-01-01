@@ -1,1 +1,1 @@
-export const S3_BASE = 'https://tw-rental-data.s3.us-west-2.amazonaws.com/'
+export const S3_BASE = 'https://twrh.s3.ap-northeast-3.amazonaws.com/'

@@ -1,6 +1,40 @@
 {
   "year": 2023,
   "annual": [
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.3",
+      "time": "1",
+      "type": "原始資料",
+      "total_count": 1501986,
+      "sources": [
+          {"name": "591", "count": 1501986}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":   654302780, "download_url": { "isS3": true }}
+      ],
+      "comment": [
+        "爬蟲在 3-4 月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](/blog/post/data-issue-2023-00)",
+        "爬蟲在 10 月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](/blog/post/data-issue-2023-01)"
+      ]
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.3",
+      "time": "1",
+      "type": "消除重複住宅",
+      "total_count": 1003599,
+      "sources": [
+          {"name": "591", "count": 1003599}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":   416900306, "download_url": { "isS3": true }}
+      ],
+      "comment": [
+        "爬蟲在 3-4 月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](/blog/post/data-issue-2023-00)",
+        "爬蟲在 10 月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](/blog/post/data-issue-2023-01)"
+      ]
+    }
   ],
   "quarterly": [
     {
@@ -86,6 +120,34 @@
         {"format": "csv", "size_byte":  131518367, "download_url": { "isS3": true }}
       ],
       "comment": ""
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.3",
+      "time": "4",
+      "type": "原始資料",
+      "total_count": 427514,
+      "sources": [
+          {"name": "591", "count": 427514}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  185966599, "download_url": { "isS3": true }}
+      ],
+      "comment": "爬蟲在 10 月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](/blog/post/data-issue-2023-01)"
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.3",
+      "time": "4",
+      "type": "消除重複住宅",
+      "total_count": 322542,
+      "sources": [
+          {"name": "591", "count": 322542}
+      ],
+      "files": [
+        {"format": "csv", "size_byte":  133753230, "download_url": { "isS3": true }}
+      ],
+      "comment": "爬蟲在 10 月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](/blog/post/data-issue-2023-01)"
     }
   ],
   "monthly": [
@@ -416,6 +478,36 @@
         "files": [
           {"format": "csv", "size_byte":   55273104, "download_url": { "isS3": true }},
           {"format": "json", "size_byte": 319232964, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "12",
+        "type": "原始資料",
+        "total_count": 197126,
+        "sources": [
+            {"name": "591", "count": 197126}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   74175207, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 412202367, "download_url": { "isS3": true }}
+        ],
+        "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.2",
+        "time": "12",
+        "type": "消除重複住宅",
+        "total_count": 151950,
+        "sources": [
+            {"name": "591", "count": 151950}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   54785172, "download_url": { "isS3": true }},
+          {"format": "json", "size_byte": 316207681, "download_url": { "isS3": true }}
         ],
         "comment": ""
       }
