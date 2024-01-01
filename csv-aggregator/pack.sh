@@ -43,6 +43,9 @@ cp merge.sql $tempDir
 echo "Merge files..."
 (cd $tempDir; clickhouse local --queries-file merge.sql)
 
+ls -l $tempDir/result/raw.csv
+ls -l $tempDir/result/deduplicated.csv
+
 mv $tempDir/result/raw.csv "$tempDir/tw-rental-data/${targetName}-raw.csv"
 (cd $tempDir; zip -r "[$targetName][CSV][Raw] TW-Rental-Data.zip" tw-rental-data; mv tw-rental-data/*.csv ./result)
 
