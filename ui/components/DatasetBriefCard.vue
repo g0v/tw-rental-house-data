@@ -46,10 +46,10 @@ export default {
       if (!ret) {
         return ret
       }
-      if (Array.isArray(ret)) {
-        return ret
+      if (Array.isArray(ret.comment)) {
+        return ret.comment
       }
-      return [ret]
+      return [ret.comment]
     }
   }
 }
