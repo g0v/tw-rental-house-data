@@ -5,4 +5,4 @@ cd $DIR
 
 now=`date +'%Y.%m.%d.%H%M'`
 echo "------ $now ------" >> ../logs/deduprequest.log
-pipenv run python manage.py deduprequest >> ../logs/deduprequest.log
+poetry run python ./django/manage.py deduprequest >> ../logs/deduprequest.log
