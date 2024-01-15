@@ -15,7 +15,7 @@
 2. `twrh-dataset` - 完整的開放資料流程，包含爬蟲、資料儲存
    - [原始碼](https://github.com/g0v/tw-rental-house-data/tree/master/twrh-dataset)
 3. `ui` - 開放台灣租屋資料網站
-   - [原始碼](https://github.com/g0v/tw-rental-house-data/tree/master/twrh-dataset)
+   - [原始碼](https://github.com/g0v/tw-rental-house-data/tree/master/ui)
    - [網站](https://rentalhouse.g0v.ddio.io/)
 
 關於開發的詳細資訊，請參見[專案 wiki](https://github.com/g0v/tw-rental-house-data/wiki/)
