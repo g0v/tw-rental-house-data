@@ -197,7 +197,7 @@ class Command(BaseCommand):
         outfile_prefix = path.join(tmp_dir, prefix)
 
         print('#### Export everything in {} ####'.format(prefix))
-        uniq = UniqExport()
+        # uniq = UniqExport()
         raw = RawExport()
 
         # export tf raw + json
@@ -205,27 +205,27 @@ class Command(BaseCommand):
             from_date,
             to_date,
             print_enum=False,
-            outfile='{}-raw'.format(outfile_prefix),
-            export_json=True
+            outfile='{}-raw'.format(outfile_prefix)
         )
 
         self.zip_everything(tmp_dir, prefix, 'raw')
         shutil.rmtree(tmp_dir)
 
-        # export tf uniq + json
-        tmp_dir = mkdtemp()
-        outfile_prefix = path.join(tmp_dir, prefix)
+        # skip uniq export as we have aggregator now~~~
+        # # export tf uniq + json
+        # tmp_dir = mkdtemp()
+        # outfile_prefix = path.join(tmp_dir, prefix)
 
-        uniq.print(
-            from_date,
-            to_date,
-            print_enum=False,
-            outfile='{}-deduplicated'.format(outfile_prefix),
-            export_json=True
-        )
+        # uniq.print(
+        #     from_date,
+        #     to_date,
+        #     print_enum=False,
+        #     outfile='{}-deduplicated'.format(outfile_prefix),
+        #     export_json=True
+        # )
 
-        self.zip_everything(tmp_dir, prefix, 'deduplicated')
-        shutil.rmtree(tmp_dir)
+        # self.zip_everything(tmp_dir, prefix, 'deduplicated')
+        # shutil.rmtree(tmp_dir)
 
     def handle_periodic(self):
         today = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)

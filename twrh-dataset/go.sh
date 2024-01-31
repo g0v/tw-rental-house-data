@@ -17,10 +17,10 @@ poetry run python ./django/manage.py syncstateful -ts
 echo '===== GENERATE STATISTICS ====='
 poetry run python ./django/manage.py statscheck
 
-echo '===== FINALIZE ====='
-grep -n ERROR  ../logs/$now.*.log > ../logs/$now.error
-gzip ../logs/*.log
-
 # do this in last step, as it may run for a long time
 echo '===== CHECK EXPORT ====='
 poetry run python ./django/manage.py export -p
+
+echo '===== FINALIZE ====='
+grep -n ERROR  ../logs/$now.*.log > ../logs/$now.error
+gzip ../logs/*.log
