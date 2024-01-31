@@ -1,4 +1,4 @@
-#!/bin/bash -e
+#!/bin/bash
 
 # change to the directory that contains this script
 cd "$(dirname "$0")"
@@ -38,10 +38,10 @@ done
 
 mv $tempDir/raw/tw-rental-data/*-raw.csv $tempDir/raw
 
-cp merge.sql $tempDir
+cp merge-multiple.sql $tempDir
 
 echo "Merge files..."
-(cd $tempDir; clickhouse local --queries-file merge.sql)
+(cd $tempDir; clickhouse local --queries-file merge-multiple.sql)
 
 ls -l $tempDir/result/raw.csv
 ls -l $tempDir/result/deduplicated.csv
