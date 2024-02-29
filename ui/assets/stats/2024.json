@@ -7,7 +7,7 @@
   "monthly": [
       {
         "schema_ver": "1.0.0",
-        "data_ver": "0.2",
+        "data_ver": "0.3",
         "time": "1",
         "type": "原始資料",
         "total_count": 192990,
@@ -21,7 +21,7 @@
       },
       {
         "schema_ver": "1.0.0",
-        "data_ver": "0.2",
+        "data_ver": "0.3",
         "time": "1",
         "type": "消除重複住宅",
         "total_count": 151691,
@@ -35,7 +35,7 @@
       },
       {
         "schema_ver": "1.0.0",
-        "data_ver": "0.2",
+        "data_ver": "0.3",
         "time": "2",
         "type": "原始資料",
         "total_count": 174448,
@@ -49,7 +49,7 @@
       },
       {
         "schema_ver": "1.0.0",
-        "data_ver": "0.2",
+        "data_ver": "0.3",
         "time": "2",
         "type": "消除重複住宅",
         "total_count": 136424,
