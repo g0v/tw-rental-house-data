@@ -47,8 +47,8 @@
     twrh-disqus.mw7.center
 </template>
 <script>
-import lastYear from '~/assets/stats/2022.json'
-import thisYear from '~/assets/stats/2023.json'
+import lastYear from '~/assets/stats/2023.json'
+import thisYear from '~/assets/stats/2024.json'
 
 export default {
   async asyncData ({ $content }) {
