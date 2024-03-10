@@ -6,7 +6,7 @@
           .post.br2.ba.b--moon-gray.h-100.overflow-hidden
             .post__cover.cover.center.black(:style="{backgroundImage: `url('${post.cover}')`}")
             .pa3
-              header.f4.b.black(itemprop="name headline") {{post.title}}
+              h2.mv0.f4.b.black(itemprop="name headline") {{post.title}}
               nuxt-content.f6.black.lh-copy(itemprop="articleBody" :document="{ body: post.excerpt }")
             div(itemprop="publisher" itemscope itemtype="https://schema.org/Organization")
               meta(itemprop="name" content="開放台灣民間租屋資料")

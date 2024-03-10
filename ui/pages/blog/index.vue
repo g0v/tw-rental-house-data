@@ -1,6 +1,6 @@
 <template lang="pug">
   main.w-100.mw9-l.pa4.center
-    p.tc 關於爬蟲錯誤說明、專案開發、衍生應用
+    h1.tc 關於爬蟲錯誤說明、專案開發、衍生應用
     .tc.gray.f6
       i.fa.fa-tags.mr1
       blog-tag-list.dib(:tags="tags")

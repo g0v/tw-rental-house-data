@@ -14,7 +14,7 @@
           )
             .flex-auto.flex.flex-column.mt3.mr4-l.mt0-l
               h3.mv0.f4 {{post.title}}
-              nuxt-content.lh-copy(:document="{ body: post.excerpt }")
+              nuxt-content.lh-copy(:document="{ body: removeHref(post.excerpt) }")
               span.tr.f6.gray
                 span.underline.mr1 閱讀更多
                 span ➡️
@@ -82,6 +82,25 @@ export default {
       return {
         year: lastYear.year,
         datasets: lastYear[category].slice(-2)
+      }
+    },
+    removeHref (post) {
+      // except somehow get unclosed href tag, remove it as workaround
+      if (post.type === 'text' || !post.children) {
+        return post
+      }
+      const children = post.children.map((item) => {
+        if (item.type === 'element' && item.tag === 'a') {
+          return {
+            ...item,
+            tag: 'span'
+          }
+        }
+        return this.removeHref(item)
+      })
+      return {
+        ...post,
+        children
       }
     }
   }
