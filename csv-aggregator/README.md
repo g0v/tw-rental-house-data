@@ -15,7 +15,7 @@
 2. 確定要產稱的檔案名稱前綴，例如 2025Q1
 
 ```bash
-./pack.sh <source dir> <YYYYOO>
+./merge-and-dedup.sh <source dir> <YYYYOO>
 ```
 
 以 `YYYYOO` = `2025Q1` 為例，執行完畢後，就可在資料夾中看到：

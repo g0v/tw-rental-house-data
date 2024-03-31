@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # change to the directory that contains this script
 cd "$(dirname "$0")"
 
