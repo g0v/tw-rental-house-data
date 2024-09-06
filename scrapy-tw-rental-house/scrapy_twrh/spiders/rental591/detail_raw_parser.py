@@ -34,7 +34,9 @@ def get_title(response):
     .house-title title
     '''
     return {
-        'title': css(response, '.house-title h1::text')[0]
+        'title': css(response, '.house-title h1::text')[0],
+        'deal_time': css(response, '.house-title .tag-deal::text'),
+        'breadcrumb': css(response, '.crumbs a.t5-link::text')
     }
 
 def get_house_pattern(response):

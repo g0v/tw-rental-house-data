@@ -96,9 +96,9 @@ class DetailMixin(RequestGenerator):
                 dict=detail_dict
             )
 
-            # yield GenericHouseItem(
-            #     **self.gen_detail_shared_attrs(detail_dict)
-            # )
+            yield GenericHouseItem(
+                **self.gen_detail_shared_attrs(detail_dict)
+            )
 
     def get_shared_price(self, detail_dict, basic_info):
         ret = {}
@@ -170,6 +170,7 @@ class DetailMixin(RequestGenerator):
 
         # per ping price
         if 'floor_ping' in basic_info:
+            # no int for get() XD
             mgmt = ret.get('monthly_management_fee', 0)
             parking = ret.get('monthly_parking_fee', 0)
             price = detail_dict['price']
@@ -182,13 +183,10 @@ class DetailMixin(RequestGenerator):
         ret = {}
 
         # region xx市/xx區/物件類型
-        breadcrumb = list_to_dict(
-            get(detail_dict, 'breadcrumb', default=[]),
-            name_field='query',
-            value_field='name'
-        )
-        top_region = get(breadcrumb, 'region', default='__UNKNOWN__')
-        sub_region = get(breadcrumb, 'section', default='__UNKNOWN__')
+        breadcrumb = get(detail_dict, 'breadcrumb', default=[])
+
+        top_region = breadcrumb[0]
+        sub_region = breadcrumb[1]
 
         ret['top_region'] = self.get_enum(
             enums.TopRegionType,
@@ -205,11 +203,14 @@ class DetailMixin(RequestGenerator):
             )
         )
 
-        ret['rough_address'] = get(detail_dict, 'favData.address')
+        ret['rough_address'] = get(detail_dict, 'rough_address')
 
         # deal_status
-        dealDay = get(detail_dict, 'dealTime', 0)
-        if dealDay > 0:
+        deal_day = detail_dict['deal_time'] or 0
+        if deal_day:
+            deal_day = clean_number(deal_day[0])
+
+        if deal_day > 0:
             # Issue #15, update only deal_status in crawler
             # let `syncstateful` to update the rest
             ret['deal_status'] = enums.DealStatusType.DEAL
@@ -217,11 +218,9 @@ class DetailMixin(RequestGenerator):
             # Issue #14, always update deal status since item may be reopened
             ret['deal_status'] = enums.DealStatusType.OPENED
 
-        infoSection = list_to_dict(get(detail_dict, 'info', default=[]))
-
         # building_type, 公寓 / 電梯大樓 / 透天
-        if '型態' in infoSection:
-            building_type = infoSection['型態']
+        if 'building_type' in detail_dict:
+            building_type = detail_dict['building_type']
             if building_type == '別墅' or building_type == '透天厝':
                 ret['building_type'] = enums.BuildingType.透天
             elif building_type == '住宅大樓' or building_type == '電梯大樓':
@@ -234,20 +233,25 @@ class DetailMixin(RequestGenerator):
                 )
 
         # property type
-        if '類型' in infoSection:
+        property_type = breadcrumb[2]
+        if property_type != '__UNKNOWN__':
             ret['property_type'] = self.get_enum(
                 enums.PropertyType,
                 detail_dict['house_id'],
-                infoSection['類型']
+                property_type
             )
-        elif '格局' in infoSection:
-            ret['property_type'] = enums.PropertyType.整層住家
+        elif 'property_type' in detail_dict:
+            ret['property_type'] = self.get_enum(
+                enums.PropertyType,
+                detail_dict['house_id'],
+                detail_dict['property_type']
+            )
 
         # is_rooftop, floor, total_floor
         # TODO: use title to detect rooftop
-        if '樓層' in infoSection:
+        if 'floor' in detail_dict:
             # floor_info = 1F/2F or 頂樓加蓋/2F or 整棟/2F
-            floor_info = infoSection['樓層'].split('/')
+            floor_info = detail_dict['floor'].split('/')
             floor = clean_number(floor_info[0])
             # mark 整棟 as floor 0
             ret['floor'] = 0
@@ -259,41 +263,33 @@ class DetailMixin(RequestGenerator):
                 ret['floor'] = ret['total_floor'] + 1
             elif 'B' in floor_info[0] and floor:
                 # basement
-                ret['floor'] = -floor
+                ret['floor'] = floor * -1
             elif floor:
                 ret['floor'] = floor
 
             ret['dist_to_highest_floor'] = ret['total_floor'] - ret['floor']
 
-        if '坪數' in infoSection:
-            ret['floor_ping'] = clean_number(infoSection['坪數'])
+        if 'floor_ping' in detail_dict:
+            ret['floor_ping'] = clean_number(detail_dict['floor_ping'])
 
-        facilityKeys = list_to_dict(
-            get(detail_dict, 'service.facility'),
-            name_field='key',
-            # For 陽台 only, 
-            # When no 陽台， name is '陽台'
-            # When there's 陽台， name is 'x陽台'...
-            value_field='name'
-        )
-        nBalcony = clean_number(get(facilityKeys, 'balcony', default=''))
-        ret['n_balcony'] = nBalcony or 0
+        n_balcony = 0
+        # When no 陽台， name is '陽台'
+        # When there's 陽台， name is 'x陽台'...
+        for name in detail_dict['supported_facility']:
+            if name.endswith('陽台'):
+                n_balcony = clean_number(name)
+        ret['n_balcony'] = n_balcony
 
-        if '格局' in infoSection:
+        if ret['property_type'] == enums.PropertyType.整層住家:
+            # 2房1廳1衛
             apt_parts = re.findall(
                 r'(\d)([^\d]+)',
-                infoSection['格局']
+                detail_dict['property_type']
             )
-            apt_feature = {}
-            for part in apt_parts:
-                apt_feature[part[1]] = part[0]
-
-            for name in self.apt_features:
-                if self.apt_features[name] in apt_feature:
-                    ret[name] = clean_number(
-                        apt_feature[self.apt_features[name]])
-                else:
-                    ret[name] = 0
+            if len(apt_parts) >= 3:
+                ret['n_bed_room'] = clean_number(apt_parts[0])
+                ret['n_living_room'] = clean_number(apt_parts[1])
+                ret['n_bath_room'] = clean_number(apt_parts[2])
 
             ret['apt_feature_code'] = '{:02d}{:02d}{:02d}{:02d}'.format(
                 ret['n_balcony'],
@@ -447,21 +443,21 @@ class DetailMixin(RequestGenerator):
         price_range = parse_price(detail_dict['price'])
         detail_dict['price'] = price_range['monthly_price']
         basic_info = self.get_shared_basic(detail_dict)
-        price_info = self.get_shared_price(detail_dict, basic_info)
-        env_info = self.get_shared_environment(detail_dict)
-        boolean_info = self.get_shared_boolean_info(detail_dict)
-        misc_info = self.get_shared_misc(detail_dict)
+        # price_info = self.get_shared_price(detail_dict, basic_info)
+        # env_info = self.get_shared_environment(detail_dict)
+        # boolean_info = self.get_shared_boolean_info(detail_dict)
+        # misc_info = self.get_shared_misc(detail_dict)
 
         ret = {
             'vendor': self.vendor,
             'vendor_house_id': detail_dict['house_id'],
             'monthly_price': detail_dict['price'],
             **price_range,
-            **price_info,
+            # **price_info,
             **basic_info,
-            **env_info,
-            **boolean_info,
-            **misc_info,
+            # **env_info,
+            # **boolean_info,
+            # **misc_info,
 
         }
 
