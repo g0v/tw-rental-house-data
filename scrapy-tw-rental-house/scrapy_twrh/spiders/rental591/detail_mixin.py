@@ -8,7 +8,8 @@ from scrapy_twrh.spiders import enums
 from scrapy_twrh.spiders.util import clean_number
 from scrapy_twrh.items import RawHouseItem, GenericHouseItem
 from .request_generator import RequestGenerator
-from .util import parse_price
+from .util import parse_price, css, from_zh_number
+from .detail_raw_parser import get_detail_raw_attrs
 
 # copy from stackoverflow XD
 # https://stackoverflow.com/questions/25833613/safe-method-to-get-value-of-nested-dictionary
@@ -38,20 +39,6 @@ def split_string_to_dict(string, seperator):
     return None
 
 class DetailMixin(RequestGenerator):
-    zh_number_dict = {
-        '零': 0,
-        '一': 1,
-        '二': 2,
-        '三': 3,
-        '四': 4,
-        '五': 5,
-        '六': 6,
-        '七': 7,
-        '八': 8,
-        '九': 9,
-        '十': 10
-    }
-
     apt_features = {
         'n_living_room': '廳',
         'n_bed_room': '房',
@@ -75,33 +62,31 @@ class DetailMixin(RequestGenerator):
             )
         else:
             # regular 200 response
+            # response = response.replace(encoding='utf-8')
             yield RawHouseItem(
                 house_id=house_id,
                 vendor=self.vendor,
                 is_list=False,
-                raw=response.body
+                raw=response.text
             )
-            jsonResp = json.loads(response.text)
-            if 'data' not in jsonResp:
-                self.logger.error('Invalid detail response for 591 house: {}'
-                    .format(response.meta['rental'].id)
+            self.logger.info('Parsing detail for house {}'.format(house_id))
+
+            # check existence of house detail page
+            error_info = css(response, '.error-info')
+            # if error info is not empty, then the house is not found
+            if error_info:
+                yield GenericHouseItem(
+                    vendor=self.vendor,
+                    vendor_house_id=house_id,
+                    deal_status=enums.DealStatusType.NOT_FOUND
                 )
                 return None
-            if isinstance(jsonResp['data'], str):
-                if jsonResp.get('msg', '') == '物件不存在':
-                    yield GenericHouseItem(
-                        vendor=self.vendor,
-                        vendor_house_id=house_id,
-                        deal_status=enums.DealStatusType.NOT_FOUND
-                    )
-                else:
-                    self.logger.error(
-                        'House {} not found by receiving status code {}'
-                        .format(house_id, response.status)
-                    )
-                return None
 
-            detail_dict = jsonResp['data']
+            # parse detail page in best effort
+            detail_dict = get_detail_raw_attrs(response)
+            self.logger.info(detail_dict)
+
+            # transform to generic house item
             detail_dict['house_id'] = house_id
 
             yield RawHouseItem(
@@ -111,37 +96,9 @@ class DetailMixin(RequestGenerator):
                 dict=detail_dict
             )
 
-            yield GenericHouseItem(
-                **self.gen_detail_shared_attrs(detail_dict)
-            )
-
-    def css(self, base, selector, default=None, deep_text=False):
-        # keep this for now, in case we meet this issue again.. #89
-        # Issue #30, we may get innerHTML like "some of <kkkk></kkkk>target <qqq></qqq>string"
-        # deep_text=True retrieve text in the way different from ::text,
-        # which will also get all child text.
-        if deep_text:
-            ret = map(lambda dom: ''.join(dom.css('*::text').extract()), base.css(selector))
-        else:
-            ret = base.css(selector).extract()
-
-        if not ret:
-            ret = [] if default is None else default
-
-        ret = self.clean_string(ret)
-        return list(ret)
-
-    def clean_string(self, strings):
-        # remove empty and strip
-        strings = filter(lambda str: str.replace(u'\xa0', '').strip(), strings)
-        strings = map(lambda str: str.replace(u'\xa0', '').strip(), strings)
-        return strings
-
-    def from_zh_number(self, zh_number):
-        if zh_number in self.zh_number_dict:
-            return self.zh_number_dict[zh_number]
-        else:
-            raise Exception('ZH number {} not defined.'.format(zh_number))
+            # yield GenericHouseItem(
+            #     **self.gen_detail_shared_attrs(detail_dict)
+            # )
 
     def get_shared_price(self, detail_dict, basic_info):
         ret = {}
@@ -156,7 +113,7 @@ class DetailMixin(RequestGenerator):
             month_deposit = deposit.split('個月')
             if len(month_deposit) == 2:
                 ret['deposit_type'] = enums.DepositType.月
-                ret['n_month_deposit'] = self.from_zh_number(month_deposit[0])
+                ret['n_month_deposit'] = from_zh_number(month_deposit[0])
                 ret['deposit'] = ret['n_month_deposit'] * detail_dict['price']
             elif deposit.replace(',', '').isdigit():
                 ret['deposit'] = clean_number(deposit)
