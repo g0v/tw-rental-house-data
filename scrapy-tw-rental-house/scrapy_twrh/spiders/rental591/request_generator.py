@@ -1,6 +1,6 @@
 from scrapy.spidermiddlewares.httperror import HttpError
 from scrapy_twrh.spiders.rental_spider import RentalSpider
-from .util import SITE_URL, API_URL, LIST_ENDPOINT, ListRequestMeta, DetailRequestMeta
+from .util import DETAIL_ENDPOINT, LIST_ENDPOINT, ListRequestMeta, DetailRequestMeta
 
 class RequestGenerator(RentalSpider):
     def __init__(self, **kwargs):
@@ -30,8 +30,8 @@ class RequestGenerator(RentalSpider):
         return ret
 
     def gen_detail_request_args(self, rental_meta: DetailRequestMeta):
-        # https://bff.591.com.tw/v1/house/rent/detail?id=11501075
-        url = "{}/v1/house/rent/detail?id={}".format(API_URL, rental_meta.id)
+        # https://rent.591.com.tw/17122751
+        url = "{}{}".format(DETAIL_ENDPOINT, rental_meta.id)
 
         # don't filter as 591 use 30x to indicate house status...
         return {
