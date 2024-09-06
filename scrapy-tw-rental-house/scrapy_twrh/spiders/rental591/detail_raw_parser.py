@@ -5,8 +5,16 @@ def get_detail_raw_attrs(response):
     '''
     parse detail page HTML and find all fields in best effort
     keep original text, without any processing, so that we can re-parse it later
+
+    TODO: photo list
+
+    To check:
+    - has_parking, is_require_parking_fee, monthly_management_fee, is_require_management_fee: https://rent.591.com.tw/17143085
+    deal_status,
+    is_rooftop, 
+    no additional_fee, living_functions, transportation
+    has_perperty_registration
     '''
-    # TODO: photo list
     ret = {
         **get_title(response),
         **get_house_pattern(response),
@@ -16,10 +24,9 @@ def get_detail_raw_attrs(response):
         **get_promotion(response),
         **get_description(response),
         **get_misc_info(response),
+        **get_contact(response)
     }
 
-    # .contact-card .contact 聯絡人
-    # .contact-card .phone
     return ret
 
 def get_title(response):
@@ -136,4 +143,29 @@ def get_misc_info(response):
 
     return {
         'misc': misc
+    }
+
+def get_contact(response):
+    '''
+    .contact-card .contact 聯絡人
+    .contact-card .phone
+    '''
+    contact_card = response.css('.contact-card')
+    author_name = css(contact_card, '.name::text')
+    agent_org = css(contact_card, '.econ-name::text')
+    phone = css(contact_card, '.phone button span > span::text')
+
+    if author_name:
+        author_name = author_name[0]
+
+    if agent_org:
+        agent_org = agent_org[0]
+
+    if phone:
+        phone = phone[0]
+
+    return {
+        'author_name': author_name,
+        'agent_org': agent_org,
+        'phone': phone
     }
