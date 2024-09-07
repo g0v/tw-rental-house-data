@@ -1,6 +1,6 @@
 from scrapy.spidermiddlewares.httperror import HttpError
 from scrapy_twrh.spiders.rental_spider import RentalSpider
-from .util import SITE_URL, API_URL, LIST_ENDPOINT, ListRequestMeta, DetailRequestMeta
+from .util import DETAIL_ENDPOINT, LIST_ENDPOINT, ListRequestMeta, DetailRequestMeta
 
 class RequestGenerator(RentalSpider):
     def __init__(self, **kwargs):
@@ -11,25 +11,26 @@ class RequestGenerator(RentalSpider):
         ret = {
             'dont_filter': True,
             'errback': self.error_handler,
-            'url': "{}&region={}&firstRow={}".format(
+            'url': "{}regionid={}&firstRow={}".format(
                 LIST_ENDPOINT,
                 rental_meta.id,
                 rental_meta.page * self.N_PAGE
             ),
-            'headers': {
-                'Cookie': 'urlJumpIp={}; 591_new_session={}; PHPSESSID={}'.format(
-                    rental_meta.id,
-                    self.session['591_new_session'],
-                    self.session['PHPSESSID']
-                ),
-                'X-CSRF-TOKEN': self.csrf_token
-            }
+            # 591 remove session check since #176, for some reason ╮(╯_╰)╭
+            # 'headers': {
+            #     'Cookie': 'urlJumpIp={}; 591_new_session={}; PHPSESSID={}'.format(
+            #         rental_meta.id,
+            #         self.session['591_new_session'],
+            #         self.session['PHPSESSID']
+            #     ),
+            #     'X-CSRF-TOKEN': self.csrf_token
+            # }
         }
         return ret
 
     def gen_detail_request_args(self, rental_meta: DetailRequestMeta):
-        # https://bff.591.com.tw/v1/house/rent/detail?id=11501075
-        url = "{}/v1/house/rent/detail?id={}".format(API_URL, rental_meta.id)
+        # https://rent.591.com.tw/17122751
+        url = "{}{}".format(DETAIL_ENDPOINT, rental_meta.id)
 
         # don't filter as 591 use 30x to indicate house status...
         return {
@@ -40,10 +41,11 @@ class RequestGenerator(RentalSpider):
                 'rental': rental_meta,
                 'handle_httpstatus_list': [400, 404, 302, 301]
             },
-            'headers': {
-                'device': 'pc',
-                'deviceid': self.session['PHPSESSID']
-            }
+            # 591 remove session check since #176, for some reason ╮(╯_╰)╭
+            # 'headers': {
+            #     'device': 'pc',
+            #     'deviceid': self.session['PHPSESSID']
+            # }
         }
 
     def error_handler(self, failure):

@@ -47,8 +47,7 @@ class CrawlerPipeline(object):
                     if item['is_list']:
                         house_etc.list_raw = item['raw']
                     else:
-                        house_etc.detail_raw = item['raw'].decode(
-                            'utf-8', 'backslashreplace')
+                        house_etc.detail_raw = item['raw']
 
                 if 'dict' in item and not item['is_list']:
                     house_etc.detail_dict = item['dict']
