@@ -26,7 +26,6 @@ class RequestGenerator(RentalSpider):
             #     'X-CSRF-TOKEN': self.csrf_token
             # }
         }
-        self.logger.info(f"LIST URL = {ret['url']}")
         return ret
 
     def gen_detail_request_args(self, rental_meta: DetailRequestMeta):

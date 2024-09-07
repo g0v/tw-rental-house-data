@@ -69,7 +69,6 @@ class DetailMixin(RequestGenerator):
                 is_list=False,
                 raw=response.text
             )
-            self.logger.info('Parsing detail for house {}'.format(house_id))
 
             # check existence of house detail page
             error_info = css(response, '.error-info')
@@ -247,12 +246,15 @@ class DetailMixin(RequestGenerator):
         # is_rooftop, floor, total_floor
         # TODO: use title to detect rooftop
         if 'floor' in detail_dict:
-            # floor_info = 1F/2F or 頂樓加蓋/2F or 整棟/2F
+            # floor_info = 1F/2F or 頂樓加蓋/2F or 整棟/2F or 平面式
             floor_info = detail_dict['floor'].split('/')
             floor = clean_number(floor_info[0])
+            total_floor = 0
+            if len(floor_info) >= 2:
+                total_floor = clean_number(floor_info[1])
             # mark 整棟 as floor 0
             ret['floor'] = 0
-            ret['total_floor'] = clean_number(floor_info[1])
+            ret['total_floor'] = total_floor
             ret['is_rooftop'] = False
 
             if floor_info[0] == '頂樓加蓋':
@@ -391,7 +393,9 @@ class DetailMixin(RequestGenerator):
         ret = {}
 
         # rough_coordinate
-        position_str = get(detail_dict, 'rough_coordinate', default='0,0')
+        position_str = get(detail_dict, 'rough_coordinate')
+        if not position_str:
+            position_str = '0,0'
         position = position_str.split(',')
         coordinate = [
             Decimal(position[0]),
