@@ -103,21 +103,19 @@ class DetailMixin(RequestGenerator):
     def get_shared_price(self, detail_dict, basic_info):
         ret = {}
 
-        cost_data = list_to_dict(
-            get(detail_dict, 'costData.data', default=[])
-        )
+        price = clean_number(detail_dict['price'])
 
         # deposit_type, n_month_deposit
-        if '押金' in cost_data:
-            deposit = cost_data['押金']
+        if 'deposit' in detail_dict:
+            deposit = detail_dict['deposit']
             month_deposit = deposit.split('個月')
             if len(month_deposit) == 2:
                 ret['deposit_type'] = enums.DepositType.月
-                ret['n_month_deposit'] = from_zh_number(month_deposit[0])
-                ret['deposit'] = ret['n_month_deposit'] * detail_dict['price']
+                ret['n_month_deposit'] = from_zh_number(month_deposit[0].replace('押金', ''))
+                ret['deposit'] = ret['n_month_deposit'] * price
             elif deposit.replace(',', '').isdigit():
                 ret['deposit'] = clean_number(deposit)
-                n_month = ret['deposit'] / detail_dict['price']
+                n_month = ret['deposit'] / price
                 ret['deposit_type'] = enums.DepositType.定額
                 ret['n_month_deposit'] = n_month
             elif deposit == '面議':
@@ -131,14 +129,15 @@ class DetailMixin(RequestGenerator):
 
         # is_management_fee, monthly_management_fee
         price_includes = []
-        if '租金含' in cost_data:
-            price_includes = cost_data['租金含'].split('、')
+        misc_data = detail_dict['misc']
+        if '租金含' in misc_data:
+            price_includes = misc_data['租金含']
 
         if '管理費' in price_includes:
             ret['is_require_management_fee'] = False
             ret['monthly_management_fee'] = 0
-        elif '管理費' in cost_data:
-            mgmt_fee = cost_data['管理費']
+        elif '管理費' in misc_data:
+            mgmt_fee = misc_data['管理費']
             # could be xxx元/月, --, -, !@$#$%...
             if '元/月' in mgmt_fee:
                 ret['is_require_management_fee'] = True
@@ -152,8 +151,8 @@ class DetailMixin(RequestGenerator):
             ret['has_parking'] = True
             ret['is_require_parking_fee'] = False
             ret['monthly_parking_fee'] = 0
-        elif '車位費' in cost_data:
-            parking_str = cost_data['車位費']
+        elif '車位費' in misc_data:
+            parking_str = misc_data['車位費']
             parking = clean_number(parking_str)
             ret['has_parking'] = True
             if parking:
@@ -173,7 +172,6 @@ class DetailMixin(RequestGenerator):
             # no int for get() XD
             mgmt = ret.get('monthly_management_fee', 0)
             parking = ret.get('monthly_parking_fee', 0)
-            price = detail_dict['price']
             total_price = price + mgmt + parking
             ret['per_ping_price'] = total_price / basic_info['floor_ping']
 
@@ -286,9 +284,13 @@ class DetailMixin(RequestGenerator):
                 r'(\d)([^\d]+)',
                 detail_dict['property_type']
             )
-            if len(apt_parts) >= 3:
+            if len(apt_parts) >= 1:
                 ret['n_bed_room'] = clean_number(apt_parts[0])
+
+            if len(apt_parts) >= 2:
                 ret['n_living_room'] = clean_number(apt_parts[1])
+
+            if len(apt_parts) >= 3:
                 ret['n_bath_room'] = clean_number(apt_parts[2])
 
             ret['apt_feature_code'] = '{:02d}{:02d}{:02d}{:02d}'.format(
@@ -443,7 +445,7 @@ class DetailMixin(RequestGenerator):
         price_range = parse_price(detail_dict['price'])
         detail_dict['price'] = price_range['monthly_price']
         basic_info = self.get_shared_basic(detail_dict)
-        # price_info = self.get_shared_price(detail_dict, basic_info)
+        price_info = self.get_shared_price(detail_dict, basic_info)
         # env_info = self.get_shared_environment(detail_dict)
         # boolean_info = self.get_shared_boolean_info(detail_dict)
         # misc_info = self.get_shared_misc(detail_dict)
@@ -453,7 +455,7 @@ class DetailMixin(RequestGenerator):
             'vendor_house_id': detail_dict['house_id'],
             'monthly_price': detail_dict['price'],
             **price_range,
-            # **price_info,
+            **price_info,
             **basic_info,
             # **env_info,
             # **boolean_info,

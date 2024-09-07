@@ -141,7 +141,7 @@ def get_misc_info(response):
         title = css(item, '.label::text')[0]
         content = css(item, '.value::text')
         if content and title:
-            misc[title] = content[0]
+            misc[title] = content
 
     return {
         'misc': misc
