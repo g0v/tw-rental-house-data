@@ -83,8 +83,14 @@ def get_house_address(response):
 
     # 台澎金馬 rough bounded box - [21.811027, 118.350467] - [26.443459, 122.289387]
     # in nuxt_script, find first pattern that match regex 2\d\.\d{7}, 1[12]\d\.\d{7}
-    latlng_match = re.search(r"(2\d\.\d{7},1[12]\d\.\d{7})", nuxt_script)
+    latlng_match = re.search(r"(2\d\.\d+,1[12]\d\.\d+)", nuxt_script)
     rough_coordinate = None
+
+    if not latlng_match:
+        map_tag = css(response, '.address a::attr(href)')
+        if map_tag:
+            latlng_match = re.search(r"(2\d\.\d+,1[12]\d\.\d+)", map_tag[0])
+
     if latlng_match:
         rough_coordinate = latlng_match.group(1)
 
@@ -173,5 +179,5 @@ def get_contact(response):
     return {
         'author_name': author_name,
         'agent_org': agent_org,
-        'phone': phone
+        'author_phone': phone
     }

@@ -84,7 +84,6 @@ class DetailMixin(RequestGenerator):
 
             # parse detail page in best effort
             detail_dict = get_detail_raw_attrs(response)
-            self.logger.info(detail_dict)
 
             # transform to generic house item
             detail_dict['house_id'] = house_id
@@ -280,6 +279,10 @@ class DetailMixin(RequestGenerator):
 
         if ret['property_type'] == enums.PropertyType.整層住家:
             # 2房1廳1衛
+            ret['n_bed_room'] = 0
+            ret['n_living_room'] = 0
+            ret['n_bath_room'] = 0
+
             apt_parts = re.findall(
                 r'(\d)([^\d]+)',
                 detail_dict['property_type']
@@ -388,10 +391,11 @@ class DetailMixin(RequestGenerator):
         ret = {}
 
         # rough_coordinate
-        position = get(detail_dict, 'positionRound')
+        position_str = get(detail_dict, 'rough_coordinate', default='0,0')
+        position = position_str.split(',')
         coordinate = [
-            Decimal(position['lat']),
-            Decimal(position['lng'])
+            Decimal(position[0]),
+            Decimal(position[1])
         ]
 
         if (coordinate[0] > 20 and coordinate[0] < 30):
@@ -402,36 +406,37 @@ class DetailMixin(RequestGenerator):
 
         # facilities
         facilities = {}
-        for item in get(detail_dict, 'service.facility', default=[]):
-            if item['key'] == 'balcony':
+        for item in get(detail_dict, 'supported_facility', default=[]):
+            if '陽台' in item:
                 continue
-            doProvide = item['active'] == 1
-            if item['key'] == 'table_chairs':
-                facilities['桌子'] = doProvide
-                facilities['椅子'] = doProvide
-            else:
-                facilities[item['name']] = doProvide
+            facilities[item] = True
+
+        for item in get(detail_dict, 'unsupported_facility', default=[]):
+            if '陽台' in item:
+                continue
+            facilities[item] = False
 
         ret['facilities'] = facilities
 
         # contact, agent, and author
-        owner = get(detail_dict, 'linkInfo', default={})
-        if owner['roleName'] == '仲介':
+        [role, author] = get(detail_dict, 'author_name').split(': ')
+        phone = get(detail_dict, 'author_phone')
+        if role == '仲介':
             ret['contact'] = enums.ContactType.房仲
         else:
             ret['contact'] = self.get_enum(
                 enums.ContactType,
                 detail_dict['house_id'],
-                owner['roleName']
+                role
             )
 
-        if owner['mobile'] != '':
-            ret['author'] = owner['mobile'].replace('-', '')
+        if phone != '':
+            ret['author'] = phone.replace('-', '')
         else:
-            ret['author'] = owner['uid'] or owner['imUid']
+            ret['author'] = author
 
         if ret['contact'] == enums.ContactType.房仲:
-            ret['agent_org'] = owner['roleTxt'] or owner['certificateTxt']
+            ret['agent_org'] = get(detail_dict, 'agent_org')
             if ret['agent_org'] == '經紀業: 不動產經紀業':
                 ret['agent_org'] = '未認證'
 
@@ -444,7 +449,7 @@ class DetailMixin(RequestGenerator):
         price_info = self.get_shared_price(detail_dict, basic_info)
         env_info = self.get_shared_environment(detail_dict)
         boolean_info = self.get_shared_boolean_info(detail_dict)
-        # misc_info = self.get_shared_misc(detail_dict)
+        misc_info = self.get_shared_misc(detail_dict)
 
         ret = {
             'vendor': self.vendor,
@@ -455,10 +460,8 @@ class DetailMixin(RequestGenerator):
             **basic_info,
             **env_info,
             **boolean_info,
-            # **misc_info,
+            **misc_info,
 
         }
-
-        self.logger.info('Shared attrs: {}'.format(ret))
 
         return ret
