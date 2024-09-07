@@ -9,10 +9,12 @@ scrapy.utils.log.configure_logging(install_root_handler=False)
 logging.basicConfig(
     filename='scrapy.log',
     format='%(levelname)s: %(message)s',
-    level=logging.DEBUG
+    level=logging.INFO
 )
 
-BOT_NAME = 'scrapy-tw-rental-house-basic-example'
+LOG_LEVEL = 'INFO'
+# BOT_NAME = 'scrapy-tw-rental-house-basic-example'
+USER_AGENT = 'sample-test-bot'
 FEED_FORAMT = 'jsonlines'
 
 # Obey robots.txt rules
