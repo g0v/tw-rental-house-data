@@ -84,6 +84,12 @@ class DetailMixin(RequestGenerator):
             # parse detail page in best effort
             detail_dict = get_detail_raw_attrs(response)
 
+            if '車位' in detail_dict['breadcrumb']:
+                self.logger.info(
+                    'Skip {} as it is parking lot'.format(house_id)
+                )
+                return None
+
             # transform to generic house item
             detail_dict['house_id'] = house_id
 
@@ -425,6 +431,11 @@ class DetailMixin(RequestGenerator):
         # contact, agent, and author
         [role, author] = get(detail_dict, 'author_name').split(': ')
         phone = get(detail_dict, 'author_phone')
+
+        if not phone:
+            # when it's dealt, phone become empty, do not update author
+            return ret
+
         if role == '仲介':
             ret['contact'] = enums.ContactType.房仲
         else:
