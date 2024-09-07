@@ -316,10 +316,10 @@ class DetailMixin(RequestGenerator):
 
     def get_shared_environment(self, detail_dict):
         # additional fee
-        cost_data = list_to_dict(get(detail_dict, 'costData.data'))
+        cost_data = detail_dict['misc']
         price_includes = []
         if '租金含' in cost_data:
-            price_includes = cost_data['租金含'].split('、')
+            price_includes = cost_data['租金含']
 
         additional_fee = {
             'eletricity': '電費' not in price_includes,
@@ -340,14 +340,10 @@ class DetailMixin(RequestGenerator):
 
     def get_shared_boolean_info(self, detail_dict):
         ret = {}
-        features = list_to_dict(
-            get(detail_dict, 'tags', default=[]),
-            name_field='value',
-            value_field='id'
-        )
 
         # has_tenant_restriction
-        rule = get(detail_dict, 'service.rule')
+        rule = get(detail_dict, 'service.房屋守則', default='')
+        tags = get(detail_dict, 'tags', default=[])
 
         # 2021 591 API use more soft word, with the same meaning...
         # 適合學生 === 限學生
@@ -369,7 +365,7 @@ class DetailMixin(RequestGenerator):
         # can_cook
         if '不可開伙' in rule:
             ret['can_cook'] = False
-        elif '可開伙' in features:
+        elif '可開伙' in tags:
             ret['can_cook'] = True
         else:
             ret['can_cook'] = None
@@ -377,14 +373,14 @@ class DetailMixin(RequestGenerator):
         # allow pet
         if '不可養寵物' in rule:
             ret['allow_pet'] = False
-        elif '可養寵物' in features:
+        elif '可養寵物' in tags:
             ret['allow_pet'] = True
         else:
             ret['allow_pet'] = None
 
         # has_perperty_registration
-        properMetaTitle = get(detail_dict, 'infoData.title')
-        ret['has_perperty_registration'] = properMetaTitle == '房屋已辦產權登記'
+        proper_meta_title = get(detail_dict, 'misc.產權登記')
+        ret['has_perperty_registration'] = '已辦理' in proper_meta_title
 
         return ret
 
@@ -446,8 +442,8 @@ class DetailMixin(RequestGenerator):
         detail_dict['price'] = price_range['monthly_price']
         basic_info = self.get_shared_basic(detail_dict)
         price_info = self.get_shared_price(detail_dict, basic_info)
-        # env_info = self.get_shared_environment(detail_dict)
-        # boolean_info = self.get_shared_boolean_info(detail_dict)
+        env_info = self.get_shared_environment(detail_dict)
+        boolean_info = self.get_shared_boolean_info(detail_dict)
         # misc_info = self.get_shared_misc(detail_dict)
 
         ret = {
@@ -457,10 +453,12 @@ class DetailMixin(RequestGenerator):
             **price_range,
             **price_info,
             **basic_info,
-            # **env_info,
-            # **boolean_info,
+            **env_info,
+            **boolean_info,
             # **misc_info,
 
         }
+
+        self.logger.info('Shared attrs: {}'.format(ret))
 
         return ret

@@ -13,7 +13,6 @@ def get_detail_raw_attrs(response):
     deal_status,
     is_rooftop, 
     no additional_fee, living_functions, transportation
-    has_perperty_registration
     '''
     ret = {
         **get_title(response),
@@ -41,8 +40,10 @@ def get_title(response):
 
 def get_house_pattern(response):
     '''
+    .house-label 新上架、可開伙、有陽台
     .house-pattern 物件類型、坪數、樓層/總樓層、建物類型
     '''
+    tag_list = css(response, '.house-label span::text')
     item_list = css(response, '.house-pattern span::text')
     items = {}
     fields_def = ['property_type', 'floor_ping', 'floor', 'building_type']
@@ -52,7 +53,10 @@ def get_house_pattern(response):
         if len(item_list) > i:
             items[field] = value
 
-    return items
+    return {
+        'tags': tag_list,
+        **items
+    }
 
 def get_house_price(response):
     '''
@@ -129,7 +133,7 @@ def get_description(response):
 
 def get_misc_info(response):
     '''
-    .house-detail .house-detail-content-left 租金、押金、停車費
+    .house-detail .house-detail-content-left 租金含、押金、停車費
     .house-detail .house-detail-content-right  產權登記、法定用途、隔間材料
     '''
     misc = {}
