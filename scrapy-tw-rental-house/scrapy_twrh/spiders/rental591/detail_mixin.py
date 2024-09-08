@@ -84,12 +84,6 @@ class DetailMixin(RequestGenerator):
             # parse detail page in best effort
             detail_dict = get_detail_raw_attrs(response)
 
-            if '車位' in detail_dict['breadcrumb']:
-                self.logger.info(
-                    'Skip {} as it is parking lot'.format(house_id)
-                )
-                return None
-
             # transform to generic house item
             detail_dict['house_id'] = house_id
 
@@ -220,20 +214,6 @@ class DetailMixin(RequestGenerator):
             # Issue #14, always update deal status since item may be reopened
             ret['deal_status'] = enums.DealStatusType.OPENED
 
-        # building_type, 公寓 / 電梯大樓 / 透天
-        if 'building_type' in detail_dict:
-            building_type = detail_dict['building_type']
-            if building_type == '別墅' or building_type == '透天厝':
-                ret['building_type'] = enums.BuildingType.透天
-            elif building_type == '住宅大樓' or building_type == '電梯大樓':
-                ret['building_type'] = enums.BuildingType.電梯大樓
-            else:
-                ret['building_type'] = self.get_enum(
-                    enums.BuildingType,
-                    detail_dict['house_id'],
-                    building_type
-                )
-
         # property type
         property_type = breadcrumb[2]
         if property_type != '__UNKNOWN__':
@@ -248,6 +228,23 @@ class DetailMixin(RequestGenerator):
                 detail_dict['house_id'],
                 detail_dict['property_type']
             )
+
+        if ret['property_type'] == enums.PropertyType.車位:
+            return ret
+
+        # building_type, 公寓 / 電梯大樓 / 透天
+        if 'building_type' in detail_dict:
+            building_type = detail_dict['building_type']
+            if building_type == '別墅' or building_type == '透天厝':
+                ret['building_type'] = enums.BuildingType.透天
+            elif building_type == '住宅大樓' or building_type == '電梯大樓':
+                ret['building_type'] = enums.BuildingType.電梯大樓
+            else:
+                ret['building_type'] = self.get_enum(
+                    enums.BuildingType,
+                    detail_dict['house_id'],
+                    building_type
+                )
 
         # is_rooftop, floor, total_floor
         # TODO: use title to detect rooftop
@@ -461,22 +458,32 @@ class DetailMixin(RequestGenerator):
         price_range = parse_price(detail_dict['price'])
         detail_dict['price'] = price_range['monthly_price']
         basic_info = self.get_shared_basic(detail_dict)
-        price_info = self.get_shared_price(detail_dict, basic_info)
-        env_info = self.get_shared_environment(detail_dict)
-        boolean_info = self.get_shared_boolean_info(detail_dict)
-        misc_info = self.get_shared_misc(detail_dict)
 
         ret = {
             'vendor': self.vendor,
             'vendor_house_id': detail_dict['house_id'],
             'monthly_price': detail_dict['price'],
             **price_range,
-            **price_info,
             **basic_info,
+        }
+
+        if basic_info['property_type'] == enums.PropertyType.車位:
+            self.logger.info(
+                'Skip {} as it is parking lot'.format(detail_dict['house_id'],)
+            )
+            return ret
+
+        price_info = self.get_shared_price(detail_dict, basic_info)
+        env_info = self.get_shared_environment(detail_dict)
+        boolean_info = self.get_shared_boolean_info(detail_dict)
+        misc_info = self.get_shared_misc(detail_dict)
+
+        ret = {
+            **ret,
+            **price_info,
             **env_info,
             **boolean_info,
             **misc_info,
-
         }
 
         return ret

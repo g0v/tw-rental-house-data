@@ -2,7 +2,7 @@ import json
 from scrapy_twrh.items import RawHouseItem, GenericHouseItem
 from scrapy_twrh.spiders.enums import PropertyType, TopRegionType, SubRegionType
 from scrapy_twrh.spiders.util import clean_number
-from .util import API_URL, ListRequestMeta, DetailRequestMeta, parse_price
+from .util import DETAIL_ENDPOINT, ListRequestMeta, DetailRequestMeta, parse_price
 from .request_generator import RequestGenerator
 
 def get_list_val(house, regular_attr, top_attr=None, to_number=False):
@@ -65,7 +65,7 @@ class ListMixin(RequestGenerator):
     def gen_shared_attrs(self, house, meta: ListRequestMeta):
         house_id = get_list_val(house, 'id', 'post_id')
 
-        url = "{}/v1/house/rent/detail?id={}".format(API_URL, house_id)
+        url = "{}/{}".format(DETAIL_ENDPOINT, house_id)
 
         if 'region_name' in house:
             # topData doesn't contain region_name for some reason..
