@@ -8,11 +8,7 @@ def get_detail_raw_attrs(response):
 
     TODO: photo list
 
-    To check:
-    - has_parking, is_require_parking_fee, monthly_management_fee, is_require_management_fee: https://rent.591.com.tw/17143085
-    deal_status,
-    is_rooftop, 
-    no additional_fee, living_functions, transportation
+    !!vendor_house_url
     '''
     ret = {
         **get_title(response),
@@ -47,6 +43,13 @@ def get_house_pattern(response):
     item_list = css(response, '.house-pattern span::text')
     items = {}
     fields_def = ['property_type', 'floor_ping', 'floor', 'building_type']
+
+    if len(item_list) > 0 and '坪' in item_list[0]:
+        # if 整層住家 && 無房無廳無衛（？？），坪數在第一個 🥹
+        fields_def = ['floor_ping', 'floor', 'building_type']
+        breadcrumb = css(response, '.crumbs a.t5-link::text')
+        if breadcrumb and '整層住家' in breadcrumb:
+            items['property_type'] = '整層住家'
 
     for i, field in enumerate(fields_def):
         value = item_list[i]
