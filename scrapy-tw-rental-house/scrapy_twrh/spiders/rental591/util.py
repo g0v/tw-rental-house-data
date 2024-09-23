@@ -38,13 +38,38 @@ def parse_price(number_string: str):
 
     return ret
 
-def css(base: Response, selector, default=None, deep_text=False):
+def reorder_inline_flex_dom(base: Response, selector):
     '''
-    Issue #30, we may get innerHTML like "some of <kkkk></kkkk>target <qqq></qqq>string"
-    deep_text=True retrieve text in the way different from ::text,
-    which will also get all child text.
+    Issue #181, we may get innerHTML like <span> <i style="order:2;font-style:normal;">5</i></span>
     '''
-    if deep_text:
+    items = base.css(selector)
+    ret = []
+    for item in items:
+        # child span may contain style="display:inline-flex;"
+        i_list = item.css('span[style*=display\\:inline-flex] > i')
+        plain_value = item.xpath('text()').get()
+        if plain_value is not None:
+            ret.append(plain_value)
+        elif i_list:
+            # store i_list order (in style:order) and its ::text content)
+            shuffled_list = []
+            for i in i_list:
+                order = i.css('::attr(style)').re_first(r'order:(\d+)')
+                text = i.css('::text').get()
+                shuffled_list.append((order, text))
+            # sort by order
+            shuffled_list.sort(key=lambda x: int(x[0]))
+            ret.append(''.join(map(lambda x: x[1], shuffled_list)))
+    return ret
+
+def css(base: Response, selector, default=None, deep_text=False, self_text=False):
+    '''retrieve text in clean way'''
+    if self_text:
+        ret = reorder_inline_flex_dom(base, selector)
+    elif deep_text:
+        # Issue #30, we may get innerHTML like "some of <kkkk></kkkk>target <qqq></qqq>string"
+        # deep_text=True retrieve text in the way different from ::text,
+        # which will also get all child text.
         ret = map(lambda dom: ''.join(dom.css('*::text').getall()), base.css(selector))
     else:
         ret = base.css(selector).getall()

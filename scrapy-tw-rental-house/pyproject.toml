@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "scrapy-tw-rental-house"
-version = "1.3.7"
+version = "1.4.0"
 description = "Scrapy spider for TW Rental House"
 readme = "README.md"
 authors = ["ddio <ddio@ddio.io>"]
