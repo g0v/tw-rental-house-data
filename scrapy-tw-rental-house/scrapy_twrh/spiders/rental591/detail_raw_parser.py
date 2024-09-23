@@ -29,9 +29,9 @@ def get_title(response):
     .house-title title
     '''
     return {
-        'title': css(response, '.house-title h1::text')[0],
-        'deal_time': css(response, '.house-title .tag-deal::text'),
-        'breadcrumb': css(response, '.crumbs a.t5-link::text')
+        'title': css(response, '.house-title h1', self_text=True)[0],
+        'deal_time': css(response, '.house-title .tag-deal', self_text=True),
+        'breadcrumb': css(response, '.crumbs a.t5-link', self_text=True)
     }
 
 def get_house_pattern(response):
@@ -39,15 +39,15 @@ def get_house_pattern(response):
     .house-label 新上架、可開伙、有陽台
     .house-pattern 物件類型、坪數、樓層/總樓層、建物類型
     '''
-    tag_list = css(response, '.house-label span::text')
-    item_list = css(response, '.house-pattern span::text')
+    tag_list = css(response, '.house-label > span', self_text=True)
+    item_list = css(response, '.house-pattern > span', self_text=True)
     items = {}
     fields_def = ['property_type', 'floor_ping', 'floor', 'building_type']
 
     if len(item_list) > 0 and '坪' in item_list[0]:
         # if 整層住家 && 無房無廳無衛（？？），坪數在第一個 🥹
         fields_def = ['floor_ping', 'floor', 'building_type']
-        breadcrumb = css(response, '.crumbs a.t5-link::text')
+        breadcrumb = css(response, '.crumbs a.t5-link', self_text=True)
         if breadcrumb and '整層住家' in breadcrumb:
             items['property_type'] = '整層住家'
 
@@ -66,8 +66,8 @@ def get_house_price(response):
     .house-price 租金、押金
     押金 can be 押金*個月、押金面議，還可填其他（數值，不確定如何呈現）
     '''
-    price = css(response, '.house-price .price strong::text')
-    deposit_str = css(response, '.house-price::text')
+    price = css(response, '.house-price .price strong', self_text=True)
+    deposit_str = css(response, '.house-price', self_text=True)
 
     return {
         'price': price[0],
@@ -78,7 +78,7 @@ def get_house_address(response):
     '''
     .address 約略經緯度、約略地址
     '''
-    address_str = css(response, '.address .load-map::text')
+    address_str = css(response, '.address .load-map', self_text=True)
 
     # lat lng is in NUXT init script
     js_scripts = css(response, 'script::text')
@@ -109,14 +109,14 @@ def get_service(response):
     services = {}
     cate_list = response.css('.service .service-cate > div')
     for cate in cate_list:
-        title = css(cate, 'p::text')[0]
-        content = css(cate, 'span::text')
+        title = css(cate, 'p', self_text=True)[0]
+        content = css(cate, 'span', self_text=True)
         if content and title:
             services[title] = content[0]
 
     # .service .service-facility 提供設備
-    supported_facility = css(response, '.service .service-facility dl:not(.del) dd::text')
-    unsupported_facility = css(response, '.service .service-facility dl.del dd::text')
+    supported_facility = css(response, '.service .service-facility dl:not(.del) dd', self_text=True)
+    unsupported_facility = css(response, '.service .service-facility dl.del dd', self_text=True)
     services['supported_facility'] = supported_facility
     services['unsupported_facility'] = unsupported_facility
     return services
@@ -125,7 +125,7 @@ def get_promotion(response):
     '''
     .preference-item 屋主直租、產權保障、etc..
     '''
-    item_list = css(response, '.preference-item p:first-child::text')
+    item_list = css(response, '.preference-item p:first-child', self_text=True)
     return {
         'promotion': item_list
     }
@@ -151,8 +151,8 @@ def get_misc_info(response):
         *response.css('.house-detail .content.right .item')
     ]
     for item in items:
-        title = css(item, '.label::text')[0]
-        content = css(item, '.value::text')
+        title = css(item, '.label', self_text=True)[0]
+        content = css(item, '.value', self_text=True)
         if content and title:
             misc[title] = content
 
@@ -166,9 +166,9 @@ def get_contact(response):
     .contact-card .phone
     '''
     contact_card = response.css('.contact-card')
-    author_name = css(contact_card, '.name::text')
-    agent_org = css(contact_card, '.econ-name::text')
-    phone = css(contact_card, '.phone button span > span::text')
+    author_name = css(contact_card, '.name', self_text=True)
+    agent_org = css(contact_card, '.econ-name', self_text=True)
+    phone = css(contact_card, '.phone button span > span', self_text=True)
 
     if author_name:
         author_name = author_name[0]
