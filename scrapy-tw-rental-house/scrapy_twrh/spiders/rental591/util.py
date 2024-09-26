@@ -1,3 +1,4 @@
+import re
 from collections import namedtuple
 from scrapy.http import Response
 from scrapy_twrh.spiders.util import clean_number
@@ -45,20 +46,31 @@ def reorder_inline_flex_dom(base: Response, selector):
     items = base.css(selector)
     ret = []
     for item in items:
-        # child span may contain style="display:inline-flex;"
+        # child span may contain style="display:inline-flex;flex-direction:row-reverse;"
         i_list = item.css('span[style*=display\\:inline-flex] > i')
         plain_value = item.xpath('text()').get()
         if plain_value is not None:
             ret.append(plain_value)
         elif i_list:
+            # check if it's reversed, find all values of flex-direction
+            container_style = item.css('span[style*=display\\:inline-flex]::attr(style)').get()
+
+            # we may have multiple flex-direction, get last one
+            flex_directions = re.findall(r'flex-direction: ?([\w-]+)', container_style)
+            order_base = 1
+            if flex_directions:
+                last_flex_direction = flex_directions[-1]
+                if last_flex_direction == 'row-reverse':
+                    order_base = -1
             # store i_list order (in style:order) and its ::text content)
             shuffled_list = []
             for i in i_list:
                 order = i.css('::attr(style)').re_first(r'order:(\d+)')
+                order = int(order) * order_base
                 text = i.css('::text').get()
                 shuffled_list.append((order, text))
             # sort by order
-            shuffled_list.sort(key=lambda x: int(x[0]))
+            shuffled_list.sort(key=lambda x: x[0])
             ret.append(''.join(map(lambda x: x[1], shuffled_list)))
     return ret
 
