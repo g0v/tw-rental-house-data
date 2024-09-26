@@ -639,7 +639,7 @@ w3lib = ">=1.17.0"
 
 [[package]]
 name = "scrapy-tw-rental-house"
-version = "1.4.0"
+version = "1.4.1"
 description = "Scrapy spider for TW Rental House"
 optional = false
 python-versions = "^3.10"
