@@ -107,3 +107,150 @@ def from_zh_number(zh_number):
         return zh_number_dict[zh_number]
     else:
         raise Exception('ZH number {} not defined.'.format(zh_number))
+
+
+class SimpleNuxtInitParser:
+    '''
+    A simple parser to read nuxt init script, without using AST
+    '''
+    def __init__(self, script):
+        self.script = script
+        self.arguments = self.list_arguments()
+        self.values = self.list_values()
+        self.dict = self.compose_arg_dict()
+
+    def list_arguments(self):
+        '''
+        get arguments of the function call using regex, and store them in a list
+        match: function(a, b, c, d, ...)
+        '''
+        matches = re.search(r'function ?\(([^)]+)\)', self.script)
+        if not matches:
+            return []
+
+        return map(
+            lambda x: x.strip(),
+            matches.group(1).split(',')
+        )
+
+    def list_values(self):
+        '''
+        get values of the function call using regex, and store them in a list
+        match: }(a, b, c, ...)
+        '''
+        matches = re.search(r'}\((.+)\)\)', self.script)
+        if not matches:
+            return []
+
+        value_str = matches.group(1)
+        # dirty hack 0, remove font-family as there is a comma in the string
+        value_str = re.sub(r'font-family:[^;]+;', '', value_str)
+
+        # dirty hack 1, remove comma from "12,345" XD
+        value_str = re.sub(r'"(\d+),(\d+)"', r'\1\2', value_str)
+        ret = []
+        for raw_value in value_str.split(','):
+            # remove leading and trailing double quotes
+            value = raw_value.strip(' "')
+            ret.append(value)
+
+        return ret
+
+    def compose_arg_dict(self):
+        '''
+        compose a dictionary of arguments and their values
+        '''
+        arg_dict = {}
+        for i, arg in enumerate(self.arguments):
+            if i >= len(self.values):
+                break
+            arg_dict[arg] = self.values[i]
+
+        return arg_dict
+
+    def get_component_arg_list(self, arg_list):
+        '''
+        retrieve multiple arguments and their values, in the same depth of object
+        nested object, say, favData.area, is not supported
+
+        unhandled case:
+        favData: { otherNestedVar: { haha: a }, title: 'title' }
+
+        arg_list is order sensitive
+        '''
+        arg_vars = []
+        if not arg_list:
+            raise ValueError('arg_list is empty')
+
+        reg_pattern = f'{arg_list[0]}: ?([^,{{}} ]+)'
+        for arg in arg_list[1:]:
+            reg_pattern += f', ?{arg}: ?([^,{{}} ]+)'
+
+        matches = re.findall(reg_pattern, self.script)
+        if not matches:
+            return None
+
+        # group matches into a list of dictionaries
+        for match in matches:
+            single_match = {}
+            for i, arg_name in enumerate(arg_list):
+                if i >= len(match):
+                    break
+                var_name = match[i]
+                if var_name in self.dict:
+                    single_match[arg_name] = self.dict[var_name]
+                else:
+                    single_match[arg_name] = None
+
+            arg_vars.append(single_match)
+
+        return arg_vars
+
+    def get_component_arg_var(self, arg_name):
+        '''
+        use regex to find target string: [arg_name]: [var_name]
+        arg_name can contain dot, say, favData.area
+
+        regex pattern: [arg_name]: ([^,]+)
+        match: [arg_name]: var_name
+        group 1: var_name
+        '''
+        arg_name_list = arg_name.split('.')
+        reg_pattern = ''
+        if len(arg_name_list) > 1:
+            # handle favData.title, which will looks like
+            # favData: { otherVar: sth, title: 'title' }
+            # unhandled case:
+            # favData: { otherNestedVar: { haha: a }, title: 'title' }
+            reg_pattern = f'{arg_name_list[0]}: ?{{[^}}]*'
+            for i in range(1, len(arg_name_list) - 1):
+                reg_pattern += f'{arg_name_list[i]}: ?{{[^}}]'
+
+        reg_pattern += f'{arg_name_list[-1]}: ?([^, ]+)'
+
+        # find all matches
+        matches = re.findall(reg_pattern, self.script)
+        if not matches:
+            return None
+
+        # if there are more than one match and var_name is not unique, raise error
+        if len(matches) > 1:
+            unique_vars = list(set(matches))
+            if len(unique_vars) > 1:
+                raise ValueError(f'Variable name {arg_name} is not unique')
+            return unique_vars[0]
+
+        return matches[0]
+
+    def get_component_arg_value(self, arg_name):
+        '''
+        get value of the argument
+        '''
+        arg_var = self.get_component_arg_var(arg_name)
+        if not arg_var:
+            return None
+
+        if arg_var not in self.dict:
+            return None
+
+        return self.dict[arg_var]

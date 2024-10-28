@@ -1,5 +1,5 @@
 import re
-from .util import css, clean_number
+from .util import css, SimpleNuxtInitParser
 
 def get_detail_raw_attrs(response):
     '''
@@ -10,10 +10,14 @@ def get_detail_raw_attrs(response):
 
     !!vendor_house_url
     '''
+    script_list = response.css('script::text').getall()
+    script = next(filter(lambda s: '__NUXT__' in s, script_list), None)
+    nuxt_meta = SimpleNuxtInitParser(script)
+
     ret = {
         **get_title(response),
-        **get_house_pattern(response),
-        **get_house_price(response),
+        **get_house_pattern(response, nuxt_meta),
+        **get_house_price(response, nuxt_meta),
         **get_house_address(response),
         **get_service(response),
         **get_promotion(response),
@@ -26,59 +30,79 @@ def get_detail_raw_attrs(response):
 
 def get_title(response):
     '''
-    .house-title title
+    .title
     '''
     return {
-        'title': css(response, '.house-title h1', self_text=True)[0],
-        'deal_time': css(response, '.house-title .tag-deal', self_text=True),
+        'title': css(response, 'h1', self_text=True, default=['NA'])[0],
+        'deal_time': css(response, 'h1 .tag-deal', self_text=True),
         'breadcrumb': css(response, '.crumbs a.t5-link', self_text=True)
     }
 
-def get_house_pattern(response):
+def get_house_pattern(response, nuxt_meta):
     '''
     .house-label 新上架、可開伙、有陽台
     .house-pattern 物件類型、坪數、樓層/總樓層、建物類型
     '''
     tag_list = css(response, '.house-label > span', self_text=True)
-    item_list = css(response, '.house-pattern > span', self_text=True)
-    items = {}
-    fields_def = ['property_type', 'floor_ping', 'floor', 'building_type']
+    # item_list = css(response, '.pattern > span', self_text=True)
+    item_list_candidates = nuxt_meta.get_component_arg_list(['name', 'value', 'key'])
+    item_candidates = {}
 
-    if len(item_list) > 0 and '坪' in item_list[0]:
-        # if 整層住家 && 無房無廳無衛（？？），坪數在第一個 🥹
-        fields_def = ['floor_ping', 'floor', 'building_type']
+    if item_list_candidates:
+        for item in item_list_candidates:
+            item_candidates[item['name']] = item['value']
+
+    items = {}
+    fields_def = {
+        'property_type': '類型',
+        'floor_ping': '坪數',
+        'floor': '樓層',
+        'building_type': '型態'
+    }
+
+    for field, zh_name in fields_def.items():
+        value = item_candidates.get(zh_name, None)
+        if value:
+            # floor is a string like '3F\\u002F7F'
+            # there could be mixed UTF-8 and Unicode escape,
+            # encode().decode('unicode_escape') won't work
+            if '\\u002F' in value:
+                value = value.replace('\\u002F', '/')
+            items[field] = value
+
+    if 'property_type' not in items:
         breadcrumb = css(response, '.crumbs a.t5-link', self_text=True)
         if breadcrumb and '整層住家' in breadcrumb:
             items['property_type'] = '整層住家'
-
-    for i, field in enumerate(fields_def):
-        value = item_list[i]
-        if len(item_list) > i:
-            items[field] = value
 
     return {
         'tags': tag_list,
         **items
     }
 
-def get_house_price(response):
+def get_house_price(response, nuxt_meta):
     '''
     .house-price 租金、押金
     押金 can be 押金*個月、押金面議，還可填其他（數值，不確定如何呈現）
     '''
-    price = css(response, '.house-price .price strong', self_text=True)
+    price = nuxt_meta.get_component_arg_value('favData.price')
     deposit_str = css(response, '.house-price', self_text=True)
 
-    return {
-        'price': price[0],
-        'deposit': deposit_str[0]
-    }
+    ret = {}
+
+    if price:
+        ret['price'] = price
+
+    if deposit_str:
+        ret['deposit'] = deposit_str[0]
+
+    return ret
 
 def get_house_address(response):
     '''
     .address 約略經緯度、約略地址
     '''
-    address_str = css(response, '.address .load-map', self_text=True)
+    address_str = css(response, '.address .load-map', self_text=True, default=['NA'])
 
     # lat lng is in NUXT init script
     js_scripts = css(response, 'script::text')
@@ -109,10 +133,10 @@ def get_service(response):
     services = {}
     cate_list = response.css('.service .service-cate > div')
     for cate in cate_list:
-        title = css(cate, 'p', self_text=True)[0]
+        title = css(cate, 'p', self_text=True)
         content = css(cate, 'span', self_text=True)
         if content and title:
-            services[title] = content[0]
+            services[title[0]] = content[0]
 
     # .service .service-facility 提供設備
     supported_facility = css(response, '.service .service-facility dl:not(.del) dd', self_text=True)
@@ -151,10 +175,10 @@ def get_misc_info(response):
         *response.css('.house-detail .content.right .item')
     ]
     for item in items:
-        title = css(item, '.label', self_text=True)[0]
+        title = css(item, '.label', self_text=True)
         content = css(item, '.value', self_text=True)
         if content and title:
-            misc[title] = content
+            misc[title[0]] = content
 
     return {
         'misc': misc
