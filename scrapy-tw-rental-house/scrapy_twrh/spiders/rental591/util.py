@@ -148,6 +148,9 @@ class SimpleNuxtInitParser:
 
         # dirty hack 1, remove comma from "12,345" XD
         value_str = re.sub(r'"(\d+),(\d+)"', r'\1\2', value_str)
+        # dirty hack 2, we won't need "市中心,拎包入住,含車位" for now.
+        # we have to remove the comma in the string
+        value_str = re.sub(r'"(([^\u0000-\u007F]|\\)[^",]*),[^"]+"', r'\1', value_str)
         ret = []
         for raw_value in value_str.split(','):
             # remove leading and trailing double quotes
