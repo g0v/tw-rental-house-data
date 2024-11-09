@@ -116,6 +116,34 @@
           {"format": "csv", "size_byte":   67682456, "download_url": { "isS3": true }}
         ],
         "comment": ""
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.3",
+        "time": "9",
+        "type": "原始資料",
+        "total_count": 211632,
+        "sources": [
+            {"name": "591", "count": 211632}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   77221216, "download_url": { "isS3": true }}
+        ],
+        "comment": "爬蟲在 9 月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](/blog/post/2024-system-upgrading)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.3",
+        "time": "3",
+        "type": "消除重複住宅",
+        "total_count": 185216,
+        "sources": [
+            {"name": "591", "count": 185216}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   76642378, "download_url": { "isS3": true }}
+        ],
+        "comment": "爬蟲在 9 月曾出現資料錯誤，將會影響部份物件的新增與更新日期，詳細資訊請參見[部落格](/blog/post/2024-system-upgrading)"
       }
   ]
 }
