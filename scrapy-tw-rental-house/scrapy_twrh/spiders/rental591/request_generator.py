@@ -11,10 +11,10 @@ class RequestGenerator(RentalSpider):
         ret = {
             'dont_filter': True,
             'errback': self.error_handler,
-            'url': "{}regionid={}&firstRow={}".format(
+            'url': "{}region={}&page={}".format(
                 LIST_ENDPOINT,
                 rental_meta.id,
-                rental_meta.page * self.N_PAGE
+                rental_meta.page + 1
             ),
             # 591 remove session check since #176, for some reason ╮(╯_╰)╭
             # 'headers': {

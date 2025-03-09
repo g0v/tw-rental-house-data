@@ -4,8 +4,7 @@ from scrapy.http import Response
 from scrapy_twrh.spiders.util import clean_number
 
 SITE_URL = 'https://rent.591.com.tw'
-API_URL = 'https://bff-house.591.com.tw'
-LIST_ENDPOINT = f'{API_URL}/v1/web/rent/list?'
+LIST_ENDPOINT = f'{SITE_URL}/list?'
 DETAIL_ENDPOINT = f'{SITE_URL}/'
 SESSION_ENDPOINT = '{}/?kind=0&region=6'.format(SITE_URL)
 

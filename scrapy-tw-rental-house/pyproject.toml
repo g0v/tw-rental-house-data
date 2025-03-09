@@ -10,6 +10,11 @@ repository = "https://github.com/g0v/tw-rental-house-data/tree/master/scrapy-tw-
 [tool.poetry.dependencies]
 python = "^3.10"
 Scrapy = "^2.11.0"
+scrapy-playwright = "^0.0.42"
+playwright = "^1.50.0"
+pytesseract = "^0.3.13"
+opencv-python = "^4.11.0.86"
+numpy = "^2.2.3"
 
 
 [build-system]

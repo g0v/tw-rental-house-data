@@ -1,4 +1,4 @@
-# import scrapy
+import scrapy # type: ignore
 from .list_mixin import ListMixin
 from .detail_mixin import DetailMixin
 from .all_591_cities import all_591_cities
@@ -29,23 +29,43 @@ class Rental591Spider(ListMixin, DetailMixin):
         else:
             self.target_cities = all_591_cities
 
-    # 591 remove session check since #176, for some reason ╮(╯_╰)╭
-    # def start_requests(self):
-    #     # 591 require a valid session to start request, #27
-    #     yield scrapy.Request(
-    #         url=SESSION_ENDPOINT,
-    #         dont_filter=True,
-    #         callback=self.handle_session_init,
-    #     )
+    @classmethod
+    def update_settings(cls, settings):
+        super().update_settings(settings)
+        settings.set('DOWNLOAD_HANDLERS', {
+            'https': 'scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler',
+            'http': 'scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler',
+        }, priority='spider')
+        settings.set('TWISTED_REACTOR', 'twisted.internet.asyncioreactor.AsyncioSelectorReactor', priority='spider')
+        settings.set('PLAYWRIGHT_MAX_CONTEXTS', 1, priority='spider')
 
-    # 591 remove session check since #176, for some reason ╮(╯_╰)╭
-    # def handle_session_init(self, response):
-    #     self.csrf_token = response.css('meta[name="csrf-token"]').xpath('@content').extract_first()
-    #     for cookie in response.headers.getlist('Set-Cookie'):
-    #         cookie_tokens = cookie.decode('utf-8').split('; ')
-    #         for cookie in cookie_tokens:
-    #             tokens = cookie.split('=')
-    #             if len(tokens) is 2 and tokens[0] in self.session:
-    #                 self.session[tokens[0]] = tokens[1]
-    #     for item in self.start_list():
-    #         yield item
+    def gen_list_request(self, rental_meta) -> scrapy.Request:
+        """
+        Generates scrapy.Request for list from meta data.
+        rental_meta will be put into meta['rental'], so to make request serializable.
+        """
+        args = {
+            'callback': self.parse_list,
+            'meta': {
+                'rental': rental_meta,
+                'playwright': False
+            },
+            'priority': self.DEFAULT_LIST_PRIORITY,
+            **self.gen_list_request_args(rental_meta)
+        }
+        return scrapy.Request(**args)
+
+    def gen_detail_request(self, rental_meta) -> scrapy.Request:
+        """
+        Generates scrapy.Request for detail from meta data.
+        rental_meta will be put into meta['rental'], so to make request serializable.
+        """
+        args = {
+            'callback': self.parse_detail,
+            'meta': {
+                'rental': rental_meta,
+                'playwright': True
+            },
+            **self.gen_detail_request_args(rental_meta)
+        }
+        return scrapy.Request(**args)
