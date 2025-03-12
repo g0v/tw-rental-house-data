@@ -37,35 +37,5 @@ class Rental591Spider(ListMixin, DetailMixin):
             'http': 'scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler',
         }, priority='spider')
         settings.set('TWISTED_REACTOR', 'twisted.internet.asyncioreactor.AsyncioSelectorReactor', priority='spider')
-        settings.set('PLAYWRIGHT_MAX_CONTEXTS', 1, priority='spider')
+        settings.set('PLAYWRIGHT_MAX_CONTEXTS', 2, priority='spider')
 
-    def gen_list_request(self, rental_meta) -> scrapy.Request:
-        """
-        Generates scrapy.Request for list from meta data.
-        rental_meta will be put into meta['rental'], so to make request serializable.
-        """
-        args = {
-            'callback': self.parse_list,
-            'meta': {
-                'rental': rental_meta,
-                'playwright': False
-            },
-            'priority': self.DEFAULT_LIST_PRIORITY,
-            **self.gen_list_request_args(rental_meta)
-        }
-        return scrapy.Request(**args)
-
-    def gen_detail_request(self, rental_meta) -> scrapy.Request:
-        """
-        Generates scrapy.Request for detail from meta data.
-        rental_meta will be put into meta['rental'], so to make request serializable.
-        """
-        args = {
-            'callback': self.parse_detail,
-            'meta': {
-                'rental': rental_meta,
-                'playwright': True
-            },
-            **self.gen_detail_request_args(rental_meta)
-        }
-        return scrapy.Request(**args)

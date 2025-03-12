@@ -28,7 +28,7 @@ class ListMixin(RequestGenerator):
         else:
             total_page = 1  # Default if no page number found
 
-        logging.info('[list] crawl city:%s of %d pages', meta.name, total_page)
+        logging.info('[list] crawl city:%s of %d/%d pages', meta.name, meta.page, total_page)
 
         if meta.page == 0:
             # generate all list request as now we know number of result
