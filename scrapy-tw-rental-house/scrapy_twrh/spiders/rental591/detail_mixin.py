@@ -1,5 +1,6 @@
 import json
 import re
+import logging
 from functools import reduce
 from urllib.parse import urlparse, parse_qs
 from decimal import Decimal
@@ -63,6 +64,9 @@ class DetailMixin(RequestGenerator):
         else:
             # regular 200 response
             # response = response.replace(encoding='utf-8')
+            # with open('detail-{}.html'.format(house_id), 'w', encoding='utf-8') as f:
+            #     f.write(response.text)
+
             yield RawHouseItem(
                 house_id=house_id,
                 vendor=self.vendor,
@@ -94,9 +98,10 @@ class DetailMixin(RequestGenerator):
                 dict=detail_dict
             )
 
-            yield GenericHouseItem(
-                **self.gen_detail_shared_attrs(detail_dict)
-            )
+            # yield GenericHouseItem(
+            #     **self.gen_detail_shared_attrs(detail_dict)
+            # )
+            
 
     def get_shared_price(self, detail_dict, basic_info):
         ret = {}

@@ -3,3 +3,5 @@ scrapy.log
 dist
 .venv
 *.egg-info
+
+trial

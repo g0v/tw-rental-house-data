@@ -1,5 +1,31 @@
 import re
-from .util import css, SimpleNuxtInitParser
+from .ocr_utils import parse_floor, parse_ping, parse_price
+from .util import SimpleNuxtInitParser, css
+
+def parse_obfuscate_fields(response):
+    '''
+    Use OCR to parse obfuscated fields in the detail page
+    '''
+    ret = {}
+
+    img_selectors = [
+        { 'name': 'ping', 'dom': 'wc-obfuscate-c-area', 'fn': parse_ping },
+        { 'name': 'floor', 'dom': 'wc-obfuscate-c-floor', 'fn': parse_floor },
+        { 'name': 'price', 'dom': 'wc-obfuscate-c-price', 'fn': parse_price },
+        # { 'name': 'address', 'dom': 'wc-obfuscate-rent-map-address' }
+    ]
+
+    for selector in img_selectors:
+        img = response.css(f'{selector["dom"]} + img::attr("src")').get()
+        if not img:
+            continue
+
+        # output_path = os.path.join(os.getcwd(), 'ocr-test', selector['name'], house_id)
+        # convert_base64_to_img(img, output_path)
+
+        ret[selector['name']] = selector['fn'](img)
+
+    return ret
 
 def get_detail_raw_attrs(response):
     '''
@@ -7,23 +33,22 @@ def get_detail_raw_attrs(response):
     keep original text, without any processing, so that we can re-parse it later
 
     TODO: photo list
-
-    !!vendor_house_url
     '''
     script_list = response.css('script::text').getall()
     script = next(filter(lambda s: '__NUXT__' in s, script_list), None)
-    nuxt_meta = SimpleNuxtInitParser(script)
+    # nuxt_meta = SimpleNuxtInitParser(script)
 
     ret = {
         **get_title(response),
-        **get_house_pattern(response, nuxt_meta),
-        **get_house_price(response, nuxt_meta),
-        **get_house_address(response),
-        **get_service(response),
-        **get_promotion(response),
-        **get_description(response),
-        **get_misc_info(response),
-        **get_contact(response)
+        **parse_obfuscate_fields(response),
+        # **get_house_pattern(response, nuxt_meta),
+        # **get_house_price(response, nuxt_meta),
+        # **get_house_address(response),
+        # **get_service(response),
+        # **get_promotion(response),
+        # **get_description(response),
+        # **get_misc_info(response),
+        # **get_contact(response)
     }
 
     return ret
@@ -33,8 +58,8 @@ def get_title(response):
     .title
     '''
     return {
-        'title': css(response, 'h1', self_text=True, default=['NA'])[0],
-        'deal_time': css(response, 'h1 .tag-deal', self_text=True),
+        'title': css(response, '.title span', self_text=True, default=['NA'])[0],
+        'deal_time': css(response, '.title .tag-deal', self_text=True),
         'breadcrumb': css(response, '.crumbs a.t5-link', self_text=True)
     }
 
