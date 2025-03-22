@@ -98,9 +98,9 @@ class DetailMixin(RequestGenerator):
                 dict=detail_dict
             )
 
-            # yield GenericHouseItem(
-            #     **self.gen_detail_shared_attrs(detail_dict)
-            # )
+            yield GenericHouseItem(
+                **self.gen_detail_shared_attrs(detail_dict)
+            )
             
 
     def get_shared_price(self, detail_dict, basic_info):
@@ -254,7 +254,7 @@ class DetailMixin(RequestGenerator):
         # is_rooftop, floor, total_floor
         # TODO: use title to detect rooftop
         if 'floor' in detail_dict:
-            # floor_info = 1F/2F or 頂樓加蓋/2F or 整棟/2F or 平面式
+            # floor_info = 1F/2F or 頂樓加蓋/2F or 整棟/2F or 平面式, 1F-3F/3F
             floor_info = detail_dict['floor'].split('/')
             floor = clean_number(floor_info[0])
             total_floor = 0

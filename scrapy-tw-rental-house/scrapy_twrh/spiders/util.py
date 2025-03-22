@@ -16,5 +16,8 @@ def clean_number(number_string: str):
 
     if pure_number.isdigit():
         return int(pure_number, base=10)
+    
+    if '-' in pure_number and pure_number.find('-') != 0:
+        return None
 
     return float(pure_number)
