@@ -1,6 +1,8 @@
 import re
+import logging
 from .ocr_utils import parse_floor, parse_ping, parse_price
 from .util import SimpleNuxtInitParser, css
+
 
 def parse_obfuscate_fields(response):
     '''
@@ -9,7 +11,7 @@ def parse_obfuscate_fields(response):
     ret = {}
 
     img_selectors = [
-        { 'name': 'ping', 'dom': 'wc-obfuscate-c-area', 'fn': parse_ping },
+        { 'name': 'floor_ping', 'dom': 'wc-obfuscate-c-area', 'fn': parse_ping },
         { 'name': 'floor', 'dom': 'wc-obfuscate-c-floor', 'fn': parse_floor },
         { 'name': 'price', 'dom': 'wc-obfuscate-c-price', 'fn': parse_price },
         # { 'name': 'address', 'dom': 'wc-obfuscate-rent-map-address' }
@@ -34,21 +36,19 @@ def get_detail_raw_attrs(response):
 
     TODO: photo list
     '''
-    script_list = response.css('script::text').getall()
-    script = next(filter(lambda s: '__NUXT__' in s, script_list), None)
-    # nuxt_meta = SimpleNuxtInitParser(script)
 
     ret = {
         **get_title(response),
         **parse_obfuscate_fields(response),
-        # **get_house_pattern(response, nuxt_meta),
-        # **get_house_price(response, nuxt_meta),
+        **get_house_pattern(response),
+        **get_house_price(response),
+        # TODO: support address & lat lng
         # **get_house_address(response),
-        # **get_service(response),
-        # **get_promotion(response),
-        # **get_description(response),
-        # **get_misc_info(response),
-        # **get_contact(response)
+        **get_service(response),
+        **get_promotion(response),
+        **get_description(response),
+        **get_misc_info(response),
+        **get_contact(response)
     }
 
     return ret
@@ -57,66 +57,63 @@ def get_title(response):
     '''
     .title
     '''
+    title_tokens = response.css('.title span::text').getall()
+
+    if len(title_tokens) == 0:
+        title = 'NA'
+    elif title_tokens[0] == '優選好屋' and len(title_tokens) > 1:
+        title = title_tokens[1]
+    else:
+        title = title_tokens[0]
     return {
-        'title': css(response, '.title span', self_text=True, default=['NA'])[0],
+        'title': title,
         'deal_time': css(response, '.title .tag-deal', self_text=True),
         'breadcrumb': css(response, '.crumbs a.t5-link', self_text=True)
     }
 
-def get_house_pattern(response, nuxt_meta):
+def get_house_pattern(response):
     '''
     .house-label 新上架、可開伙、有陽台
     .house-pattern 物件類型、坪數、樓層/總樓層、建物類型
     '''
     tag_list = css(response, '.house-label > span', self_text=True)
-    # item_list = css(response, '.pattern > span', self_text=True)
-    item_list_candidates = nuxt_meta.get_component_arg_list(['name', 'value', 'key'])
-    item_candidates = {}
-
-    if item_list_candidates:
-        for item in item_list_candidates:
-            item_candidates[item['name']] = item['value']
+    item_list = css(response, '.pattern > span', self_text=True)
 
     items = {}
-    fields_def = {
-        'property_type': '類型',
-        'floor_ping': '坪數',
-        'floor': '樓層',
-        'building_type': '型態'
-    }
 
-    for field, zh_name in fields_def.items():
-        value = item_candidates.get(zh_name, None)
-        if value:
-            # floor is a string like '3F\\u002F7F'
-            # there could be mixed UTF-8 and Unicode escape,
-            # encode().decode('unicode_escape') won't work
-            if '\\u002F' in value:
-                value = value.replace('\\u002F', '/')
-            items[field] = value
+    breadcrumb = css(response, '.crumbs a.t5-link', self_text=True)
+    if len(breadcrumb) >= 3:
+        real_property_type = breadcrumb[2]
 
-    if 'property_type' not in items:
-        breadcrumb = css(response, '.crumbs a.t5-link', self_text=True)
-        if breadcrumb and '整層住家' in breadcrumb:
-            items['property_type'] = '整層住家'
+    # list of item_list per property_type  
+    # 車位 - floor_ping, 戶外廣場, 平面式, 最短租期
+    # 整層住家 - x房x衛x廳, floor_ping, floor, building_type
+    # else - <proper_type>, floor_ping, floor, building_type
+
+    items = {}
+
+    if real_property_type == '車位':
+        items['property_type'] = '車位'
+    else:
+        if len(item_list) >= 1:
+            items['property_type'] = item_list[0]
+        # skip floor_ping and floor as they are parsed separately
+        if len(item_list) >= 4:
+            items['building_type'] = item_list[3]
 
     return {
         'tags': tag_list,
         **items
     }
 
-def get_house_price(response, nuxt_meta):
+def get_house_price(response):
     '''
     .house-price 租金、押金
     押金 can be 押金*個月、押金面議，還可填其他（數值，不確定如何呈現）
     '''
-    price = nuxt_meta.get_component_arg_value('favData.price')
     deposit_str = css(response, '.house-price', self_text=True)
 
     ret = {}
-
-    if price:
-        ret['price'] = price
 
     if deposit_str:
         ret['deposit'] = deposit_str[0]
@@ -217,7 +214,7 @@ def get_contact(response):
     contact_card = response.css('.contact-card')
     author_name = css(contact_card, '.name', self_text=True)
     agent_org = css(contact_card, '.econ-name', self_text=True)
-    phone = css(contact_card, '.phone button span > span', self_text=True)
+    phone = css(contact_card, '.phone .contact-action-lg button span > span', self_text=True)
 
     if author_name:
         author_name = author_name[0]
