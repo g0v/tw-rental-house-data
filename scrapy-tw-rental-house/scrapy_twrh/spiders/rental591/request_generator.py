@@ -1,4 +1,5 @@
 from scrapy_playwright.page import PageMethod
+from playwright.async_api import Page
 from scrapy.spidermiddlewares.httperror import HttpError
 from scrapy_twrh.spiders.rental_spider import RentalSpider
 from scrapy.utils.project import get_project_settings
@@ -55,6 +56,7 @@ class RequestGenerator(RentalSpider):
                 # 'playwright_include_page': True,
                 'playwright_page_methods': [
                     PageMethod('wait_for_load_state', 'networkidle'),
+                    PageMethod(self.open_map)
                 ],
                 'playwright_page_init_callback': self.enable_playwright
             },
@@ -64,6 +66,9 @@ class RequestGenerator(RentalSpider):
             #     'deviceid': self.session['PHPSESSID']
             # }
         }
+    
+    async def open_map(self, page: Page):
+        await page.click('.address .load-map')
 
     def error_handler(self, failure):
         if failure.check(HttpError):

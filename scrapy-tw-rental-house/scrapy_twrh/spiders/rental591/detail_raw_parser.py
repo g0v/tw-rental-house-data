@@ -1,5 +1,7 @@
 import re
 import logging
+import urllib.parse as urlparse
+from urllib.parse import parse_qs
 from .ocr_utils import parse_floor, parse_ping, parse_price
 from .util import SimpleNuxtInitParser, css
 
@@ -42,8 +44,7 @@ def get_detail_raw_attrs(response):
         **parse_obfuscate_fields(response),
         **get_house_pattern(response),
         **get_house_price(response),
-        # TODO: support address & lat lng
-        # **get_house_address(response),
+        **get_house_address(response),
         **get_service(response),
         **get_promotion(response),
         **get_description(response),
@@ -82,6 +83,7 @@ def get_house_pattern(response):
     items = {}
 
     breadcrumb = css(response, '.crumbs a.t5-link', self_text=True)
+    real_property_type = None
     if len(breadcrumb) >= 3:
         real_property_type = breadcrumb[2]
 
@@ -124,28 +126,32 @@ def get_house_address(response):
     '''
     .address 約略經緯度、約略地址
     '''
-    address_str = css(response, '.address .load-map', self_text=True, default=['NA'])
+    # TODO: support address
+    # address_str = css(response, '.address .load-map', self_text=True, default=['NA'])
 
     # lat lng is in NUXT init script
-    js_scripts = css(response, 'script::text')
-    nuxt_script = next(filter(lambda script: '__NUXT__' in script, js_scripts), None)
+    gmap_url = response.css('.google-maps-link::attr("href")').get()
 
-    # 台澎金馬 rough bounded box - [21.811027, 118.350467] - [26.443459, 122.289387]
-    # in nuxt_script, find first pattern that match regex 2\d\.\d{7}, 1[12]\d\.\d{7}
-    latlng_match = re.search(r"(2\d\.\d+,1[12]\d\.\d+)", nuxt_script)
     rough_coordinate = None
 
-    if not latlng_match:
-        map_tag = css(response, '.address a::attr(href)')
-        if map_tag:
-            latlng_match = re.search(r"(2\d\.\d+,1[12]\d\.\d+)", map_tag[0])
+    # https://www.google.com/maps?f=q&hl=zh-TW&q=23.0413176,120.2412309&z=16
+    if gmap_url:
+        parsed_url = urlparse.urlparse(gmap_url)
+        query_params = parse_qs(parsed_url.query)
 
-    if latlng_match:
-        rough_coordinate = latlng_match.group(1)
+        if 'q' in query_params:
+            q_value = query_params['q'][0]
+            # 台澎金馬 rough bounded box - [21.811027, 118.350467] - [26.443459, 122.289387]
+            coord_match = re.search(r'(2\d\.\d+),(1[12]\d\.\d+)', q_value)
+
+            if coord_match:
+                lat = coord_match.group(1)
+                lng = coord_match.group(2)
+                rough_coordinate = f'{lat},{lng}'
 
     return {
         'rough_coordinate': rough_coordinate,
-        'rough_address': address_str[0]
+        # 'rough_address': address_str[0]
     }
 
 def get_service(response):
