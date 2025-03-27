@@ -32,10 +32,11 @@ class Rental591Spider(ListMixin, DetailMixin):
     @classmethod
     def update_settings(cls, settings):
         super().update_settings(settings)
+        # force to use scrapy-playwright
         settings.set('DOWNLOAD_HANDLERS', {
             'https': 'scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler',
             'http': 'scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler',
         }, priority='spider')
+        # for backward compatibility
         settings.set('TWISTED_REACTOR', 'twisted.internet.asyncioreactor.AsyncioSelectorReactor', priority='spider')
-        settings.set('PLAYWRIGHT_MAX_CONTEXTS', 2, priority='spider')
 
