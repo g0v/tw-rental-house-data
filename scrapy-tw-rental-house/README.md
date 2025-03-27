@@ -1,19 +1,42 @@
 # TW Rental House Utility for Scrapy
 
 This package is built for crawling Taiwanese rental house related website using [Scrapy](https://scrapy.org/).
-As behaviour of crawlers may differ from their goal, scale, and pipeline, this package provides only minimum feature set, which allow developer to list and decode a rental house web page into structured data, without knowing too much about detail HTML and API structure of each website. In addition, this package is also designed for extensibility, which allow developers to insert customized callback, manipulate data, and integrate with existing crawler structure.
+As behavior of crawlers may differ from their goal, scale, and pipeline, this package provides only minimum feature set, which allow developer to list and decode a rental house web page into structured data, without knowing too much about detail HTML and API structure of each website. In addition, this package is also designed for extensibility, which allow developers to insert customized callback, manipulate data, and integrate with existing crawler structure.
 
 Although this package provide the ability to crawl rental house website, it's developer's responsibility to ensure crawling mechanism and usage of data. Please be friendly to target website, such as consider using [DOWNLOAD_DELAY](https://doc.scrapy.org/en/latest/topics/settings.html#std:setting-DOWNLOAD_DELAY) or [AUTO_THROTTLING](https://doc.scrapy.org/en/latest/topics/autothrottle.html) to prevent bulk requesting.
 
 ## Requirement
 
 1. Python 3.10+
+2. Playwright (for some spiders)
+3. PaddleOCR (for some spiders)
 
 ## Installation
 
 ```bash
 poetry add scrapy-tw-rental-house
 ```
+
+### Install Playwright
+
+We use Playwright default browser (Chromium) to render JavaScript content. Please install Playwright Chromium before using this package.
+
+For more information, please refer to [official document](https://github.com/scrapy-plugins/scrapy-playwright)
+
+```bash
+poetry shell
+playwright install chromium
+```
+
+### 591 specific
+
+As 591 implements anti-crawler mechanism, it require additional setup to bypass it. To enable Playwright to bypass 591 anti-crawler mechanism, please ensure you 
+get access to browser developer tool on browsing 591, and copy the setting to settings.py.
+
+```python
+BROWSER_INIT_SCRIPT = 'console.log("This command enable Playwright")'
+```
+
 
 ## Basic Usage
 

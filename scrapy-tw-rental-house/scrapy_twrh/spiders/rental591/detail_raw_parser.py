@@ -1,5 +1,35 @@
 import re
-from .util import css, SimpleNuxtInitParser
+import logging
+import urllib.parse as urlparse
+from urllib.parse import parse_qs
+from .ocr_utils import parse_floor, parse_ping, parse_price
+from .util import SimpleNuxtInitParser, css
+
+
+def parse_obfuscate_fields(response):
+    '''
+    Use OCR to parse obfuscated fields in the detail page
+    '''
+    ret = {}
+
+    img_selectors = [
+        { 'name': 'floor_ping', 'dom': 'wc-obfuscate-c-area', 'fn': parse_ping },
+        { 'name': 'floor', 'dom': 'wc-obfuscate-c-floor', 'fn': parse_floor },
+        { 'name': 'price', 'dom': 'wc-obfuscate-c-price', 'fn': parse_price },
+        # { 'name': 'address', 'dom': 'wc-obfuscate-rent-map-address' }
+    ]
+
+    for selector in img_selectors:
+        img = response.css(f'{selector["dom"]} + img::attr("src")').get()
+        if not img:
+            continue
+
+        # output_path = os.path.join(os.getcwd(), 'ocr-test', selector['name'], house_id)
+        # convert_base64_to_img(img, output_path)
+
+        ret[selector['name']] = selector['fn'](img)
+
+    return ret
 
 def get_detail_raw_attrs(response):
     '''
@@ -7,17 +37,13 @@ def get_detail_raw_attrs(response):
     keep original text, without any processing, so that we can re-parse it later
 
     TODO: photo list
-
-    !!vendor_house_url
     '''
-    script_list = response.css('script::text').getall()
-    script = next(filter(lambda s: '__NUXT__' in s, script_list), None)
-    nuxt_meta = SimpleNuxtInitParser(script)
 
     ret = {
         **get_title(response),
-        **get_house_pattern(response, nuxt_meta),
-        **get_house_price(response, nuxt_meta),
+        **parse_obfuscate_fields(response),
+        **get_house_pattern(response),
+        **get_house_price(response),
         **get_house_address(response),
         **get_service(response),
         **get_promotion(response),
@@ -32,66 +58,64 @@ def get_title(response):
     '''
     .title
     '''
+    title_tokens = response.css('.title span::text').getall()
+
+    if len(title_tokens) == 0:
+        title = 'NA'
+    elif title_tokens[0] == '優選好屋' and len(title_tokens) > 1:
+        title = title_tokens[1]
+    else:
+        title = title_tokens[0]
     return {
-        'title': css(response, 'h1', self_text=True, default=['NA'])[0],
-        'deal_time': css(response, 'h1 .tag-deal', self_text=True),
+        'title': title,
+        'deal_time': css(response, '.title .tag-deal', self_text=True),
         'breadcrumb': css(response, '.crumbs a.t5-link', self_text=True)
     }
 
-def get_house_pattern(response, nuxt_meta):
+def get_house_pattern(response):
     '''
     .house-label 新上架、可開伙、有陽台
     .house-pattern 物件類型、坪數、樓層/總樓層、建物類型
     '''
     tag_list = css(response, '.house-label > span', self_text=True)
-    # item_list = css(response, '.pattern > span', self_text=True)
-    item_list_candidates = nuxt_meta.get_component_arg_list(['name', 'value', 'key'])
-    item_candidates = {}
-
-    if item_list_candidates:
-        for item in item_list_candidates:
-            item_candidates[item['name']] = item['value']
+    item_list = css(response, '.pattern > span', self_text=True)
 
     items = {}
-    fields_def = {
-        'property_type': '類型',
-        'floor_ping': '坪數',
-        'floor': '樓層',
-        'building_type': '型態'
-    }
 
-    for field, zh_name in fields_def.items():
-        value = item_candidates.get(zh_name, None)
-        if value:
-            # floor is a string like '3F\\u002F7F'
-            # there could be mixed UTF-8 and Unicode escape,
-            # encode().decode('unicode_escape') won't work
-            if '\\u002F' in value:
-                value = value.replace('\\u002F', '/')
-            items[field] = value
+    breadcrumb = css(response, '.crumbs a.t5-link', self_text=True)
+    real_property_type = None
+    if len(breadcrumb) >= 3:
+        real_property_type = breadcrumb[2]
 
-    if 'property_type' not in items:
-        breadcrumb = css(response, '.crumbs a.t5-link', self_text=True)
-        if breadcrumb and '整層住家' in breadcrumb:
-            items['property_type'] = '整層住家'
+    # list of item_list per property_type  
+    # 車位 - floor_ping, 戶外廣場, 平面式, 最短租期
+    # 整層住家 - x房x衛x廳, floor_ping, floor, building_type
+    # else - <proper_type>, floor_ping, floor, building_type
+
+    items = {}
+
+    if real_property_type == '車位':
+        items['property_type'] = '車位'
+    else:
+        if len(item_list) >= 1:
+            items['property_type'] = item_list[0]
+        # skip floor_ping and floor as they are parsed separately
+        if len(item_list) >= 4:
+            items['building_type'] = item_list[3]
 
     return {
         'tags': tag_list,
         **items
     }
 
-def get_house_price(response, nuxt_meta):
+def get_house_price(response):
     '''
     .house-price 租金、押金
     押金 can be 押金*個月、押金面議，還可填其他（數值，不確定如何呈現）
     '''
-    price = nuxt_meta.get_component_arg_value('favData.price')
     deposit_str = css(response, '.house-price', self_text=True)
 
     ret = {}
-
-    if price:
-        ret['price'] = price
 
     if deposit_str:
         ret['deposit'] = deposit_str[0]
@@ -102,28 +126,32 @@ def get_house_address(response):
     '''
     .address 約略經緯度、約略地址
     '''
-    address_str = css(response, '.address .load-map', self_text=True, default=['NA'])
+    # TODO: support address
+    # address_str = css(response, '.address .load-map', self_text=True, default=['NA'])
 
     # lat lng is in NUXT init script
-    js_scripts = css(response, 'script::text')
-    nuxt_script = next(filter(lambda script: '__NUXT__' in script, js_scripts), None)
+    gmap_url = response.css('.google-maps-link::attr("href")').get()
 
-    # 台澎金馬 rough bounded box - [21.811027, 118.350467] - [26.443459, 122.289387]
-    # in nuxt_script, find first pattern that match regex 2\d\.\d{7}, 1[12]\d\.\d{7}
-    latlng_match = re.search(r"(2\d\.\d+,1[12]\d\.\d+)", nuxt_script)
     rough_coordinate = None
 
-    if not latlng_match:
-        map_tag = css(response, '.address a::attr(href)')
-        if map_tag:
-            latlng_match = re.search(r"(2\d\.\d+,1[12]\d\.\d+)", map_tag[0])
+    # https://www.google.com/maps?f=q&hl=zh-TW&q=23.0413176,120.2412309&z=16
+    if gmap_url:
+        parsed_url = urlparse.urlparse(gmap_url)
+        query_params = parse_qs(parsed_url.query)
 
-    if latlng_match:
-        rough_coordinate = latlng_match.group(1)
+        if 'q' in query_params:
+            q_value = query_params['q'][0]
+            # 台澎金馬 rough bounded box - [21.811027, 118.350467] - [26.443459, 122.289387]
+            coord_match = re.search(r'(2\d\.\d+),(1[12]\d\.\d+)', q_value)
+
+            if coord_match:
+                lat = coord_match.group(1)
+                lng = coord_match.group(2)
+                rough_coordinate = f'{lat},{lng}'
 
     return {
         'rough_coordinate': rough_coordinate,
-        'rough_address': address_str[0]
+        # 'rough_address': address_str[0]
     }
 
 def get_service(response):
@@ -192,7 +220,7 @@ def get_contact(response):
     contact_card = response.css('.contact-card')
     author_name = css(contact_card, '.name', self_text=True)
     agent_org = css(contact_card, '.econ-name', self_text=True)
-    phone = css(contact_card, '.phone button span > span', self_text=True)
+    phone = css(contact_card, '.phone .contact-action-lg button span > span', self_text=True)
 
     if author_name:
         author_name = author_name[0]

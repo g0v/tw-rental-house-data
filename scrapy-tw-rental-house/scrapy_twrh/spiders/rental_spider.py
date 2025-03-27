@@ -2,10 +2,10 @@ from abc import ABC, abstractmethod
 import scrapy
 from .enums import UNKNOWN_ENUM
 
-# Prefer list request than detail request by default
-DEFAULT_LIST_PRIORITY = 100
-
 class RentalSpider(ABC, scrapy.Spider):
+    # Prefer list request than detail request by default
+    DEFAULT_LIST_PRIORITY = 100
+
     """
     Abstract class for generic rental house spirder.
     This class define common interface of a rental spider, which allow developer to extend
@@ -32,7 +32,7 @@ class RentalSpider(ABC, scrapy.Spider):
             'meta': {
                 'rental': rental_meta
             },
-            'priority': DEFAULT_LIST_PRIORITY,
+            'priority': self.DEFAULT_LIST_PRIORITY,
             **self.gen_list_request_args(rental_meta)
         }
         return scrapy.Request(**args)

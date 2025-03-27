@@ -1,5 +1,6 @@
 import json
 import re
+import logging
 from functools import reduce
 from urllib.parse import urlparse, parse_qs
 from decimal import Decimal
@@ -63,6 +64,9 @@ class DetailMixin(RequestGenerator):
         else:
             # regular 200 response
             # response = response.replace(encoding='utf-8')
+            # with open('detail-{}.html'.format(house_id), 'w', encoding='utf-8') as f:
+            #     f.write(response.text)
+
             yield RawHouseItem(
                 house_id=house_id,
                 vendor=self.vendor,
@@ -97,6 +101,7 @@ class DetailMixin(RequestGenerator):
             yield GenericHouseItem(
                 **self.gen_detail_shared_attrs(detail_dict)
             )
+            
 
     def get_shared_price(self, detail_dict, basic_info):
         ret = {}
@@ -249,7 +254,7 @@ class DetailMixin(RequestGenerator):
         # is_rooftop, floor, total_floor
         # TODO: use title to detect rooftop
         if 'floor' in detail_dict:
-            # floor_info = 1F/2F or 頂樓加蓋/2F or 整棟/2F or 平面式
+            # floor_info = 1F/2F or 頂樓加蓋/2F or 整棟/2F or 平面式, 1F-3F/3F
             floor_info = detail_dict['floor'].split('/')
             floor = clean_number(floor_info[0])
             total_floor = 0

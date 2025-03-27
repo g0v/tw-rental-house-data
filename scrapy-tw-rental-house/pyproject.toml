@@ -1,16 +1,26 @@
 [tool.poetry]
 name = "scrapy-tw-rental-house"
-version = "1.5.1"
+version = "2.0.3"
 description = "Scrapy spider for TW Rental House"
 readme = "README.md"
 authors = ["ddio <ddio@ddio.io>"]
 license = "MIT"
 repository = "https://github.com/g0v/tw-rental-house-data/tree/master/scrapy-tw-rental-house"
 
+[[tool.poetry.source]]
+name = "paddle"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cpu/"
+priority = "explicit"
+
 [tool.poetry.dependencies]
 python = "^3.10"
 Scrapy = "^2.11.0"
-
+scrapy-playwright = "^0.0.42"
+playwright = "^1.50.0"
+opencv-python = "^4.11.0.86"
+numpy = "^2.2.3"
+paddlepaddle = {version = "3.0.0rc1", source = "paddle"}
+paddleocr = "^2.10.0"
 
 [build-system]
 requires = ["poetry-core"]
