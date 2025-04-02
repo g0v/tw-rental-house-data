@@ -100,8 +100,8 @@ def get_house_pattern(response):
         if len(item_list) >= 1:
             items['property_type'] = item_list[0]
         # skip floor_ping and floor as they are parsed separately
-        if len(item_list) >= 4:
-            items['building_type'] = item_list[3]
+        if len(item_list) >= 2:
+            items['building_type'] = item_list[1]
 
     return {
         'tags': tag_list,

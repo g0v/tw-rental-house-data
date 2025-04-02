@@ -4,6 +4,11 @@ import numpy as np
 import logging
 import os
 from paddleocr import PaddleOCR
+from paddleocr.ppocr.utils.logging import get_logger
+
+# disable paddleocr debug log
+ppocr_logger = get_logger()
+ppocr_logger.setLevel(logging.ERROR)
 
 paddle_ocr_en = PaddleOCR(lang='en')
 paddle_ocr_zh = PaddleOCR(lang='chinese_cht')
