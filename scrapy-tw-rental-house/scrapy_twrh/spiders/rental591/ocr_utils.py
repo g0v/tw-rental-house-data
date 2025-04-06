@@ -160,6 +160,20 @@ def base64_to_image(base64_str):
         logging.error("Error converting base64 to image: %s", e)
         return None
 
+def get_cache_file_path(img_hash, data_type):
+    """Get cache file path with sharding for better filesystem performance"""
+    # Use first 2 characters of hash as subdirectory
+    shard = img_hash[:2]
+    # Use next 2 characters for second-level directory
+    subshard = img_hash[2:4]
+    
+    # Create directory structure
+    cache_subdir = CACHE_DIR / shard / subshard
+    cache_subdir.mkdir(parents=True, exist_ok=True)
+    
+    # Return full path
+    return cache_subdir / f"{img_hash}_{data_type}.json"
+
 def get_cached_ocr_result(base64_img, data_type, ocr_func):
     """
     Get OCR result from cache or run OCR if cache miss or caching disabled.
@@ -194,7 +208,7 @@ def get_cached_ocr_result(base64_img, data_type, ocr_func):
         return _ocr_cache[cache_key]
     
     # Check file cache
-    cache_file = CACHE_DIR / f"{cache_key}.json"
+    cache_file = get_cache_file_path(img_hash, data_type)
     if cache_file.exists():
         try:
             with open(cache_file, 'r') as f:
