@@ -8,6 +8,8 @@ class ListMixin(RequestGenerator):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.target_cities = []
+        # Set to track houses we've already requested
+        self.requested_houses = set()
 
     def default_start_list(self):
         for city in self.target_cities:
@@ -49,7 +51,12 @@ class ListMixin(RequestGenerator):
                 **house,
                 is_list=True,
             )
-            yield self.gen_detail_request(DetailRequestMeta(house['house_id']))
+            
+            # Only generate detail request if we haven't seen this house before
+            house_id = house['house_id']
+            if house_id not in self.requested_houses:
+                self.requested_houses.add(house_id)
+                yield self.gen_detail_request(DetailRequestMeta(house_id))
 
     def gen_promotion_house(self, response):
         # .recommend-ware

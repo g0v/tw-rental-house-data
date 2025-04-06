@@ -58,14 +58,8 @@ def get_title(response):
     '''
     .title
     '''
-    title_tokens = response.css('.title span::text').getall()
+    title = response.css('.title h1::text').get()
 
-    if len(title_tokens) == 0:
-        title = 'NA'
-    elif title_tokens[0] == '優選好屋' and len(title_tokens) > 1:
-        title = title_tokens[1]
-    else:
-        title = title_tokens[0]
     return {
         'title': title,
         'deal_time': css(response, '.title .tag-deal', self_text=True),
@@ -100,8 +94,8 @@ def get_house_pattern(response):
         if len(item_list) >= 1:
             items['property_type'] = item_list[0]
         # skip floor_ping and floor as they are parsed separately
-        if len(item_list) >= 4:
-            items['building_type'] = item_list[3]
+        if len(item_list) >= 2:
+            items['building_type'] = item_list[1]
 
     return {
         'tags': tag_list,
