@@ -8,8 +8,8 @@ Although this package provide the ability to crawl rental house website, it's de
 ## Requirement
 
 1. Python 3.10+
-2. Playwright (for some spiders)
-3. PaddleOCR (for some spiders)
+2. Playwright (for 591 spiders)
+3. PaddleOCR (for 591 spiders)
 
 ## Installation
 
@@ -36,6 +36,18 @@ get access to browser developer tool on browsing 591, and copy the setting to se
 ```python
 BROWSER_INIT_SCRIPT = 'console.log("This command enable Playwright")'
 ```
+
+### Enable OCR cache
+
+As OCR is a time consuming process, we provide a cache mechanism to store OCR result. To enable OCR cache, please 
+configure scrapy settings.py as following:
+
+```python
+# Enable OCR cache
+OCR_CACHE_ENABLED = True # default false
+OCR_CACHE_DIR = 'path/to/cache' # default to OCR_CACHE_DIR
+```
+
 
 
 ## Basic Usage

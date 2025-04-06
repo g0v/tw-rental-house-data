@@ -5,6 +5,10 @@ import logging
 import os
 from paddleocr import PaddleOCR
 from paddleocr.ppocr.utils.logging import get_logger
+import hashlib
+import json
+from pathlib import Path
+from scrapy.utils.project import get_project_settings
 
 # disable paddleocr debug log
 ppocr_logger = get_logger()
@@ -13,7 +17,22 @@ ppocr_logger.setLevel(logging.ERROR)
 paddle_ocr_en = PaddleOCR(lang='en')
 paddle_ocr_zh = PaddleOCR(lang='chinese_cht')
 
-def convert_base64_to_img(base64_str, output_path=None):
+# Load settings
+settings = get_project_settings()
+
+# Get cache configuration from settings with defaults
+CACHE_ENABLED = settings.getbool('OCR_CACHE_ENABLED', True)
+CACHE_DIR_PATH = settings.get('OCR_CACHE_DIR', 'ocr_cache')
+
+# Cache directory - only create if caching is enabled
+CACHE_DIR = Path(CACHE_DIR_PATH)
+if CACHE_ENABLED:
+    CACHE_DIR.mkdir(exist_ok=True)
+
+# In-memory cache for faster access
+_ocr_cache = {}
+
+def save_base64_image_to_file(base64_str, output_path=None):
     """
     Convert base64 string to image file.
         
@@ -141,55 +160,128 @@ def base64_to_image(base64_str):
         logging.error("Error converting base64 to image: %s", e)
         return None
 
-def parse_floor(base64_img):
-    """"
-    Parse the floor information from the base64 image."
+def get_cached_ocr_result(base64_img, data_type, ocr_func):
     """
-    img = base64_to_image(base64_img)
-    if img is None:
-        return None
+    Get OCR result from cache or run OCR if cache miss or caching disabled.
+    
+    Args:
+        base64_img: Base64 image string
+        data_type: Type of data being OCR'd ('floor', 'ping', 'price', etc.)
+        ocr_func: Function to call if cache miss (receives base64_img as argument)
+        
+    Returns:
+        The OCR result (string)
+    """
+    # If caching is disabled, directly run OCR
+    if not CACHE_ENABLED:
+        logging.debug(f"Cache disabled, directly running OCR for: {data_type}")
+        return ocr_func(base64_img)
+        
+    # Caching is enabled, proceed with cache logic
+    # Calculate hash for the image data
+    img_data = base64_img
+    if isinstance(img_data, str) and ',' in img_data and ';base64,' in img_data:
+        img_data = img_data.split(',', 1)[1]
+    
+    img_hash = hashlib.md5(img_data.encode('utf-8') if isinstance(img_data, str) else img_data).hexdigest()
+    
+    # Create a unique key for this image and data type
+    cache_key = f"{img_hash}_{data_type}"
+    
+    # Check in-memory cache first
+    if cache_key in _ocr_cache:
+        logging.debug(f"Cache hit (memory): {data_type} -> {_ocr_cache[cache_key]}")
+        return _ocr_cache[cache_key]
+    
+    # Check file cache
+    cache_file = CACHE_DIR / f"{cache_key}.json"
+    if cache_file.exists():
+        try:
+            with open(cache_file, 'r') as f:
+                result = json.load(f)
+                # Store in memory for faster future access
+                _ocr_cache[cache_key] = result
+                logging.debug(f"Cache hit (file): {data_type} -> {result}")
+                return result
+        except Exception as e:
+            logging.warning(f"Failed to read cache file: {e}")
+    
+    # Cache miss - run OCR using the provided function
+    logging.debug(f"Cache miss: {data_type}")
+    
+    # Call the provided OCR function
+    result = ocr_func(base64_img)
+    
+    # Cache the result
+    _ocr_cache[cache_key] = result
+    try:
+        with open(cache_file, 'w') as f:
+            json.dump(result, f)
+    except Exception as e:
+        logging.warning(f"Failed to write to cache file: {e}")
+    
+    return result
 
-    digit_str = ocr_via_paddle(img, char_whitelist='0123456789/F-~')
-    zh_str = ocr_via_paddle(img, char_whitelist='棟加', use_zh=True)
+def parse_floor(base64_img):
+    """
+    Parse the floor information from the base64 image.
+    """
+    # Define the original OCR logic as a nested function
+    def _ocr_floor(base64_img):
+        img = base64_to_image(base64_img)
+        if img is None:
+            return None
 
-    digit_tokens = digit_str.split('/')
-    answer = ''
+        digit_str = ocr_via_paddle(img, char_whitelist='0123456789/F-~')
+        zh_str = ocr_via_paddle(img, char_whitelist='棟加', use_zh=True)
 
-    if not len(digit_tokens):
-        return ''
+        digit_tokens = digit_str.split('/')
+        answer = ''
 
-    if zh_str:
-        if zh_str == '棟':
-            answer = '整棟/'
+        if not len(digit_tokens):
+            return ''
+
+        if zh_str:
+            if zh_str == '棟':
+                answer = '整棟/'
+            else:
+                answer = '頂樓加蓋/'
+            answer += digit_tokens[len(digit_tokens) - 1]
         else:
-            answer = '頂樓加蓋/'
-        answer += digit_tokens[len(digit_tokens) - 1]
-    else:
-        answer = digit_str
+            answer = digit_str
 
-    if '~' in answer:
-        answer = answer.replace('~', '-')
+        if '~' in answer:
+            answer = answer.replace('~', '-')
 
-    return answer
+        return answer
+    
+    # Use the cache wrapper
+    return get_cached_ocr_result(base64_img, 'floor', _ocr_floor)
 
 def parse_ping(base64_img):
-    """"
-    Parse the ping information from the base64 image."
     """
-    img = base64_to_image(base64_img)
-    if img is None:
-        return None
+    Parse the ping information from the base64 image.
+    """
+    def _ocr_ping(base64_img):
+        img = base64_to_image(base64_img)
+        if img is None:
+            return None
 
-    digit_str = ocr_via_paddle(img, char_whitelist='0123456789.', chop_right=18)
-    return digit_str
+        digit_str = ocr_via_paddle(img, char_whitelist='0123456789.', chop_right=18)
+        return digit_str
+    
+    return get_cached_ocr_result(base64_img, 'ping', _ocr_ping)
 
 def parse_price(base64_img):
-    """"
-    Parse the price information from the base64 image."
     """
-    img = base64_to_image(base64_img)
-    if img is None:
-        return None
+    Parse the price information from the base64 image.
+    """
+    def _ocr_price(base64_img):
+        img = base64_to_image(base64_img)
+        if img is None:
+            return None
 
-    digit_str = ocr_via_paddle(img, char_whitelist='0123456789,.')
-    return digit_str
+        digit_str = ocr_via_paddle(img, char_whitelist='0123456789,.')
+        return digit_str
+    
+    return get_cached_ocr_result(base64_img, 'price', _ocr_price)
