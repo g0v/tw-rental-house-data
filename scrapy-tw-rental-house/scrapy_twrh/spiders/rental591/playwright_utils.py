@@ -92,4 +92,7 @@ class PlaywrightUtils:
         await page.route('**/*', handle_route)
 
     async def open_map(self, page: Page):
-        await page.click('.address .load-map')
+        """Click the map load button if it exists on the page."""
+        map_button = await page.query_selector('.address .load-map')
+        if map_button:
+            await map_button.click()
