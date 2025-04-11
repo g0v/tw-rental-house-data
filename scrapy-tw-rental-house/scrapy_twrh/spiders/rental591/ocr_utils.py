@@ -27,7 +27,7 @@ CACHE_DIR_PATH = settings.get('OCR_CACHE_DIR', 'ocr_cache')
 # Cache directory - only create if caching is enabled
 CACHE_DIR = Path(CACHE_DIR_PATH)
 if CACHE_ENABLED:
-    CACHE_DIR.mkdir(exist_ok=True)
+    CACHE_DIR.mkdir(exist_ok=True, parents=True)
 
 # In-memory cache for faster access
 _ocr_cache = {}
