@@ -10,6 +10,8 @@ import json
 from pathlib import Path
 from scrapy.utils.project import get_project_settings
 
+logger = logging.getLogger(__name__)
+
 # disable paddleocr debug log
 ppocr_logger = get_logger()
 ppocr_logger.setLevel(logging.ERROR)
@@ -157,11 +159,11 @@ def base64_to_image(base64_str):
 
         return img
     except Exception as e:
-        logging.error("Error converting base64 to image: %s", e)
+        logger.error("Error converting base64 to image: %s", e)
         return None
 
-def get_cache_file_path(img_hash, data_type):
-    """Get cache file path with sharding for better filesystem performance"""
+def get_cache_file_paths(img_hash, data_type):
+    """Get cache file paths for both image and result"""
     # Use first 2 characters of hash as subdirectory
     shard = img_hash[:2]
     # Use next 2 characters for second-level directory
@@ -171,12 +173,16 @@ def get_cache_file_path(img_hash, data_type):
     cache_subdir = CACHE_DIR / shard / subshard
     cache_subdir.mkdir(parents=True, exist_ok=True)
     
-    # Return full path
-    return cache_subdir / f"{img_hash}_{data_type}.json"
+    # Return paths for both image and result
+    return {
+        'image': cache_subdir / f"{img_hash}_{data_type}.png",
+        'result': cache_subdir / f"{img_hash}_{data_type}.json"
+    }
 
 def get_cached_ocr_result(base64_img, data_type, ocr_func):
     """
     Get OCR result from cache or run OCR if cache miss or caching disabled.
+    Store raw image for investigation while keeping memory footprint small.
     
     Args:
         base64_img: Base64 image string
@@ -188,51 +194,58 @@ def get_cached_ocr_result(base64_img, data_type, ocr_func):
     """
     # If caching is disabled, directly run OCR
     if not CACHE_ENABLED:
-        logging.debug(f"Cache disabled, directly running OCR for: {data_type}")
+        logger.debug(f"Cache disabled, directly running OCR for: {data_type}")
         return ocr_func(base64_img)
         
-    # Caching is enabled, proceed with cache logic
     # Calculate hash for the image data
     img_data = base64_img
     if isinstance(img_data, str) and ',' in img_data and ';base64,' in img_data:
         img_data = img_data.split(',', 1)[1]
     
-    img_hash = hashlib.md5(img_data.encode('utf-8') if isinstance(img_data, str) else img_data).hexdigest()
+    img_hash = hashlib.md5(img_data.encode('utf-8')).hexdigest()
+    cache_paths = get_cache_file_paths(img_hash, data_type)
     
-    # Create a unique key for this image and data type
+    # Check in-memory cache first (results only)
     cache_key = f"{img_hash}_{data_type}"
-    
-    # Check in-memory cache first
     if cache_key in _ocr_cache:
-        logging.debug(f"Cache hit (memory): {data_type} -> {_ocr_cache[cache_key]}")
+        logger.debug(f"Cache hit (memory): {data_type} -> {_ocr_cache[cache_key]}")
         return _ocr_cache[cache_key]
     
     # Check file cache
-    cache_file = get_cache_file_path(img_hash, data_type)
-    if cache_file.exists():
+    if cache_paths['result'].exists():
         try:
-            with open(cache_file, 'r') as f:
+            with open(cache_paths['result'], 'r') as f:
                 result = json.load(f)
-                # Store in memory for faster future access
+                # Store only result in memory
                 _ocr_cache[cache_key] = result
-                logging.debug(f"Cache hit (file): {data_type} -> {result}")
+                logger.debug(f"Cache hit (file): {data_type} -> {result}")
                 return result
         except Exception as e:
-            logging.warning(f"Failed to read cache file: {e}")
+            logger.warning(f"Failed to read cache file: {e}")
     
-    # Cache miss - run OCR using the provided function
-    logging.debug(f"Cache miss: {data_type}")
+    # Cache miss - run OCR and store both image and result
+    logger.debug(f"Cache miss: {data_type}")
     
-    # Call the provided OCR function
+    # Store original image for investigation
+    try:
+        img = base64_to_image(base64_img)
+        if img is not None:
+            cv2.imwrite(str(cache_paths['image']), img)
+    except Exception as e:
+        logger.warning(f"Failed to cache image: {e}")
+    
+    # Run OCR and cache result
     result = ocr_func(base64_img)
     
-    # Cache the result
+    # Store only result in memory
     _ocr_cache[cache_key] = result
+    
+    # Store result in file
     try:
-        with open(cache_file, 'w') as f:
+        with open(cache_paths['result'], 'w') as f:
             json.dump(result, f)
     except Exception as e:
-        logging.warning(f"Failed to write to cache file: {e}")
+        logger.warning(f"Failed to write cache file: {e}")
     
     return result
 
