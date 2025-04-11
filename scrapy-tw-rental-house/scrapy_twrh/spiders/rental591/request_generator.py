@@ -5,14 +5,12 @@ from scrapy_twrh.spiders.rental_spider import RentalSpider
 from scrapy.utils.project import get_project_settings
 
 from .util import DETAIL_ENDPOINT, LIST_ENDPOINT, ListRequestMeta, DetailRequestMeta
-
+from .playwright_utils import PlaywrightUtils
 class RequestGenerator(RentalSpider):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         settings = get_project_settings()
-        self.browser_init_script = settings.get('BROWSER_INIT_SCRIPT', '')
-        if not self.browser_init_script:
-            self.logger.warning('BROWSER_INIT_SCRIPT not set in settings, some features may not work')
+        self.playwright_utils = PlaywrightUtils(settings)
 
     def gen_list_request_args(self, rental_meta: ListRequestMeta):
         # don't filter as 591 use 30x to indicate house status...
@@ -35,10 +33,6 @@ class RequestGenerator(RentalSpider):
             # }
         }
         return ret
-    
-    async def enable_playwright(self, page, request):
-        if self.browser_init_script:
-            await page.add_init_script(self.browser_init_script)
 
     def gen_detail_request_args(self, rental_meta: DetailRequestMeta):
         # https://rent.591.com.tw/17122751
@@ -53,12 +47,11 @@ class RequestGenerator(RentalSpider):
                 'rental': rental_meta,
                 'handle_httpstatus_list': [400, 404, 302, 301],
                 'playwright': True,
-                # 'playwright_include_page': True,
                 'playwright_page_methods': [
                     PageMethod('wait_for_load_state', 'networkidle'),
-                    PageMethod(self.open_map)
+                    PageMethod(self.playwright_utils.open_map)
                 ],
-                'playwright_page_init_callback': self.enable_playwright
+                'playwright_page_init_callback': self.playwright_utils.init_page,
             },
             # 591 remove session check since #176, for some reason ╮(╯_╰)╭
             # 'headers': {
@@ -66,9 +59,6 @@ class RequestGenerator(RentalSpider):
             #     'deviceid': self.session['PHPSESSID']
             # }
         }
-    
-    async def open_map(self, page: Page):
-        await page.click('.address .load-map')
 
     def error_handler(self, failure):
         if failure.check(HttpError):
