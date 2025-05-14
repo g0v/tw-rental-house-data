@@ -49,7 +49,7 @@ class DetailMixin(RequestGenerator):
     def default_parse_detail(self, response):
         house_id = response.meta['rental'].id
 
-        if response.status == 400:
+        if response.status == 400 or response.url == 'about:blank':
             self.logger.error("I'm getting blocked -___-")
         elif response.status != 200:
             self.logger.info(
