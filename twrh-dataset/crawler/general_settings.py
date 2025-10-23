@@ -7,6 +7,8 @@ import django
 # Allow Scrapy to use Django
 sys.path.append('{}/../django'.format(os.path.dirname(os.path.realpath(__file__))))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
+# Allow synchronous Django ORM calls in Scrapy's Twisted async context
+os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
 django.setup()
 
 BOT_NAME = 'tw-rental-house-data'
