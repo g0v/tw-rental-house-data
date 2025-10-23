@@ -1,6 +1,7 @@
 import uuid
 import scrapy
 import traceback
+from twisted.internet import threads
 from django.db import connection
 from rental.models import HouseTS, Vendor
 from rental import models
@@ -160,7 +161,7 @@ class PersistQueue(object):
                     db_request.delete()
                 else:
                     yield item
-        except:
+        except Exception:
             self.logger.error(
                 'Parser error in {} when handle meta {}. [{}] - {:.128}'.format(
                     self.vendor.name,

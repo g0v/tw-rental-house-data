@@ -6,6 +6,11 @@ authors = ["ddio <ddio@ddio.io>"]
 license = "MIT"
 readme = "README.md"
 
+[[tool.poetry.source]]
+name = "paddle"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cpu/"
+priority = "explicit"
+
 [tool.poetry.dependencies]
 python = "^3.10"
 Scrapy = "^2.11.0"
