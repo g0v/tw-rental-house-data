@@ -9,9 +9,9 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.10"
 Scrapy = "^2.11.0"
+pycrypto = "^2.6.1"
 scrapy-tw-rental-house = {path = "../scrapy-tw-rental-house"}
-
-[tool.poetry.group.dev.dependencies]
+scrapy-rotating-proxies = "^0.6.2"
 
 [build-system]
 requires = ["poetry-core"]

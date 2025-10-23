@@ -45,10 +45,23 @@ configure scrapy settings.py as following:
 ```python
 # Enable OCR cache
 OCR_CACHE_ENABLED = True # default false
-OCR_CACHE_DIR = 'path/to/cache' # default to OCR_CACHE_DIR
+OCR_CACHE_DIR = 'path/to/cache' # default to ocr_cache
 ```
 
+### Speed up browser page loading
 
+This package support skip specific domain request and cache JS. To enable these features, please configure scrapy settings.py as following:
+
+```python
+# Enable cache for JS
+BROWSER_JS_CACHE_ENABLED = True
+BROWSER_JS_CACHE_DIR = 'path/to/cache' # default to js_cache
+
+# Enable skip specific domain request
+BROWSER_SKIP_DOMAIN = [
+    'https://the.unnecessary.domain',
+]
+```
 
 ## Basic Usage
 

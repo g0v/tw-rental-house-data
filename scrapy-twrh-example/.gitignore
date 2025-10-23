@@ -1,2 +1,4 @@
 *.log
 __pycache__
+ocr_cache
+output
