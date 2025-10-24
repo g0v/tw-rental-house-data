@@ -4,11 +4,22 @@ defaults:
   run:
     working-directory: ui
 
+# DISABLED - GitHub Actions temporarily disabled for rewriting
+# Original triggers commented out, replaced with manual trigger only
 on:
-  pull_request:
-    branches:
-      - main
-      - master
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for manual run (workflow is disabled)'
+        required: true
+        default: 'Manual run - workflow is disabled'
+
+# Original automatic triggers (DISABLED):
+# on:
+#   pull_request:
+#     branches:
+#       - main
+#       - master
 
 jobs:
   ci:
