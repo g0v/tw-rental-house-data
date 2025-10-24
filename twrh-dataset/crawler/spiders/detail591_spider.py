@@ -8,12 +8,14 @@ from .persist_queue import PersistQueue
 class Detail591Spider(Rental591Spider):
     name = "detail591"
 
-    def __init__(self, **kwargs):
+    def __init__(self, append=False, **kwargs):
         super().__init__(
             start_list=self.start_detail_requests,
             **kwargs
         )
 
+        self.append = append == 'True' or append == True
+        
         self.persist_queue = PersistQueue(
             vendor='591 租屋網',
             is_list=False,
@@ -36,11 +38,18 @@ class Detail591Spider(Rental591Spider):
 
         if not self.persist_queue.has_request():
             # find all opened houses and crawl all of them
-            houses = House.objects.filter(
+            query = House.objects.filter(
                 deal_status = enums.DealStatusType.OPENED
-            ).values('vendor_house_id')
+            )
+            
+            # In append mode, also filter by monthly_price is null
+            if self.append:
+                query = query.filter(monthly_price__isnull=True)
+                
+            houses = query.values('vendor_house_id')
 
-            self.logger.info('generating request: {}'.format(houses.count()))
+            total = houses.count()
+            self.logger.info('generating request: {} (append mode: {})'.format(total, self.append))
 
             with transaction.atomic():
                 try:
@@ -48,6 +57,9 @@ class Detail591Spider(Rental591Spider):
                         self.persist_queue.gen_persist_request([house['vendor_house_id']])
                 except:
                     traceback.print_exc()
+        
+        # Initialize progress tracking
+        self.persist_queue.init_progress_tracking()
 
         # quick fix for concurrency issue
         mercy = 10
@@ -59,3 +71,6 @@ class Detail591Spider(Rental591Spider):
                 break
             else:
                 mercy -= 1
+        
+        # Log final progress
+        self.persist_queue.progress_tracker.log_final()
