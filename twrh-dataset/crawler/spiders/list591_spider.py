@@ -1,4 +1,4 @@
-from scrapy import Request
+from scrapy import Request, signals
 from scrapy_twrh.spiders.rental591 import Rental591Spider, util
 from .persist_queue import PersistQueue
 
@@ -21,6 +21,15 @@ class List591Spider(Rental591Spider):
             generate_request_args=self.gen_list_request_args,
             parse_response=self.parse_list_and_stop
         )
+    
+    @classmethod
+    def from_crawler(cls, crawler, *args, **kwargs):
+        spider = super(List591Spider, cls).from_crawler(crawler, *args, **kwargs)
+        crawler.signals.connect(spider.spider_closed, signal=signals.spider_closed)
+        return spider
+    
+    def spider_closed(self, spider=None):
+        self.persist_queue.progress_tracker.log_final()
 
     def parse_seed (self, seed):
         return util.ListRequestMeta(*seed)
@@ -44,6 +53,9 @@ class List591Spider(Rental591Spider):
                     city['city'],
                     0
                 ])
+        
+        # Initialize progress tracking
+        self.persist_queue.init_progress_tracking()
 
         while True:
             next_request = self.persist_queue.next_request()

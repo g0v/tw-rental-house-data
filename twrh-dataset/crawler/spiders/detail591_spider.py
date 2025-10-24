@@ -1,5 +1,6 @@
 import traceback
 from django.db import transaction
+from scrapy import signals
 from rental.models import House
 from rental import enums
 from scrapy_twrh.spiders.rental591 import Rental591Spider, util
@@ -24,6 +25,15 @@ class Detail591Spider(Rental591Spider):
             generate_request_args=self.gen_detail_request_args,
             parse_response=self.parse_detail_and_done
         )
+    
+    @classmethod
+    def from_crawler(cls, crawler, *args, **kwargs):
+        spider = super(Detail591Spider, cls).from_crawler(crawler, *args, **kwargs)
+        crawler.signals.connect(spider.spider_closed, signal=signals.spider_closed)
+        return spider
+    
+    def spider_closed(self, spider=None):
+        self.persist_queue.progress_tracker.log_final()
 
     def parse_seed(self, seed):
         return util.DetailRequestMeta(*seed)
@@ -71,6 +81,3 @@ class Detail591Spider(Rental591Spider):
                 break
             else:
                 mercy -= 1
-        
-        # Log final progress
-        self.persist_queue.progress_tracker.log_final()
