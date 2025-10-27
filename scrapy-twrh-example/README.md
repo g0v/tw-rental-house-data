@@ -50,11 +50,18 @@ You can see the spirder doesn't populate any item until requesting location rela
 scrapy crawl location-only
 ```
 
-## Example 4 - Persist request / 另存網頁請求
+## Example 4 - Single city with command line argument / 用命令列指定單一城市
 
-`TODO`
+This example allows you to specify a single city via command line argument.
+The city name is validated against `TopRegionType` enum to ensure it's valid.
 
 ```bash
-# This example catch all detail info request and store for later use.
-# See `persist-request/pipelines.py` for detail usage.
+# Crawl data for Taipei City
+scrapy crawl singleCity -a city="台北市"
+
+# Crawl data for New Taipei City
+scrapy crawl singleCity -a city="新北市"
+
+# Crawl data for Kaohsiung City
+scrapy crawl singleCity -a city="高雄市"
 ```
