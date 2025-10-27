@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python Memory Usage Monitor</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            height: 100vh;
+            display: flex;
+        }
+
+        .container {
+            display: flex;
+            width: 100%;
+            height: 100vh;
+        }
+
+        .control-panel {
+            width: 300px;
+            background: #f5f5f5;
+            padding: 20px;
+            border-right: 1px solid #ddd;
+            overflow-y: auto;
+        }
+
+        .chart-panel {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        h2 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 18px;
+        }
+
+        .drop-zone {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 40px 20px;
+            text-align: center;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+        }
+
+        .drop-zone:hover,
+        .drop-zone.dragover {
+            border-color: #4CAF50;
+            background: #f0f8f0;
+        }
+
+        .drop-zone.loaded {
+            border-color: #4CAF50;
+            background: #e8f5e9;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .section {
+            margin-bottom: 25px;
+        }
+
+        .section label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+            font-size: 14px;
+        }
+
+        select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            background: white;
+        }
+
+        .process-list {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            padding: 10px;
+        }
+
+        .process-item {
+            display: flex;
+            align-items: center;
+            padding: 6px;
+            margin-bottom: 4px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .process-item:hover {
+            background: #f0f0f0;
+        }
+
+        .process-item input[type="checkbox"] {
+            margin-right: 8px;
+        }
+
+        .process-item label {
+            cursor: pointer;
+            font-size: 13px;
+            flex: 1;
+            margin: 0;
+            font-weight: normal;
+        }
+
+        .color-box {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            margin-right: 8px;
+            border: 1px solid #ccc;
+        }
+
+        #chartCanvas {
+            max-height: calc(100vh - 100px);
+        }
+
+        .stats {
+            margin-top: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            font-size: 13px;
+        }
+
+        .stats-item {
+            margin-bottom: 5px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .btn:hover {
+            background: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="control-panel">
+            <h2>📊 Memory Monitor</h2>
+            
+            <div class="section">
+                <div class="drop-zone" id="dropZone">
+                    <p>📁 Drag & Drop CSV file here</p>
+                    <p style="font-size: 12px; color: #888; margin-top: 10px;">or click to browse</p>
+                </div>
+                <input type="file" id="fileInput" class="file-input" accept=".csv,.log">
+            </div>
+
+            <div class="section">
+                <label>Metric to Display</label>
+                <select id="metricSelect">
+                    <option value="MEM">Memory % (%MEM)</option>
+                    <option value="RSS">RSS (MB)</option>
+                    <option value="VSZ">VSZ (MB)</option>
+                    <option value="CPU">CPU % (%CPU)</option>
+                </select>
+            </div>
+
+            <div class="section">
+                <label>Filter Keywords (comma or newline separated)</label>
+                <textarea id="filterKeywords" rows="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; font-family: monospace; resize: vertical;"></textarea>
+                <p style="font-size: 11px; color: #666; margin-top: 5px;">Processes matching these keywords will be hidden</p>
+            </div>
+
+            <div class="section">
+                <label>Visible Processes</label>
+                <div class="process-list" id="processList">
+                    <p style="color: #888; font-size: 13px;">Load a CSV file to see processes</p>
+                </div>
+            </div>
+
+            <div class="stats" id="statsPanel" style="display: none;">
+                <strong>Statistics:</strong>
+                <div class="stats-item" id="totalRecords"></div>
+                <div class="stats-item" id="timeRange"></div>
+                <div class="stats-item" id="processCount"></div>
+            </div>
+        </div>
+
+        <div class="chart-panel">
+            <canvas id="chartCanvas"></canvas>
+        </div>
+    </div>
+
+    <script>
+        let chartInstance = null;
+        let csvData = [];
+        let processColors = {};
+        let visibleProcesses = new Set();
+        const MAX_PROCESSES = 8;
+        const STORAGE_KEY = 'memoryMonitorFilterKeywords';
+
+        // Process name mapping for user-friendly names
+        const processNameMap = {
+            'python': 'Python',
+            'python3': 'Python 3',
+            'scrapy': 'Scrapy Crawler',
+            'django': 'Django Server',
+            'gunicorn': 'Gunicorn',
+            'celery': 'Celery Worker',
+            'jupyter': 'Jupyter',
+            'ipython': 'IPython',
+            'manage.py': 'Django Management'
+        };
+
+        // Color palette
+        const colorPalette = [
+            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
+            '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF',
+            '#4BC0C0', '#FF9F40', '#36A2EB', '#FFCE56'
+        ];
+
+        // File handling
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const metricSelect = document.getElementById('metricSelect');
+        const filterKeywordsInput = document.getElementById('filterKeywords');
+
+        // Load filter keywords from local storage
+        function loadFilterKeywords() {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) {
+                filterKeywordsInput.value = saved;
+            }
+        }
+
+        // Save filter keywords to local storage
+        function saveFilterKeywords() {
+            localStorage.setItem(STORAGE_KEY, filterKeywordsInput.value);
+        }
+
+        // Parse filter keywords
+        function getFilterKeywords() {
+            const text = filterKeywordsInput.value.trim();
+            if (!text) return [];
+            
+            // Split by comma or newline, trim each keyword
+            return text
+                .split(/[,\n]/)
+                .map(k => k.trim().toLowerCase())
+                .filter(k => k.length > 0);
+        }
+
+        // Check if process should be filtered out
+        function shouldFilterProcess(uniqueId, command) {
+            const keywords = getFilterKeywords();
+            if (keywords.length === 0) return false;
+            
+            const searchText = (uniqueId + ' ' + command).toLowerCase();
+            return keywords.some(keyword => searchText.includes(keyword));
+        }
+
+        // Initialize
+        loadFilterKeywords();
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file) handleFile(file);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) handleFile(file);
+        });
+
+        metricSelect.addEventListener('change', () => {
+            if (csvData.length > 0) updateChart();
+        });
+
+        filterKeywordsInput.addEventListener('input', () => {
+            saveFilterKeywords();
+            if (csvData.length > 0) {
+                processData();
+                updateProcessList();
+                updateChart();
+            }
+        });
+
+        function handleFile(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const content = e.target.result;
+                parseCSV(content);
+                dropZone.classList.add('loaded');
+                dropZone.innerHTML = '<p>✅ ' + file.name + '</p><p style="font-size: 12px; color: #888; margin-top: 10px;">Click to load another file</p>';
+            };
+            reader.readAsText(file);
+        }
+
+        function parseCSV(content) {
+            const lines = content.trim().split('\n');
+            const headers = lines[0].split(',');
+            
+            csvData = [];
+            for (let i = 1; i < lines.length; i++) {
+                const values = parseCSVLine(lines[i]);
+                if (values.length >= 7) {
+                    const command = values.slice(7).join(',');
+                    csvData.push({
+                        timestamp: values[0],
+                        pid: values[1],
+                        processName: values[2],
+                        cpu: parseFloat(values[3]) || 0,
+                        mem: parseFloat(values[4]) || 0,
+                        rss: parseFloat(values[5]) || 0,
+                        vsz: parseFloat(values[6]) || 0,
+                        command: command,
+                        // Create a unique identifier based on PID and command
+                        uniqueId: values[1] + ':' + extractMainScript(command)
+                    });
+                }
+            }
+
+            processData();
+            updateStats();
+            updateProcessList();
+            updateChart();
+        }
+
+        function parseCSVLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            result.push(current.trim());
+            return result;
+        }
+
+        // Extract main script from command
+        function extractMainScript(command) {
+            if (!command) return 'Unknown';
+            
+            // Try to find Python script or module being executed
+            const parts = command.split(/\s+/);
+            
+            // Look for .py files
+            for (let part of parts) {
+                if (part.endsWith('.py')) {
+                    return part.split('/').pop();
+                }
+            }
+            
+            // Look for scrapy commands
+            if (command.includes('scrapy')) {
+                const scrapyMatch = command.match(/scrapy\s+crawl\s+(\w+)/);
+                if (scrapyMatch) return 'scrapy:' + scrapyMatch[1];
+            }
+            
+            // Look for gunicorn
+            if (command.includes('gunicorn')) {
+                const gunicornMatch = command.match(/gunicorn.*?([a-zA-Z0-9_]+):app/);
+                if (gunicornMatch) return 'gunicorn:' + gunicornMatch[1];
+            }
+            
+            // Look for module execution (python -m module)
+            const moduleMatch = command.match(/python[0-9.]*\s+-m\s+([a-zA-Z0-9_.]+)/);
+            if (moduleMatch) return moduleMatch[1];
+            
+            // Look for specific tools
+            if (command.includes('pylint')) return 'pylint';
+            if (command.includes('pylance')) return 'pylance';
+            if (command.includes('networkd-dispatcher')) return 'networkd-dispatcher';
+            if (command.includes('unattended-upgrade')) return 'unattended-upgrade';
+            if (command.includes('gnome-terminal')) return 'gnome-terminal';
+            if (command.includes('playwright')) return 'playwright-driver';
+            
+            // Default: use first meaningful argument
+            for (let part of parts) {
+                if (!part.startsWith('-') && !part.includes('python') && part.length > 2) {
+                    return part.split('/').pop();
+                }
+            }
+            
+            return 'Unknown';
+        }
+
+        function processData() {
+            // Group by uniqueId (PID + main script)
+            const processGroups = {};
+            csvData.forEach(d => {
+                const uniqueId = d.uniqueId;
+                if (!processGroups[uniqueId]) {
+                    processGroups[uniqueId] = {
+                        command: d.command,
+                        processName: d.processName,
+                        pid: d.pid
+                    };
+                }
+            });
+            
+            // Clear existing colors and visible processes
+            processColors = {};
+            visibleProcesses.clear();
+            
+            // Assign colors to unique process groups, excluding filtered ones
+            let colorIndex = 0;
+            Object.keys(processGroups).forEach((uniqueId) => {
+                const group = processGroups[uniqueId];
+                
+                // Skip if this process matches filter keywords
+                if (shouldFilterProcess(uniqueId, group.command)) {
+                    return;
+                }
+                
+                processColors[uniqueId] = colorPalette[colorIndex % colorPalette.length];
+                visibleProcesses.add(uniqueId);
+                colorIndex++;
+            });
+        }
+
+        function getFriendlyName(uniqueId, command) {
+            // Extract PID and script
+            const [pid, script] = uniqueId.split(':');
+            
+            // Create user-friendly name
+            if (script.startsWith('scrapy:')) {
+                return `Scrapy (${script.split(':')[1]}) [${pid}]`;
+            }
+            
+            if (script.startsWith('gunicorn:')) {
+                return `Gunicorn (${script.split(':')[1]}) [${pid}]`;
+            }
+            
+            if (script === 'lsp_server.py') {
+                return `Pylint LSP [${pid}]`;
+            }
+            
+            if (script === 'server.bundle.js') {
+                return `Pylance [${pid}]`;
+            }
+            
+            if (script.endsWith('.py')) {
+                return `${script.replace('.py', '')} [${pid}]`;
+            }
+            
+            if (script === 'networkd-dispatcher') {
+                return 'Network Dispatcher';
+            }
+            
+            if (script === 'unattended-upgrade') {
+                return 'Unattended Upgrade';
+            }
+            
+            if (script === 'gnome-terminal') {
+                return 'GNOME Terminal';
+            }
+            
+            if (script === 'playwright-driver') {
+                return `Playwright [${pid}]`;
+            }
+            
+            return `${script} [${pid}]`;
+        }
+
+        function updateProcessList() {
+            const processList = document.getElementById('processList');
+            processList.innerHTML = '';
+
+            Object.keys(processColors).forEach(uniqueId => {
+                // Find a sample data entry for this process to get the command
+                const sampleData = csvData.find(d => d.uniqueId === uniqueId);
+                if (!sampleData) return;
+                
+                const item = document.createElement('div');
+                item.className = 'process-item';
+                
+                const colorBox = document.createElement('div');
+                colorBox.className = 'color-box';
+                colorBox.style.backgroundColor = processColors[uniqueId];
+                
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = 'proc_' + uniqueId.replace(/[^a-zA-Z0-9]/g, '_');
+                checkbox.checked = visibleProcesses.has(uniqueId);
+                checkbox.addEventListener('change', () => {
+                    if (checkbox.checked) {
+                        visibleProcesses.add(uniqueId);
+                    } else {
+                        visibleProcesses.delete(uniqueId);
+                    }
+                    updateChart();
+                });
+                
+                const label = document.createElement('label');
+                label.htmlFor = checkbox.id;
+                label.textContent = getFriendlyName(uniqueId, sampleData.command);
+                label.title = sampleData.command; // Show full command on hover
+                
+                item.appendChild(checkbox);
+                item.appendChild(colorBox);
+                item.appendChild(label);
+                processList.appendChild(item);
+            });
+        }
+
+        function updateStats() {
+            document.getElementById('statsPanel').style.display = 'block';
+            document.getElementById('totalRecords').textContent = `Records: ${csvData.length}`;
+            
+            if (csvData.length > 0) {
+                const firstTime = csvData[0].timestamp;
+                const lastTime = csvData[csvData.length - 1].timestamp;
+                document.getElementById('timeRange').textContent = `From: ${firstTime}`;
+                
+                const uniqueProcesses = new Set(csvData.map(d => d.uniqueId)).size;
+                document.getElementById('processCount').textContent = `Processes: ${uniqueProcesses}`;
+            }
+        }
+
+        function updateChart() {
+            const metric = metricSelect.value;
+            
+            // Group data by timestamp and uniqueId
+            const groupedData = {};
+            csvData.forEach(row => {
+                if (!groupedData[row.timestamp]) {
+                    groupedData[row.timestamp] = {};
+                }
+                if (!groupedData[row.timestamp][row.uniqueId]) {
+                    groupedData[row.timestamp][row.uniqueId] = 0;
+                }
+                
+                let value = 0;
+                switch(metric) {
+                    case 'MEM':
+                        value = row.mem;
+                        break;
+                    case 'RSS':
+                        value = row.rss / 1024; // Convert KB to MB
+                        break;
+                    case 'VSZ':
+                        value = row.vsz / 1024; // Convert KB to MB
+                        break;
+                    case 'CPU':
+                        value = row.cpu;
+                        break;
+                }
+                groupedData[row.timestamp][row.uniqueId] += value;
+            });
+
+            const timestamps = Object.keys(groupedData).sort();
+            
+            // Get top processes by total usage
+            const processTotals = {};
+            Object.values(groupedData).forEach(data => {
+                Object.entries(data).forEach(([uniqueId, val]) => {
+                    if (visibleProcesses.has(uniqueId)) {
+                        processTotals[uniqueId] = (processTotals[uniqueId] || 0) + val;
+                    }
+                });
+            });
+
+            const topProcesses = Object.entries(processTotals)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, MAX_PROCESSES)
+                .map(([uniqueId]) => uniqueId);
+
+            // Prepare datasets
+            const datasets = [];
+            
+            topProcesses.forEach(uniqueId => {
+                const sampleData = csvData.find(d => d.uniqueId === uniqueId);
+                const data = timestamps.map(ts => groupedData[ts][uniqueId] || 0);
+                datasets.push({
+                    label: getFriendlyName(uniqueId, sampleData ? sampleData.command : ''),
+                    data: data,
+                    backgroundColor: processColors[uniqueId],
+                    borderColor: processColors[uniqueId],
+                    borderWidth: 1
+                });
+            });
+
+            // Add "Others" category if there are more processes
+            const otherProcesses = Object.keys(processTotals).filter(p => !topProcesses.includes(p));
+            if (otherProcesses.length > 0) {
+                const othersData = timestamps.map(ts => {
+                    return otherProcesses.reduce((sum, proc) => sum + (groupedData[ts][proc] || 0), 0);
+                });
+                datasets.push({
+                    label: `Others (${otherProcesses.length})`,
+                    data: othersData,
+                    backgroundColor: '#CCCCCC',
+                    borderColor: '#999999',
+                    borderWidth: 1
+                });
+            }
+
+            // Create or update chart
+            const ctx = document.getElementById('chartCanvas').getContext('2d');
+            
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            const yAxisLabel = {
+                'MEM': 'Memory Usage (%)',
+                'RSS': 'RSS Memory (MB)',
+                'VSZ': 'VSZ Memory (MB)',
+                'CPU': 'CPU Usage (%)'
+            }[metric];
+
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: timestamps.map(ts => {
+                        // Format timestamp for better display
+                        const [date, time] = ts.split(' ');
+                        return time || ts;
+                    }),
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            stacked: true,
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            },
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        },
+                        y: {
+                            stacked: true,
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: yAxisLabel
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    const value = context.parsed.y;
+                                    if (metric === 'MEM' || metric === 'CPU') {
+                                        label += value.toFixed(2) + '%';
+                                    } else {
+                                        label += value.toFixed(2) + ' MB';
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
