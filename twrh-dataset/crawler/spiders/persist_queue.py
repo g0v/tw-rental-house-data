@@ -7,6 +7,7 @@ from rental.models import HouseTS, Vendor
 from rental import models
 from crawlerrequest.models import RequestTS
 from crawlerrequest.enums import RequestType
+from .progress_tracker import ProgressTracker
 
 class PersistQueue(object):
     queue_length = 30
@@ -20,6 +21,7 @@ class PersistQueue(object):
         seed_parser,
         generate_request_args,
         parse_response,
+        log_interval=60,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -33,6 +35,10 @@ class PersistQueue(object):
         self.seed_parser = seed_parser
         self.generate_request_args = generate_request_args
         self.parse_response = parse_response
+        
+        # Initialize progress tracker
+        self.progress_tracker = ProgressTracker(logger, log_interval=log_interval)
+        
         try:
             self.vendor = Vendor.objects.get(
                 name = vendor
@@ -65,6 +71,24 @@ class PersistQueue(object):
         )[:1]
 
         return undone_requests.count() > 0
+    
+    def get_total_count(self):
+        """Get the total number of requests in the queue."""
+        total = RequestTS.objects.filter(
+            year = self.ts['y'],
+            month = self.ts['m'],
+            day = self.ts['d'],
+            hour = self.ts['h'],
+            vendor = self.vendor,
+            request_type = self.request_type
+        ).count()
+        return total
+    
+    def init_progress_tracking(self):
+        """Initialize progress tracking with the current total count."""
+        total = self.get_total_count()
+        self.progress_tracker.set_total(total)
+        return total
 
     def has_record(self):
         today_houses = HouseTS.objects.filter(
@@ -159,6 +183,8 @@ class PersistQueue(object):
             for item in self.parse_response(response):
                 if item is True:
                     db_request.delete()
+                    # Track progress after successful completion
+                    self.progress_tracker.increment()
                 else:
                     yield item
         except Exception:

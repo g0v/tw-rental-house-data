@@ -6,3 +6,5 @@ crawler/settings.py
 rental_house.json
 devop
 datas/*.zip
+js_cache
+ocr_cache

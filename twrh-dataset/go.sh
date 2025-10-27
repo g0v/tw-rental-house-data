@@ -1,14 +1,21 @@
 #!/bin/bash
 
+# Parse --append flag
+APPEND_FLAG=""
+if [[ "$1" == "--append" ]]; then
+    APPEND_FLAG="-a append=True"
+    echo "Running in APPEND mode"
+fi
+
 now=`date +'%Y.%m.%d.%H%M'`
 mkdir -p ../logs
 
 echo '===== LIST ====='
-poetry run scrapy crawl list591 -L INFO
+poetry run scrapy crawl list591 -L INFO $APPEND_FLAG
 mv scrapy.log ../logs/$now.list.log
 
 echo '===== DETAIL ====='
-poetry run scrapy crawl detail591 -L INFO
+poetry run scrapy crawl detail591 -L INFO $APPEND_FLAG
 mv scrapy.log ../logs/$now.detail.log
 
 echo '===== STATEFUL UPDATE ====='

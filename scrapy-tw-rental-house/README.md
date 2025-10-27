@@ -37,24 +37,31 @@ get access to browser developer tool on browsing 591, and copy the setting to se
 BROWSER_INIT_SCRIPT = 'console.log("This command enable Playwright")'
 ```
 
-### Enable OCR cache
+### Configure OCR cache
 
-As OCR is a time consuming process, we provide a cache mechanism to store OCR result. To enable OCR cache, please 
-configure scrapy settings.py as following:
+As OCR is a time consuming process, we provide a cache mechanism to store OCR result. When OCR cache is enabled, before performing OCR on an image, the crawler will check if the image hash exists in the cache. If it exists, the cached result will be used instead of performing OCR again. OCR cache is enabled by default.
+
+To disable OCR cache, please configure scrapy settings.py as following:
 
 ```python
 # Enable OCR cache
-OCR_CACHE_ENABLED = True # default false
-OCR_CACHE_DIR = 'path/to/cache' # default to ocr_cache
+OCR_CACHE_ENABLED = False
+```
+
+You can also customize the cache directory by setting OCR_CACHE_DIR:
+
+```python
+# Customize OCR cache directory
+OCR_CACHE_DIR = 'path/to/ocr_cache' # default to ocr_cache
 ```
 
 ### Speed up browser page loading
 
-This package support skip specific domain request and cache JS. To enable these features, please configure scrapy settings.py as following:
+This package support skip specific domain request and cache JS.
 
 ```python
 # Enable cache for JS
-BROWSER_JS_CACHE_ENABLED = True
+BROWSER_JS_CACHE_ENABLED = True # default to True
 BROWSER_JS_CACHE_DIR = 'path/to/cache' # default to js_cache
 
 # Enable skip specific domain request
