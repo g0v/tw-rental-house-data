@@ -4,22 +4,11 @@ defaults:
   run:
     working-directory: ui
 
-# DISABLED - GitHub Actions temporarily disabled for rewriting
-# Original triggers commented out, replaced with manual trigger only
 on:
-  workflow_dispatch:
-    inputs:
-      reason:
-        description: 'Reason for manual run (workflow is disabled)'
-        required: true
-        default: 'Manual run - workflow is disabled'
-
-# Original automatic triggers (DISABLED):
-# on:
-#   push:
-#     branches:
-#       - main
-#       - master
+  push:
+    branches:
+      - main
+      - master
 
 env:
   SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
@@ -38,21 +27,15 @@ jobs:
 
     steps:
       - name: Checkout 🛎
-        uses: actions/checkout@master
+        uses: actions/checkout@v4
 
       - name: Setup node env 🏗
-        uses: actions/setup-node@v2.4.1
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
           check-latest: true
-
-      - name: Cache node_modules 📦
-        uses: actions/cache@v2.1.6
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
+          cache: 'npm'
+          cache-dependency-path: ui/package-lock.json
 
       - name: Install dependencies 👨🏻‍💻
         run: npm ci --prefer-offline --no-audit
@@ -64,8 +47,8 @@ jobs:
         run: npm run generate
       
       - name: Deploy
-        uses: peaceiris/actions-gh-pages@v3.8.0
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          DEPLOY_KEY: ${{ secrets.ACTIONS_DEPLOY_KEY }}
-          PUBLISH_BRANCH: gh-pages
-          PUBLISH_DIR: ./ui/dist
+          deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+          publish_branch: gh-pages
+          publish_dir: ./ui/dist
