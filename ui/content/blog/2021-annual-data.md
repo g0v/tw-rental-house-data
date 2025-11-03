@@ -4,7 +4,7 @@ author: ddio
 created: 2022-09-19
 cover: /imgs/blog/2021-annual-y2y-sum.png
 tags:
-  - 資料錯誤
+  - 資料品質
   - 591租屋網
 ---
 

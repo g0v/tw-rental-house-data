@@ -4,7 +4,7 @@ author: ddio
 created: 2019-04-17
 cover: /imgs/blog/data-issue-2019-00.png
 tags:
-  - 資料錯誤
+  - 資料品質
   - 591租屋網
 ---
 

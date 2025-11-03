@@ -29,11 +29,13 @@ import def2021 from '~/assets/stats/2021.json'
 import def2022 from '~/assets/stats/2022.json'
 import def2023 from '~/assets/stats/2023.json'
 import def2024 from '~/assets/stats/2024.json'
+import def2025 from '~/assets/stats/2025.json'
 
 export default {
   data () {
     return {
       years: [
+        { year: 2025, data: def2025 },
         { year: 2024, data: def2024 },
         { year: 2023, data: def2023 },
         { year: 2022, data: def2022 },

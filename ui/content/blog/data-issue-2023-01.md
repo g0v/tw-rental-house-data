@@ -4,7 +4,7 @@ author: ddio
 created: 2023-12-03
 cover: /imgs/blog/data-issue-2023-01.jpg
 tags:
-  - 資料錯誤
+  - 資料品質
   - 591租屋網
   - 封面圖片使用 AI 生成
 ---

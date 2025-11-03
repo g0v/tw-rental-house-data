@@ -1,0 +1,37 @@
+{
+  "year": 2025,
+  "annual": [
+  ],
+  "quarterly": [
+  ],
+  "monthly": [
+    {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.3",
+        "time": "10",
+        "type": "原始資料",
+        "total_count": 95766,
+        "sources": [
+            {"name": "591", "count": 95766}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   31224484, "download_url": { "isS3": true }}
+        ],
+        "comment": "此為試爬期間資料，詳情請見[部落格說明](https://tw-rental-house-data.ddio.org/blog/2025-oct-release/)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.3",
+        "time": "10",
+        "type": "消除重複住宅",
+        "total_count": 88702,
+        "sources": [
+            {"name": "591", "count": 88702}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   36645460, "download_url": { "isS3": true }}
+        ],
+        "comment": "此為試爬期間資料，詳情請見[部落格說明](https://tw-rental-house-data.ddio.org/blog/2025-oct-release/)"
+      }
+  ]
+}

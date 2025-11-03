@@ -162,7 +162,7 @@
       {
         "schema_ver": "1.0.0",
         "data_ver": "0.3",
-        "time": "3",
+        "time": "10",
         "type": "消除重複住宅",
         "total_count": 171387,
         "sources": [
