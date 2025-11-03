@@ -625,7 +625,11 @@
                     data: data,
                     backgroundColor: processColors[uniqueId],
                     borderColor: processColors[uniqueId],
-                    borderWidth: 1
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4
                 });
             });
 
@@ -640,7 +644,11 @@
                     data: othersData,
                     backgroundColor: '#CCCCCC',
                     borderColor: '#999999',
-                    borderWidth: 1
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4
                 });
             }
 
@@ -659,7 +667,7 @@
             }[metric];
 
             chartInstance = new Chart(ctx, {
-                type: 'bar',
+                type: 'line',
                 data: {
                     labels: timestamps.map(ts => {
                         // Format timestamp for better display
@@ -673,7 +681,6 @@
                     maintainAspectRatio: false,
                     scales: {
                         x: {
-                            stacked: true,
                             title: {
                                 display: true,
                                 text: 'Time'
