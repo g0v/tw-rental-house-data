@@ -50,7 +50,7 @@ class CrawlerPipeline():
 
             if item['is_list']:
                 pass
-            elif 'dict' in item:
+            elif 'dict' in item and item['dict']['property_type'] != '車位':
                 meta = item['dict']
                 log = f'[RAW-DETAIL-DICT-{vendor}] house {house_id} | ${meta["price"]} | {meta["floor_ping"]}坪'
                 if 'floor' in meta:

@@ -72,7 +72,7 @@ def get_house_pattern(response):
     .house-pattern 物件類型、坪數、樓層/總樓層、建物類型
     '''
     tag_list = css(response, '.house-label > span', self_text=True)
-    item_list = css(response, '.pattern > span', self_text=True)
+    item_list = css(response, '.pattern > span:not(.line)', self_text=True)
 
     items = {}
 
@@ -94,7 +94,12 @@ def get_house_pattern(response):
         if len(item_list) >= 1:
             items['property_type'] = item_list[0]
         # skip floor_ping and floor as they are parsed separately
-        if len(item_list) >= 2:
+        if len(item_list) >= 4:
+            # somehow floor_ping and floor are not obfuscated here
+            items['floor_ping'] = item_list[1]
+            items['floor'] = item_list[2]
+            items['building_type'] = item_list[3]
+        elif len(item_list) >= 2:
             items['building_type'] = item_list[1]
 
     return {
@@ -107,10 +112,13 @@ def get_house_price(response):
     .house-price 租金、押金
     押金 can be 押金*個月、押金面議，還可填其他（數值，不確定如何呈現）
     '''
+    price_str = css(response, '.house-price .c-price .inline-flex-row', self_text=True)
     deposit_str = css(response, '.house-price', self_text=True)
 
     ret = {}
 
+    if price_str:
+        ret['price'] = price_str[0]
     if deposit_str:
         ret['deposit'] = deposit_str[0]
 
