@@ -32,6 +32,34 @@
           {"format": "csv", "size_byte":   36645460, "download_url": { "isS3": true }}
         ],
         "comment": "此為試爬期間資料，詳情請見[部落格說明](https://tw-rental-house-data.ddio.org/blog/2025-oct-release/)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.3",
+        "time": "11",
+        "type": "原始資料",
+        "total_count": 167655,
+        "sources": [
+            {"name": "591", "count": 167655}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   54358180, "download_url": { "isS3": true }}
+        ],
+        "comment": "此為試爬期間資料，詳情請見[部落格說明](https://tw-rental-house-data.ddio.org/blog/2025-oct-release/)"
+      },
+      {
+        "schema_ver": "1.0.0",
+        "data_ver": "0.3",
+        "time": "11",
+        "type": "消除重複住宅",
+        "total_count": 145882,
+        "sources": [
+            {"name": "591", "count": 145882}
+        ],
+        "files": [
+          {"format": "csv", "size_byte":   60060059, "download_url": { "isS3": true }}
+        ],
+        "comment": "此為試爬期間資料，詳情請見[部落格說明](https://tw-rental-house-data.ddio.org/blog/2025-oct-release/)"
       }
   ]
 }
