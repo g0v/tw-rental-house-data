@@ -3,6 +3,7 @@
 import sys
 import os
 import django
+import scrapy
 
 # Allow Scrapy to use Django
 sys.path.append('{}/../django'.format(os.path.dirname(os.path.realpath(__file__))))
@@ -10,6 +11,18 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
 # Allow synchronous Django ORM calls in Scrapy's Twisted async context
 os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
 django.setup()
+
+class QuietLogFormatter(scrapy.logformatter.LogFormatter):
+    def scraped(self, item, response, spider):
+        return (
+            super().scraped(item, response, spider)
+            if spider.settings.getbool("LOG_SCRAPED_ITEMS")
+            else None
+        )
+
+# Settings common to all environments    
+LOG_FORMATTER = "crawler.general_settings.QuietLogFormatter"
+LOG_SCRAPED_ITEMS = False
 
 BOT_NAME = 'tw-rental-house-data'
 FEED_FORAMT = 'jsonlines'
