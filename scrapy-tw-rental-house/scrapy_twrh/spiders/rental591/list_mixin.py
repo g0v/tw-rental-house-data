@@ -64,7 +64,8 @@ class ListMixin(RequestGenerator):
         houses_resp = response.css('.recommend-ware')
         for house in houses_resp:
             url = house.css('a.title::attr("href")').get()
-            house_id = url.split('/')[-1]
+            # url can be 'https://rent.591.com.tw/20267611' or 'https://rent.591.com.tw/20267611?is_ai_video=1&ai_title_id=5673585'
+            house_id = url.split('/')[-1].split('?')[0]
             houses.append({
                 'vendor': self.vendor,
                 'house_id': house_id,
