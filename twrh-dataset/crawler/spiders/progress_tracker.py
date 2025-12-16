@@ -33,6 +33,15 @@ class ProgressTracker:
         """Set the total number of items to process."""
         self.total = total
         self.logger.info(f'Starting progress tracking: {total} items total')
+    
+    def increment_total(self, count=1):
+        """
+        Increment the total counter when new items are dynamically added.
+        
+        Args:
+            count: Number of items to add to total (default: 1)
+        """
+        self.total += count
         
     def increment(self, count=1):
         """

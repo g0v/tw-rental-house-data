@@ -1,8 +1,10 @@
 import uuid
 import scrapy
 import traceback
+from datetime import datetime, timedelta
 from twisted.internet import threads
 from django.db import connection
+from django.utils import timezone
 from rental.models import HouseTS, Vendor
 from rental import models
 from crawlerrequest.models import RequestTS
@@ -22,12 +24,25 @@ class PersistQueue(object):
         generate_request_args,
         parse_response,
         log_interval=60,
+        start_early=False,
         **kwargs
     ):
         super().__init__(**kwargs)
-        y = models.current_year()
-        m = models.current_month()
-        d = models.current_day()
+        
+        # Get current time
+        current_time = timezone.localtime()
+        
+        # If start_early is True and hour is >= 22, use tomorrow's date
+        if start_early and current_time.hour >= 22:
+            target_time = current_time + timedelta(days=1)
+            y = target_time.year
+            m = target_time.month
+            d = target_time.day
+        else:
+            y = models.current_year()
+            m = models.current_month()
+            d = models.current_day()
+        
         h = models.current_stepped_hour()
 
         self.spider_id = str(uuid.uuid4())
@@ -103,10 +118,16 @@ class PersistQueue(object):
 
     def gen_persist_request(self, seed):
         RequestTS.objects.create(
+            year=self.ts['y'],
+            month=self.ts['m'],
+            day=self.ts['d'],
+            hour=self.ts['h'],
             request_type=self.request_type,
             vendor=self.vendor,
             seed=seed
         )
+        # Update progress tracker total when new requests are added
+        self.progress_tracker.increment_total()
 
     def next_request(self):
         if self.n_live_spider >= self.queue_length:
