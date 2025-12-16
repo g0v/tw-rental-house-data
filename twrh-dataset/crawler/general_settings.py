@@ -4,6 +4,7 @@ import sys
 import os
 import django
 import scrapy
+from scrapy.logformatter import LogFormatter
 
 # Allow Scrapy to use Django
 sys.path.append('{}/../django'.format(os.path.dirname(os.path.realpath(__file__))))
@@ -11,14 +12,12 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
 # Allow synchronous Django ORM calls in Scrapy's Twisted async context
 os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
 django.setup()
-
-class QuietLogFormatter(scrapy.logformatter.LogFormatter):
+class QuietLogFormatter(LogFormatter):
     def scraped(self, item, response, spider):
-        return (
-            super().scraped(item, response, spider)
-            if spider.settings.getbool("LOG_SCRAPED_ITEMS")
-            else None
-        )
+        if spider.settings.getbool("LOG_SCRAPED_ITEMS"):
+            return super().scraped(item, response, spider)
+        # Return None to suppress the log
+        return None
 
 # Settings common to all environments    
 LOG_FORMATTER = "crawler.general_settings.QuietLogFormatter"
