@@ -254,9 +254,9 @@ class DetailMixin(RequestGenerator):
         # is_rooftop, floor, total_floor
         # TODO: use title to detect rooftop
         if 'floor' in detail_dict:
-            # floor_info = 1F/2F or 頂樓加蓋/2F or 整棟/2F or 平面式, 1F-3F/3F
+            # floor_info = 1F/2F or 頂樓加蓋/2F or 整棟/2F or 平面式, 1F~3F/3F
             floor_info = detail_dict['floor'].split('/')
-            floor = clean_number(floor_info[0])
+            floor = clean_number(floor_info[0].split('~')[0])  # for 1F~3F
             total_floor = 0
             if len(floor_info) >= 2:
                 total_floor = clean_number(floor_info[1])
