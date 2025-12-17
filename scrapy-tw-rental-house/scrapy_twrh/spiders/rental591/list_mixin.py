@@ -44,11 +44,12 @@ class ListMixin(RequestGenerator):
                     cur_page
                 ))
                 cur_page += 1
-
-        promotion_houses = self.gen_promotion_house(response)
+        
+        # hide promotion houses to avoid duplication
+        # promotion_houses = self.gen_promotion_house(response)
         regular_houses = self.gen_regular_house(response)
 
-        for house in promotion_houses + regular_houses:
+        for house in regular_houses:
             house_id = house['house_id']
             
             # Yield RawHouseItem with both raw HTML and parsed dict
