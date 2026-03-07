@@ -27,9 +27,6 @@ class PlaywrightUtils:
         if self.js_cache_enabled:
             self.js_cache_dir.mkdir(exist_ok=True, parents=True)
             logger.info('JS caching enabled, using directory: %s', self.js_cache_dir)
-        
-        # In-memory cache for faster access
-        self._js_cache = {}
 
     def _get_cache_path(self, url):
         """Get cached JS file path with sharding for better filesystem performance"""
@@ -59,25 +56,17 @@ class PlaywrightUtils:
             elif resource_type == 'script' and self.js_cache_enabled:
                 try:
                     cache_path = self._get_cache_path(url)
-                    
-                    # Check memory cache first
-                    if url in self._js_cache:
-                        await route.fulfill(body=self._js_cache[url], content_type='application/javascript')
-                        return
-                    
+
                     # Check file cache
                     if cache_path.exists():
                         js_content = cache_path.read_bytes()
-                        self._js_cache[url] = js_content
                         await route.fulfill(body=js_content, content_type='application/javascript')
                         return
-                    
-                    # Cache miss - fetch and cache
+
+                    # Cache miss - fetch and cache to disk only
                     response = await route.fetch()
                     if response.ok:
                         js_content = await response.body()
-                        # Cache in memory and on disk
-                        self._js_cache[url] = js_content
                         cache_path.write_bytes(js_content)
                         await route.fulfill(body=js_content, content_type='application/javascript')
                         return

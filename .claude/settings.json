@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit*)",
+      "Bash(git merge*)",
+      "Bash(git checkout*)",
+      "Bash(git branch*)",
+      "Bash(glab mr*)"
+    ]
+  }
+}

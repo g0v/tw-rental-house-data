@@ -25,6 +25,7 @@ class PersistQueue(object):
         parse_response,
         log_interval=60,
         start_early=False,
+        batch_size=0,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -66,6 +67,7 @@ class PersistQueue(object):
         else:
             self.request_type = RequestType.DETAIL
 
+        self.batch_size = batch_size
         self.ts = {
             'y': y,
             'm': m,
@@ -104,6 +106,10 @@ class PersistQueue(object):
         total = self.get_total_count()
         self.progress_tracker.set_total(total)
         return total
+
+    def is_batch_complete(self):
+        """Check if the batch limit has been reached."""
+        return self.batch_size > 0 and self.progress_tracker.completed >= self.batch_size
 
     def has_record(self):
         today_houses = HouseTS.objects.filter(
@@ -220,6 +226,14 @@ class PersistQueue(object):
             traceback.print_exc()
 
         self.n_live_spider -= 1
+
+        if self.is_batch_complete():
+            self.logger.info(
+                'Batch limit reached (%d items), stopping to release memory...',
+                self.batch_size
+            )
+            return
+
         # quick fix for concurrency issue
         mercy = 10
         while True:
