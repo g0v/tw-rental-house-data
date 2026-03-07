@@ -9,7 +9,7 @@ from .persist_queue import PersistQueue
 class Detail591Spider(Rental591Spider):
     name = "detail591"
 
-    def __init__(self, append=False, start_early=False, **kwargs):
+    def __init__(self, append=False, start_early=False, batch_size=0, **kwargs):
         super().__init__(
             start_list=self.start_detail_requests,
             **kwargs
@@ -17,7 +17,8 @@ class Detail591Spider(Rental591Spider):
 
         self.append = append == 'True' or append == True
         self.start_early = start_early == 'True' or start_early == True
-        
+        self.batch_size = int(batch_size)
+
         self.persist_queue = PersistQueue(
             vendor='591 租屋網',
             is_list=False,
@@ -25,7 +26,8 @@ class Detail591Spider(Rental591Spider):
             seed_parser=self.parse_seed,
             generate_request_args=self.gen_detail_request_args,
             parse_response=self.parse_detail_and_done,
-            start_early=self.start_early
+            start_early=self.start_early,
+            batch_size=self.batch_size
         )
     
     @classmethod
