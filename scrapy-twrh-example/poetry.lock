@@ -2093,7 +2093,7 @@ typing = "*"
 
 [[package]]
 name = "scrapy-tw-rental-house"
-version = "2.1.7"
+version = "2.1.8"
 description = "Scrapy spider for TW Rental House"
 optional = false
 python-versions = "^3.10"
