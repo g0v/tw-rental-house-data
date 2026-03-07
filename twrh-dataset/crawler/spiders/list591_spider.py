@@ -5,13 +5,14 @@ from .persist_queue import PersistQueue
 class List591Spider(Rental591Spider):
     name = 'list591'
 
-    def __init__(self, append=False, **kwargs):
+    def __init__(self, append=False, start_early=False, **kwargs):
         super().__init__(
             start_list=self.start_list_from_persist_queue,
             **kwargs
         )
 
         self.append = append == 'True' or append == True
+        self.start_early = start_early == 'True' or start_early == True
 
         self.persist_queue = PersistQueue(
             vendor='591 租屋網',
@@ -19,7 +20,8 @@ class List591Spider(Rental591Spider):
             logger=self.logger,
             seed_parser=self.parse_seed,
             generate_request_args=self.gen_list_request_args,
-            parse_response=self.parse_list_and_stop
+            parse_response=self.parse_list_and_stop,
+            start_early=self.start_early
         )
     
     @classmethod

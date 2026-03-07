@@ -116,6 +116,11 @@ USE_TZ = True
 
 SENTRY_DSN = ''
 
+# Slack webhook URL for notifications (optional)
+# Get webhook URL from: https://api.slack.com/messaging/webhooks
+# Example: SLACK_WEBHOOK_URL = 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
+SLACK_WEBHOOK_URL = ''
+
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.0/howto/static-files/

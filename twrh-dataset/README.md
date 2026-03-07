@@ -62,6 +62,30 @@ vim crawler/settings.py
 poetry run backend/manage.py export --help
 ```
 
+### 監控與通知
+
+專案支援透過 Slack Webhook 接收爬蟲執行統計通知。
+
+#### 設定 Slack 通知
+
+1. 在 Slack 中建立 Incoming Webhook：https://api.slack.com/messaging/webhooks
+2. 在 `django/backend/settings_local.py` 中設定 Webhook URL：
+
+```python
+SLACK_WEBHOOK_URL = 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
+```
+
+3. 執行 `statscheck` 指令時，系統會自動發送統計資訊到 Slack：
+
+```bash
+poetry run django/manage.py statscheck
+```
+
+通知訊息包含：
+- 各租屋網站的爬取統計（成功/失敗數量）
+- 執行時間戳記（年/月/日/時段）
+- 錯誤時會發送警告訊息並同步回報到 Sentry（如有設定）
+
 #### 注意事項
 
 1. 請友善對待租屋網站，依其個別網站使用規則容許的方式與頻率來查詢資料，建議可使用 Scrapy 內附的

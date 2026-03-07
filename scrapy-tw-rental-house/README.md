@@ -74,6 +74,8 @@ BROWSER_SKIP_DOMAIN = [
 
 This package currently support [591](http://rent.591.com.tw/). Each rental house website is a Scrapy Spider class. You can either crawl entire website using default setting , which will take couple days, or customize the behaviour base on your need.
 
+**Note:** The 591 list spider retrieves houses sorted by post date (newest first), instead of using 591's default ordering. This ensures consistent crawling behavior and helps track newly posted listings.
+
 The most basic usage would be creating a new Spider class that inherit Rental591Spider:
 
 ```python

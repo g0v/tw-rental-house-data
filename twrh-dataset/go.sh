@@ -1,21 +1,37 @@
 #!/bin/bash
 
-# Parse --append flag
+# Parse flags
 APPEND_FLAG=""
-if [[ "$1" == "--append" ]]; then
-    APPEND_FLAG="-a append=True"
-    echo "Running in APPEND mode"
-fi
+START_EARLY_FLAG=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --append)
+            APPEND_FLAG="-a append=True"
+            echo "Running in APPEND mode"
+            shift
+            ;;
+        --start-early)
+            START_EARLY_FLAG="-a start_early=True"
+            echo "Running in START-EARLY mode"
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            shift
+            ;;
+    esac
+done
 
 now=`date +'%Y.%m.%d.%H%M'`
 mkdir -p ../logs
 
 echo '===== LIST ====='
-poetry run scrapy crawl list591 -L INFO $APPEND_FLAG
+poetry run scrapy crawl list591 -L INFO $APPEND_FLAG $START_EARLY_FLAG
 mv scrapy.log ../logs/$now.list.log
 
 echo '===== DETAIL ====='
-poetry run scrapy crawl detail591 -L INFO $APPEND_FLAG
+poetry run scrapy crawl detail591 -L INFO $APPEND_FLAG $START_EARLY_FLAG
 mv scrapy.log ../logs/$now.detail.log
 
 echo '===== STATEFUL UPDATE ====='
