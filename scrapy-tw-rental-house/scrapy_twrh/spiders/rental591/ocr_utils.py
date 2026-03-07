@@ -7,6 +7,7 @@ from paddleocr import PaddleOCR
 from paddleocr.ppocr.utils.logging import get_logger
 import hashlib
 import json
+from collections import OrderedDict
 from pathlib import Path
 from scrapy.utils.project import get_project_settings
 
@@ -31,8 +32,24 @@ CACHE_DIR = Path(CACHE_DIR_PATH)
 if CACHE_ENABLED:
     CACHE_DIR.mkdir(exist_ok=True, parents=True)
 
-# In-memory cache for faster access
-_ocr_cache = {}
+# In-memory LRU cache for faster access
+class _LRUCache(OrderedDict):
+    def __init__(self, maxsize=10000):
+        super().__init__()
+        self.maxsize = maxsize
+    def __setitem__(self, key, value):
+        if key in self:
+            self.move_to_end(key)
+        super().__setitem__(key, value)
+        if len(self) > self.maxsize:
+            self.pop(next(iter(self)))
+    def __contains__(self, key):
+        if super().__contains__(key):
+            self.move_to_end(key)
+            return True
+        return False
+
+_ocr_cache = _LRUCache(maxsize=10000)
 
 def save_base64_image_to_file(base64_str, output_path=None):
     """
@@ -114,9 +131,6 @@ def ocr_via_paddle(image, char_whitelist='0123456789F/.,', chop_right=0, use_zh=
     if chop_right > 0:
         height, width = image.shape[:2]
         image = image[:, :width - chop_right]
-
-    # Save preprocessed image for debugging
-    cv2.imwrite('preprocessed_paddle.png', image)
 
     # Run PaddleOCR with detection and classification disabled
     # This treats the image as a single text line for simple digit recognition
