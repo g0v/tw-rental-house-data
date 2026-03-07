@@ -182,6 +182,13 @@
             </div>
 
             <div class="section">
+                <label>Session</label>
+                <select id="sessionSelect">
+                    <option value="all">All Sessions</option>
+                </select>
+            </div>
+
+            <div class="section">
                 <label>Metric to Display</label>
                 <select id="metricSelect">
                     <option value="MEM">Memory % (%MEM)</option>
@@ -220,6 +227,8 @@
     <script>
         let chartInstance = null;
         let csvData = [];
+        let sessions = [];
+        let activeSessionData = [];
         let processColors = {};
         let visibleProcesses = new Set();
         const MAX_PROCESSES = 8;
@@ -249,6 +258,7 @@
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
         const metricSelect = document.getElementById('metricSelect');
+        const sessionSelect = document.getElementById('sessionSelect');
         const filterKeywordsInput = document.getElementById('filterKeywords');
 
         // Load filter keywords from local storage
@@ -315,9 +325,18 @@
             if (csvData.length > 0) updateChart();
         });
 
+        sessionSelect.addEventListener('change', () => {
+            if (csvData.length > 0) {
+                applySessionFilter();
+                processData();
+                updateProcessList();
+                updateChart();
+            }
+        });
+
         filterKeywordsInput.addEventListener('input', () => {
             saveFilterKeywords();
-            if (csvData.length > 0) {
+            if (activeSessionData.length > 0) {
                 processData();
                 updateProcessList();
                 updateChart();
@@ -335,10 +354,107 @@
             reader.readAsText(file);
         }
 
+        function detectSessions(data) {
+            // Find scrapy process entries to detect session boundaries
+            const scrapyEntries = data.filter(d => d.command.includes('scrapy crawl'));
+            if (scrapyEntries.length === 0) return [];
+
+            // Group by PID to find unique scrapy runs
+            const pidRanges = {};
+            scrapyEntries.forEach(d => {
+                if (!pidRanges[d.pid]) {
+                    pidRanges[d.pid] = {
+                        firstSeen: d.timestamp,
+                        lastSeen: d.timestamp,
+                        command: d.command
+                    };
+                } else {
+                    pidRanges[d.pid].lastSeen = d.timestamp;
+                }
+            });
+
+            // Sort PIDs by their first appearance
+            const sortedPids = Object.keys(pidRanges).sort(
+                (a, b) => pidRanges[a].firstSeen.localeCompare(pidRanges[b].firstSeen)
+            );
+
+            // Build sessions from scrapy PID ranges
+            // Each scrapy PID represents one session; extend boundaries to cover
+            // the gap between sessions (so background processes are included)
+            const allTimestamps = [...new Set(data.map(d => d.timestamp))].sort();
+            const detected = [];
+
+            sortedPids.forEach((pid, idx) => {
+                const range = pidRanges[pid];
+                // Extract spider name from command
+                const match = range.command.match(/scrapy crawl (\S+)/);
+                const spiderName = match ? match[1] : 'unknown';
+
+                // Session start: one timestamp before this PID first appears
+                // (to capture the moment just before the spider launched)
+                const firstIdx = allTimestamps.indexOf(range.firstSeen);
+                const startTs = firstIdx > 0 ? allTimestamps[firstIdx - 1] : range.firstSeen;
+
+                // Session end: one timestamp after this PID last appears,
+                // but don't overlap with the next session
+                const lastIdx = allTimestamps.indexOf(range.lastSeen);
+                let endTs = lastIdx < allTimestamps.length - 1 ? allTimestamps[lastIdx + 1] : range.lastSeen;
+
+                // If there's a next scrapy session, don't overlap
+                if (idx < sortedPids.length - 1) {
+                    const nextFirst = pidRanges[sortedPids[idx + 1]].firstSeen;
+                    const nextFirstIdx = allTimestamps.indexOf(nextFirst);
+                    const maxEndIdx = nextFirstIdx > 0 ? nextFirstIdx - 1 : nextFirstIdx;
+                    if (allTimestamps[maxEndIdx] < endTs) {
+                        endTs = allTimestamps[maxEndIdx];
+                    }
+                }
+
+                detected.push({
+                    id: `session-${idx + 1}`,
+                    label: `#${idx + 1}: ${spiderName} (PID ${pid})`,
+                    pid: pid,
+                    spiderName: spiderName,
+                    startTs: startTs,
+                    endTs: endTs
+                });
+            });
+
+            return detected;
+        }
+
+        function updateSessionSelect() {
+            sessionSelect.innerHTML = '<option value="all">All Sessions</option>';
+            sessions.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id;
+                const startTime = s.startTs.split(' ')[1] || s.startTs;
+                const endTime = s.endTs.split(' ')[1] || s.endTs;
+                opt.textContent = `${s.label} [${startTime} ~ ${endTime}]`;
+                sessionSelect.appendChild(opt);
+            });
+        }
+
+        function applySessionFilter() {
+            const selected = sessionSelect.value;
+            if (selected === 'all') {
+                activeSessionData = csvData;
+            } else {
+                const session = sessions.find(s => s.id === selected);
+                if (session) {
+                    activeSessionData = csvData.filter(
+                        d => d.timestamp >= session.startTs && d.timestamp <= session.endTs
+                    );
+                } else {
+                    activeSessionData = csvData;
+                }
+            }
+        }
+
         function parseCSV(content) {
             const lines = content.trim().split('\n');
             const headers = lines[0].split(',');
-            
+
             csvData = [];
             for (let i = 1; i < lines.length; i++) {
                 const values = parseCSVLine(lines[i]);
@@ -359,6 +475,9 @@
                 }
             }
 
+            sessions = detectSessions(csvData);
+            updateSessionSelect();
+            applySessionFilter();
             processData();
             updateStats();
             updateProcessList();
@@ -436,7 +555,7 @@
         function processData() {
             // Group by uniqueId (PID + main script)
             const processGroups = {};
-            csvData.forEach(d => {
+            activeSessionData.forEach(d => {
                 const uniqueId = d.uniqueId;
                 if (!processGroups[uniqueId]) {
                     processGroups[uniqueId] = {
@@ -517,7 +636,7 @@
 
             Object.keys(processColors).forEach(uniqueId => {
                 // Find a sample data entry for this process to get the command
-                const sampleData = csvData.find(d => d.uniqueId === uniqueId);
+                const sampleData = activeSessionData.find(d => d.uniqueId === uniqueId);
                 if (!sampleData) return;
                 
                 const item = document.createElement('div');
@@ -554,14 +673,14 @@
 
         function updateStats() {
             document.getElementById('statsPanel').style.display = 'block';
-            document.getElementById('totalRecords').textContent = `Records: ${csvData.length}`;
-            
-            if (csvData.length > 0) {
-                const firstTime = csvData[0].timestamp;
-                const lastTime = csvData[csvData.length - 1].timestamp;
-                document.getElementById('timeRange').textContent = `From: ${firstTime}`;
-                
-                const uniqueProcesses = new Set(csvData.map(d => d.uniqueId)).size;
+            document.getElementById('totalRecords').textContent = `Records: ${activeSessionData.length}`;
+
+            if (activeSessionData.length > 0) {
+                const firstTime = activeSessionData[0].timestamp;
+                const lastTime = activeSessionData[activeSessionData.length - 1].timestamp;
+                document.getElementById('timeRange').textContent = `Time: ${firstTime.split(' ')[1] || firstTime} ~ ${lastTime.split(' ')[1] || lastTime}`;
+
+                const uniqueProcesses = new Set(activeSessionData.map(d => d.uniqueId)).size;
                 document.getElementById('processCount').textContent = `Processes: ${uniqueProcesses}`;
             }
         }
@@ -571,7 +690,7 @@
             
             // Group data by timestamp and uniqueId
             const groupedData = {};
-            csvData.forEach(row => {
+            activeSessionData.forEach(row => {
                 if (!groupedData[row.timestamp]) {
                     groupedData[row.timestamp] = {};
                 }
@@ -616,9 +735,9 @@
 
             // Prepare datasets
             const datasets = [];
-            
+
             topProcesses.forEach(uniqueId => {
-                const sampleData = csvData.find(d => d.uniqueId === uniqueId);
+                const sampleData = activeSessionData.find(d => d.uniqueId === uniqueId);
                 const data = timestamps.map(ts => groupedData[ts][uniqueId] || 0);
                 datasets.push({
                     label: getFriendlyName(uniqueId, sampleData ? sampleData.command : ''),
@@ -666,6 +785,12 @@
                 'CPU': 'CPU Usage (%)'
             }[metric];
 
+            const selectedSessionId = sessionSelect.value;
+            const activeSession = sessions.find(s => s.id === selectedSessionId);
+            const chartTitle = activeSession
+                ? `${activeSession.label}`
+                : (sessions.length > 0 ? `All Sessions (${sessions.length} scrapy runs)` : '');
+
             chartInstance = new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -700,6 +825,11 @@
                         }
                     },
                     plugins: {
+                        title: {
+                            display: !!chartTitle,
+                            text: chartTitle,
+                            font: { size: 16 }
+                        },
                         legend: {
                             display: true,
                             position: 'top'
