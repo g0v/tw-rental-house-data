@@ -107,9 +107,22 @@ class PersistQueue(object):
         return total
     
     def init_progress_tracking(self):
-        """Initialize progress tracking with the current total count."""
+        """Initialize progress tracking with the current total count.
+
+        For detail spiders, uses a file to persist overall progress across batches.
+        For list spiders, uses simple in-memory tracking.
+        """
         total = self.get_total_count()
-        self.progress_tracker.set_total(total)
+        if self.request_type == RequestType.DETAIL:
+            progress_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'logs', 'progress')
+            os.makedirs(progress_dir, exist_ok=True)
+            progress_file = os.path.join(
+                progress_dir,
+                f"{self.ts['y']}-{self.ts['m']:02d}-{self.ts['d']:02d}.detail.json"
+            )
+            self.progress_tracker.init_overall(progress_file, total)
+        else:
+            self.progress_tracker.set_total(total)
         return total
 
     def is_batch_complete(self):
