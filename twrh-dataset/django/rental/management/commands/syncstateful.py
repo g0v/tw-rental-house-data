@@ -1,4 +1,5 @@
 import argparse
+import os
 import traceback
 from datetime import datetime, date
 from django.core.management.base import BaseCommand, CommandError
@@ -36,7 +37,12 @@ class Command(BaseCommand):
 
         need_reset = options['need_reset'] is not False
         update_ts = options['update_ts'] is not False
-        target_date = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+        override = os.environ.get('TWRH_TARGET_DATE')
+        if override:
+            target_date = timezone.make_aware(datetime.strptime(override, '%Y-%m-%d'))
+        else:
+            target_date = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
         self.update_deal_info(need_reset, target_date, update_ts)
 

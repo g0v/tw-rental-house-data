@@ -1,4 +1,5 @@
-from datetime import timedelta
+import os
+from datetime import datetime, timedelta
 from django.utils import timezone
 from django.core.management.base import BaseCommand
 from django.db.models import Count, IntegerField
@@ -154,7 +155,11 @@ class Command(BaseCommand):
                 vendor_stats.n_dealt = row['count']
 
         # get today's new item
-        today_start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+        override = os.environ.get('TWRH_TARGET_DATE')
+        if override:
+            today_start = timezone.make_aware(datetime.strptime(override, '%Y-%m-%d'))
+        else:
+            today_start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
         today_end = today_start + timedelta(days=1)
         new_item_query = House.objects.filter(
             created__gte=today_start,

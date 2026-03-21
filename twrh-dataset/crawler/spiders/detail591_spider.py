@@ -9,6 +9,13 @@ from .persist_queue import PersistQueue
 class Detail591Spider(Rental591Spider):
     name = "detail591"
 
+    custom_settings = {
+        'DOWNLOADER_MIDDLEWARES': {
+            'rotating_proxies.middlewares.RotatingProxyMiddleware': None,
+            'rotating_proxies.middlewares.BanDetectionMiddleware': None,
+        },
+    }
+
     def __init__(self, append=False, start_early=False, batch_size=0, **kwargs):
         super().__init__(
             start_list=self.start_detail_requests,

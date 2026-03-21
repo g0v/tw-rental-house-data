@@ -1,7 +1,9 @@
 from django.contrib.gis.db import models
 from django.utils import timezone
 from django.db.models import JSONField
+import os
 import uuid
+from datetime import datetime
 
 from .enums import DealStatusType, BuildingType, PropertyType, ContactType, \
     DepositType, GenderType, TopRegionType, SubRegionType
@@ -10,17 +12,24 @@ from .enums import DealStatusType, BuildingType, PropertyType, ContactType, \
 # It's better to let user to determine which column type s/he want
 
 
+def _get_target_date():
+    """Return the target date from TWRH_TARGET_DATE env var (YYYY-MM-DD) or current local time."""
+    override = os.environ.get('TWRH_TARGET_DATE')
+    if override:
+        return datetime.strptime(override, '%Y-%m-%d')
+    return timezone.localtime()
+
 def current_year():
-    return timezone.localtime().year
+    return _get_target_date().year
 
 def current_month():
-    return timezone.localtime().month
+    return _get_target_date().month
 
 def current_day():
-    return timezone.localtime().day
+    return _get_target_date().day
 
 def current_stepped_hour():
-    current = timezone.localtime()
+    current = _get_target_date()
     # Let's do only one step for now
     return current.hour - current.hour % 24
 
