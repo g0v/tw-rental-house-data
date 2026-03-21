@@ -2,11 +2,14 @@ Publish scrapy-tw-rental-house to PyPI and update downstream dependencies.
 
 Steps:
 
-1. Ask the user to confirm:
-   - The new version number (show the current version from `scrapy-tw-rental-house/pyproject.toml`)
-   - Release notes / changelog summary
+1. Read current version from `scrapy-tw-rental-house/pyproject.toml`.
+2. Suggest the next version using semver:
+   - patch bump (e.g. 2.1.8 → 2.1.9) for bug fixes
+   - minor bump (e.g. 2.1.8 → 2.2.0) for new features
+   - major bump (e.g. 2.1.8 → 3.0.0) for breaking changes
+3. Ask the user to confirm the new version number and release notes / changelog summary.
 
-2. Bump the version in `scrapy-tw-rental-house/pyproject.toml`.
+4. Bump the version in `scrapy-tw-rental-house/pyproject.toml`.
 
 3. Build and publish:
    ```bash

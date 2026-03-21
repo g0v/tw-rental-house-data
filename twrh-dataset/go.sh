@@ -1,11 +1,37 @@
 #!/bin/bash
 
+usage() {
+    cat <<'USAGE'
+Usage: ./go.sh [OPTIONS]
+
+Run the full crawl pipeline: list -> detail -> sync -> stats -> export.
+
+Options:
+  --append        Append mode: crawl new listings without clearing existing data
+  --start-early   Start-early mode: when run after 22:00, use tomorrow's date
+                  (ignored when --date is specified)
+  --date DATE     Pin the target date (YYYY-MM-DD) for the entire pipeline run.
+                  Default: today's date when go.sh starts.
+  -h, --help      Show this help message and exit
+
+Examples:
+  ./go.sh                          # Normal run, pinned to today
+  ./go.sh --append                 # Append mode
+  ./go.sh --date 2026-03-20        # Re-run pipeline for a specific date
+  ./go.sh --append --start-early   # Append + start-early mode
+USAGE
+    exit 0
+}
+
 # Parse flags
 APPEND_FLAG=""
 START_EARLY_FLAG=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
+        -h|--help)
+            usage
+            ;;
         --append)
             APPEND_FLAG="-a append=True"
             echo "Running in APPEND mode"
@@ -16,12 +42,20 @@ while [[ $# -gt 0 ]]; do
             echo "Running in START-EARLY mode"
             shift
             ;;
+        --date)
+            export TWRH_TARGET_DATE="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown option: $1"
             shift
             ;;
     esac
 done
+
+# Pin target date to when go.sh starts, unless overridden by --date
+export TWRH_TARGET_DATE="${TWRH_TARGET_DATE:-$(date +'%Y-%m-%d')}"
+echo "Running with TARGET DATE: $TWRH_TARGET_DATE"
 
 now=`date +'%Y.%m.%d.%H%M'`
 mkdir -p ../logs
