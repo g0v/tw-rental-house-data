@@ -17,7 +17,7 @@
         "files": [
           {"format": "csv", "size_byte":   31224484, "download_url": { "isS3": true }}
         ],
-        "comment": "此為試爬期間資料，詳情請見[部落格說明](https://tw-rental-house-data.ddio.org/blog/2025-oct-release/)"
+        "comment": "此為試爬期間資料，詳情請見[部落格說明](https://rentalhouse.g0v.ddio.io/blog/post/2025-oct-release/)"
       },
       {
         "schema_ver": "1.0.0",
@@ -31,7 +31,7 @@
         "files": [
           {"format": "csv", "size_byte":   36645460, "download_url": { "isS3": true }}
         ],
-        "comment": "此為試爬期間資料，詳情請見[部落格說明](https://tw-rental-house-data.ddio.org/blog/2025-oct-release/)"
+        "comment": "此為試爬期間資料，詳情請見[部落格說明](https://rentalhouse.g0v.ddio.io/blog/post/2025-oct-release/)"
       },
       {
         "schema_ver": "1.0.0",
@@ -45,7 +45,7 @@
         "files": [
           {"format": "csv", "size_byte":   54358180, "download_url": { "isS3": true }}
         ],
-        "comment": "此為試爬期間資料，詳情請見[部落格說明](https://tw-rental-house-data.ddio.org/blog/2025-oct-release/)"
+        "comment": "此為試爬期間資料，詳情請見[部落格說明](https://rentalhouse.g0v.ddio.io/blog/post/2025-nov-release/)"
       },
       {
         "schema_ver": "1.0.0",
@@ -59,7 +59,7 @@
         "files": [
           {"format": "csv", "size_byte":   60060059, "download_url": { "isS3": true }}
         ],
-        "comment": "此為試爬期間資料，詳情請見[部落格說明](https://tw-rental-house-data.ddio.org/blog/2025-oct-release/)"
+        "comment": "此為試爬期間資料，詳情請見[部落格說明](https://rentalhouse.g0v.ddio.io/blog/post/2025-nov-release/)"
       }
   ]
 }
