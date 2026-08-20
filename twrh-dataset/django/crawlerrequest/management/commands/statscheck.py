@@ -174,22 +174,36 @@ class Command(BaseCommand):
             vendor_stats = self.get_vendor_stats(row['vendor'])
             vendor_stats.n_new_item = row['count']
 
+        # dx 2-3：任何一筆失敗就 ⚠️ 會造成告警疲勞（個別 404/下架是預期行為），
+        # 改成失敗率門檻；低於門檻的失敗數照樣列在 ✅ 訊息裡，只是不當錯誤
+        fail_ratio_threshold = getattr(settings, 'STATSCHECK_FAIL_RATIO', 0.05)
+
         for vendor_id, vendor_stats in self.stats.items():
             vendor_stats.n_crawled += vendor_stats.n_closed + vendor_stats.n_dealt
             vendor_stats.n_expected = vendor_stats.n_crawled + vendor_stats.n_fail
             vendor_stats.save()
 
-            if vendor_stats.n_fail or vendor_stats.n_list_fail:
-                error_msg = f'{self.this_ts["year"]}/{self.this_ts["month"]}/{self.this_ts["day"]}: Vendor {vendor_stats.vendor.name} get failed list/detail ({vendor_stats.n_list_fail}/{vendor_stats.n_fail}) requests'
+            n_fail_total = vendor_stats.n_fail + vendor_stats.n_list_fail
+            if vendor_stats.n_expected > 0:
+                fail_ratio = vendor_stats.n_fail / vendor_stats.n_expected
+            else:
+                # 一筆都沒完成：有失敗就視為全滅
+                fail_ratio = 1.0 if n_fail_total else 0.0
+
+            # list 請求量少、一頁失敗影響大，任何 list 失敗都算異常
+            is_error = vendor_stats.n_list_fail > 0 or fail_ratio >= fail_ratio_threshold
+
+            if is_error:
+                error_msg = f'{self.this_ts["year"]}/{self.this_ts["month"]}/{self.this_ts["day"]}: Vendor {vendor_stats.vendor.name} get failed list/detail ({vendor_stats.n_list_fail}/{vendor_stats.n_fail}) requests, fail ratio {fail_ratio:.1%}'
                 print(error_msg)
                 sentry_sdk.capture_message(error_msg)
-                
+
                 # Send Slack notification with rich formatting
                 slack_msg = (
                     f"*{vendor_stats.vendor.name}* ⚠️\n"
                     f"• 失敗的列表請求: `{vendor_stats.n_list_fail}`\n"
                     f"• 失敗的詳細請求: `{vendor_stats.n_fail}`\n"
-                    f"• 總失敗數: `{vendor_stats.n_list_fail + vendor_stats.n_fail}`"
+                    f"• 失敗率: `{fail_ratio:.1%}`（門檻 {fail_ratio_threshold:.0%}）"
                 )
                 self.send_slack_notification(slack_msg, is_error=True)
             else:
@@ -204,4 +218,6 @@ class Command(BaseCommand):
                     f"• 已成交: `{vendor_stats.n_dealt}`\n"
                     f"• 新增物件: `{vendor_stats.n_new_item}`"
                 )
+                if n_fail_total:
+                    slack_msg += f"\n• 失敗（低於 {fail_ratio_threshold:.0%} 門檻）: `{n_fail_total}`"
                 self.send_slack_notification(slack_msg, is_error=False)
