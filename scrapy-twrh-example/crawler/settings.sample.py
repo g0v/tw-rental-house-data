@@ -1,9 +1,20 @@
-# shared setting across different environment
-# can be override by settings
+# 範本設定檔。使用方式：
+#
+#   cp crawler/settings.sample.py crawler/settings.py
+#   cp .env.example .env   # 再填入自己的值
+#
+# crawler/settings.py 與 .env 都已 gitignore，
+# 個人環境的 proxy／token／效能參數請放 .env，不要 commit。
 import sys
 import os
 import scrapy
 import logging
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 scrapy.utils.log.configure_logging(install_root_handler=False)
 logging.basicConfig(
@@ -13,7 +24,7 @@ logging.basicConfig(
 )
 
 LOG_LEVEL = 'INFO'
-USER_AGENT = None
+USER_AGENT = os.environ.get('TWRH_USER_AGENT') or None
 FEED_FORAMT = 'jsonlines'
 
 # Obey robots.txt rules
@@ -40,24 +51,23 @@ EXTENSIONS = {
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See https://doc.scrapy.org/en/latest/topics/autothrottle.html
-AUTOTHROTTLE_ENABLED = False
-# The initial download delay
-# AUTOTHROTTLE_START_DELAY = 2
-# The maximum download delay to be set in case of high latencies
-# AUTOTHROTTLE_MAX_DELAY = 60
-# The average number of requests Scrapy should be sending in parallel to
-# each remote server
-# AUTOTHROTTLE_TARGET_CONCURRENCY = 1.0
-# Enable showing throttling stats for every response received:
-#AUTOTHROTTLE_DEBUG = False
+AUTOTHROTTLE_ENABLED = os.environ.get('TWRH_AUTOTHROTTLE', '1') == '1'
 
-# DOWNLOAD_DELAY = 1
+DOWNLOAD_DELAY = float(os.environ.get('TWRH_DOWNLOAD_DELAY', '1'))
+
+CONCURRENT_REQUESTS = int(os.environ.get('TWRH_CONCURRENT_REQUESTS', '16'))
 
 DOWNLOADER_MIDDLEWARES = {
     'rotating_proxies.middlewares.RotatingProxyMiddleware': 610,
     'rotating_proxies.middlewares.BanDetectionMiddleware': 620,
 }
 
+_proxy = os.environ.get('TWRH_PROXY')
+if _proxy:
+    ROTATING_PROXY_LIST = [_proxy]
+    PLAYWRIGHT_LAUNCH_OPTIONS = {
+        'proxy': {'server': _proxy}
+    }
 
 PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT = 1800000
 
@@ -78,44 +88,5 @@ BROWSER_JS_CACHE_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), '../cache/js'
 )
 
-BROWSER_INIT_SCRIPT = 'window.__30f1fb31232ca3e80fba75ceb4253b35__ = true;'
-
-ROTATING_PROXY_LIST = [
-  "http://localhost:8000",
-]
-
-PLAYWRIGHT_LAUNCH_OPTIONS = {
-  "proxy": {
-    "server": "http://localhost:8000"
-  }
-}
-
-CONCURRENT_REQUESTS = 50
-PLAYWRIGHT_MAX_CONTEXTS = 50
-
-BROWSER_SKIP_DOMAINS = [
-  "business.591.com.tw",
-  "bff-house.591.com.tw",
-  "bff.591.com.tw",
-  "connect.facebook.net",
-  "api.591.com.tw",
-  "cross-storage.591.com.tw",
-  "land.591.com.tw",
-  "statistics.591.com.tw",
-  "imp.591.com.tw",
-  "sale.591.com.tw",
-  "union.591.com.tw",
-  "qcode.591.com.tw",
-  "www.591.com.tw",
-  "www.googletagmanager.com",
-  "maps.googleapis.com",
-  "oneid.addcn.com",
-  "sentry.addcn.com",
-  "play.google.com",
-  "www.youtube.com",
-  "googleads.g.doubleclick.net",
-  "fonts.gstatic.com",
-  "jnn-pa.googleapis.com",
-  "yt3.ggpht.com",
-]
-
+# 591 頁面要能 render 必須設定，值請自備（不可 commit，理由見 docs/dx-roadmap.md 架構原則）
+BROWSER_INIT_SCRIPT = os.environ.get('TWRH_BROWSER_INIT_SCRIPT', 'console.log("Browser Init");')

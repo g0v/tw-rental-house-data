@@ -323,3 +323,13 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
   同日補充：`settings.fast.py` 的 token 確認失效（刪〈需要拍板的決定〉，結論收進 0-2 與架構原則）；
   新增 2.5-4 `twrh` CLI 手動測試入口（parse／list／detail／survey 子指令，doctor、harvester 後續併入；
   `survey` 為單一縣市全量完整性報告，即 L3 的手動介面）。
+- **2026-08-20 實作進度**（branch `feat/dx-groundwork`）：
+  - **Phase 0 完成**（0-1 env var 流程、0-2/0-4 刪死檔、0-3 `dev-core.sh`）。
+  - **2.5-4 `twrh` CLI 完成**（parse／list／detail／survey），以金門縣實測通過。
+  - **1-5 第一份 baseline**：金門縣 27 筆——純 HTTP 全 200、raw 核心欄位 100%、
+    `misc`/`facility`/`rough_coordinate` 0%、GenericHouseItem 0/27（#204 TypeError），
+    報告在 `scrapy-tw-rental-house/survey-output/`（gitignored）。
+  - **Phase 2 完成**（2-1 熔斷 + 自訂訊號、2-2 填充率監控、2-3 statscheck 比例門檻）。
+    熔斷與填充率先放 dataset 側 `crawler/extensions/`——dataset 裝的是已發布 package，
+    放 package 側會依賴未發布版本；2.5-1 發版時上移。已以 stub crawler 單元驗證，
+    live 驗證待下次真實爬蟲。

@@ -10,6 +10,7 @@ from rental.models import HouseTS, Vendor
 from rental import models
 from crawlerrequest.models import RequestTS
 from crawlerrequest.enums import RequestType
+from crawler import signals as twrh_signals
 from .progress_tracker import ProgressTracker
 
 class PersistQueue(object):
@@ -27,9 +28,13 @@ class PersistQueue(object):
         log_interval=60,
         start_early=False,
         batch_size=0,
+        spider=None,
         **kwargs
     ):
         super().__init__(**kwargs)
+
+        # 熔斷需要 spider.crawler.signals 送 parse_success/parse_error（dx 2-1）
+        self.spider = spider
         
         # Check for date override from environment
         override = os.environ.get('TWRH_TARGET_DATE')
@@ -79,6 +84,12 @@ class PersistQueue(object):
             'd': d,
             'h': h
         }
+
+    def send_signal(self, signal, **kwargs):
+        crawler = getattr(self.spider, 'crawler', None)
+        if crawler is not None:
+            crawler.signals.send_catch_log(
+                signal, spider=self.spider, **kwargs)
 
     def has_request(self):
         undone_requests = RequestTS.objects.filter(
@@ -230,9 +241,10 @@ class PersistQueue(object):
                     db_request.delete()
                     # Track progress after successful completion
                     self.progress_tracker.increment()
+                    self.send_signal(twrh_signals.parse_success)
                 else:
                     yield item
-        except Exception:
+        except Exception as err:
             self.logger.error(
                 'Parser error in {} when handle meta {}. [{}] - {:.128}'.format(
                     self.vendor.name,
@@ -242,6 +254,7 @@ class PersistQueue(object):
                 )
             )
             traceback.print_exc()
+            self.send_signal(twrh_signals.parse_error, exception=err)
 
         self.n_live_spider -= 1
 

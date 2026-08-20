@@ -17,6 +17,7 @@ Scrapy = "^2.11.0"
 pycrypto = "^2.6.1"
 scrapy-tw-rental-house = {path = "../scrapy-tw-rental-house"}
 scrapy-rotating-proxies = "^0.6.2"
+python-dotenv = "^1.0"
 
 [build-system]
 requires = ["poetry-core"]

@@ -35,8 +35,9 @@ cd twrh-dataset
 poetry install
 poetry run playwright install chromium
 
-# Both config files are gitignored; create them locally
-cp crawler/settings.sample.py crawler/settings.py   # Scrapy per-env overrides
+# Config files are gitignored; create them locally
+cp crawler/settings.sample.py crawler/settings.py   # reads per-env overrides from .env
+cp .env.example .env                                # proxy / UA / token / perf knobs
 vim django/backend/settings_local.py                # DATABASES, SENTRY_DSN, SLACK_WEBHOOK_URL
 
 poetry run python django/manage.py migrate
@@ -93,28 +94,43 @@ config exists. Verification is manual, by running spiders against small real dat
 When a change touches `scrapy-tw-rental-house/`:
 
 1. Make changes in `scrapy-tw-rental-house/scrapy_twrh/`.
-2. Smoke-test via the trial project (single spider `two`, targets 金門縣). It has no Poetry env of its
-   own — `crawler/settings.py` does `sys.path.append('../..')`, so run it inside an env that already
-   has Scrapy/Playwright/PaddleOCR:
+2. Spot-check with the `twrh` CLI (plain HTTP, no DB / playwright / BROWSER_INIT_SCRIPT needed).
+   It is installed into the twrh-dataset venv by `./dev-core.sh` (see below):
    ```bash
-   cd scrapy-tw-rental-house/trial
-   ./go.sh
+   cd twrh-dataset
+   poetry run twrh parse <saved-detail.html>       # offline: run parser on a saved page
+   poetry run twrh detail <house-id>               # fetch + parse one detail page
+   poetry run twrh list 金門縣                      # fetch + parse one list page
+   poetry run twrh survey 金門縣 --save-html        # full city sweep → completeness report
    ```
-3. Test via `scrapy-twrh-example` (local path dep, picks up changes automatically):
+   `survey` reports list/detail success rates, property_type distribution, and per-field fill
+   rates — compare against the previous report to catch silent field loss. No DB writes.
+3. To run the real pipeline against local core changes, link it in editable mode
+   (revert with `poetry install --sync`):
+   ```bash
+   cd twrh-dataset
+   ./dev-core.sh
+   ```
+4. Test via `scrapy-twrh-example` (local path dep, picks up changes automatically):
    ```bash
    cd scrapy-twrh-example
    poetry install
    poetry run scrapy crawl singleCity -a city="金門縣" -L INFO   # small dataset
    poetry run scrapy crawl singleCity -a city="花蓮縣" -L INFO   # larger dataset
    ```
-4. Review `scrapy.log` and console output for errors/warnings.
+5. Review `scrapy.log` and console output for errors/warnings.
+
+The trial project (`scrapy-tw-rental-house/trial/`, not in git) predates the CLI; its
+`detail-archive/` still holds 431 pre-2026 detail pages useful as old-format parse fixtures.
 
 ### Publishing the core package
 
 Use the `/publish-scrapy-twrh` skill. It bumps `scrapy-tw-rental-house/pyproject.toml`, runs
 `poetry build && poetry publish`, then bumps the `scrapy-tw-rental-house` version in
 `twrh-dataset/pyproject.toml` and runs `poetry update`. `twrh-dataset` consumes the **published**
-package, so local core changes are not visible there until a release.
+package, so local core changes are not visible there until a release — unless you linked the
+local core with `twrh-dataset/dev-core.sh` (editable install; check `pip show scrapy-tw-rental-house`
+and revert with `poetry install --sync` before publishing or crawling for real).
 
 `scrapy-tw-rental-house/scrapy_tw_rental_house` is a committed **symlink** to `scrapy_twrh` that
 Poetry needs to pick up the package (name-derived) and that preserves the legacy import path. Don't

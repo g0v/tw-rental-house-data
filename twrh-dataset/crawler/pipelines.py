@@ -13,6 +13,7 @@ from rental.enums import DealStatusType
 from scrapy_twrh.items import GenericHouseItem, RawHouseItem
 from django.contrib.gis.geos import Point
 from crawler.utils import now_tuple
+from crawler import signals as twrh_signals
 
 
 class CrawlerPipeline(object):
@@ -98,8 +99,13 @@ class CrawlerPipeline(object):
                 house.save()
                 house_ts.save()
 
-        except:
+        except Exception as err:
             logging.error('Pipeline got exception in item {}'.format(item))
             traceback.print_exc()
+            # 讓熔斷 extension 看得到 storage 層的失敗（dx 2-1）
+            crawler = getattr(spider, 'crawler', None)
+            if crawler is not None:
+                crawler.signals.send_catch_log(
+                    twrh_signals.parse_error, spider=spider, exception=err)
 
         return item

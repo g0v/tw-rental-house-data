@@ -16,6 +16,7 @@ pylint-django = "^2.5.5"
 sentry-sdk = "^1.39.1"
 scrapy-rotating-proxies = "^0.6.2"
 requests = "^2.31.0"
+python-dotenv = "^1.0"
 
 
 [tool.poetry.group.dev.dependencies]
