@@ -25,6 +25,12 @@ paddleocr = "^2.10.0"
 [tool.poetry.scripts]
 twrh = "scrapy_twrh.cli.main:main"
 
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

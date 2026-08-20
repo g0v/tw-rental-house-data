@@ -86,8 +86,16 @@ Needs `clickhouse local` on PATH.
 
 ## Testing
 
-There is **no automated test suite** — `django/*/tests.py` are empty stubs and no pytest/unittest
-config exists. Verification is manual, by running spiders against small real datasets.
+`scrapy-tw-rental-house` has an offline pytest suite (`scrapy-tw-rental-house/tests`):
+
+```bash
+cd scrapy-tw-rental-house
+poetry install --with dev
+poetry run pytest
+```
+
+`twrh-dataset` has none — `django/*/tests.py` are empty stubs, and verification there is manual,
+by running spiders against small real datasets.
 
 ### Dev/Test Workflow for scrapy-tw-rental-house
 

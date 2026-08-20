@@ -1,3 +1,4 @@
+import json
 import re
 from collections import namedtuple
 from scrapy.http import Response
@@ -108,6 +109,64 @@ def from_zh_number(zh_number):
         raise Exception('ZH number {} not defined.'.format(zh_number))
 
 
+def split_js_arguments(arg_string):
+    '''
+    split a JS argument list by top level comma
+    'a,"b,c",[1,2]' -> ['a', '"b,c"', '[1,2]']
+    '''
+    args = []
+    token = []
+    depth = 0
+    quote = None
+    is_escaped = False
+
+    for char in arg_string:
+        if quote:
+            token.append(char)
+            if is_escaped:
+                is_escaped = False
+            elif char == '\\':
+                is_escaped = True
+            elif char == quote:
+                quote = None
+        elif char in '"\'':
+            quote = char
+            token.append(char)
+        elif char in '[{(':
+            depth += 1
+            token.append(char)
+        elif char in ']})':
+            depth -= 1
+            token.append(char)
+        elif char == ',' and depth == 0:
+            args.append(''.join(token))
+            token = []
+        else:
+            token.append(char)
+
+    args.append(''.join(token))
+
+    return args
+
+def unquote_js_string(raw_value):
+    '''
+    '"元\\u002F月"' -> '元/月', '12' -> '12'
+    '''
+    value = raw_value.strip()
+
+    if len(value) < 2 or value[0] != value[-1] or value[0] not in '"\'':
+        return value
+
+    body = value[1:-1]
+    if value[0] == "'":
+        # json only knows double quoted string
+        body = body.replace('\\\'', '\'').replace('"', '\\"')
+
+    try:
+        return json.loads(f'"{body}"')
+    except ValueError:
+        return body
+
 class SimpleNuxtInitParser:
     '''
     A simple parser to read nuxt init script, without using AST
@@ -137,26 +196,18 @@ class SimpleNuxtInitParser:
         get values of the function call using regex, and store them in a list
         match: }(a, b, c, ...)
         '''
-        matches = re.search(r'}\((.+)\)\)', self.script)
+        matches = re.search(r'}\((.+)\)\)', self.script, re.DOTALL)
         if not matches:
             return []
 
-        value_str = matches.group(1)
-        # dirty hack 0, remove font-family as there is a comma in the string
-        value_str = re.sub(r'font-family:[^;]+;', '', value_str)
-
-        # dirty hack 1, remove comma from "12,345" XD
-        value_str = re.sub(r'"(\d+),(\d+)"', r'\1\2', value_str)
-        # dirty hack 2, we won't need "市中心,拎包入住,含車位" for now.
-        # we have to remove the comma in the string
-        value_str = re.sub(r'"(([^\u0000-\u007F]|\\)[^",]*),[^"]+"', r'\1', value_str)
-        ret = []
-        for raw_value in value_str.split(','):
-            # remove leading and trailing double quotes
-            value = raw_value.strip(' "')
-            ret.append(value)
-
-        return ret
+        # split in a quote aware way, so that a value holding a comma, say
+        # "12,345" or "市中心,拎包入住,含車位", stays in one piece. Splitting
+        # those apart shifts all the following values by one, which silently
+        # maps every argument to a wrong value.
+        return [
+            unquote_js_string(raw_value)
+            for raw_value in split_js_arguments(matches.group(1))
+        ]
 
     def compose_arg_dict(self):
         '''

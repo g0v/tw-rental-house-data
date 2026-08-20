@@ -70,6 +70,13 @@ BROWSER_SKIP_DOMAIN = [
 ]
 ```
 
+### Tests
+
+```bash
+poetry install --with dev
+poetry run pytest
+```
+
 ## Basic Usage
 
 This package currently support [591](http://rent.591.com.tw/). Each rental house website is a Scrapy Spider class. You can either crawl entire website using default setting , which will take couple days, or customize the behaviour base on your need.
