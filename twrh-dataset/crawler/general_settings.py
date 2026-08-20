@@ -51,6 +51,7 @@ ITEM_PIPELINES = {
 EXTENSIONS = {
     "crawler.extensions.sentry.SentryLogger": 10,
     "crawler.extensions.breaker.ErrorRateBreaker": 20,
+    "crawler.extensions.fill_rate.FillRateMonitor": 30,
 }
 
 # 錯誤率熔斷（dx 2-1）：滑動視窗內樣本 >= MIN_SAMPLES 且失敗率 >= THRESHOLD 即關閉 spider
@@ -58,6 +59,11 @@ TWRH_BREAKER_ENABLED = True
 TWRH_BREAKER_WINDOW = 100
 TWRH_BREAKER_THRESHOLD = 0.5
 TWRH_BREAKER_MIN_SAMPLES = 20
+
+# 欄位填充率監控（dx 2-2）：與上一次報告比對，掉幅超過 DROP 即發 ERROR log（Sentry 會收）
+TWRH_FILL_RATE_ENABLED = True
+TWRH_FILL_RATE_DROP = 0.3
+TWRH_FILL_RATE_MIN_SAMPLES = 20
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See https://doc.scrapy.org/en/latest/topics/autothrottle.html
