@@ -4,6 +4,13 @@ from .detail_mixin import DetailMixin
 from .all_591_cities import all_591_cities
 # from .util import SESSION_ENDPOINT
 
+# both list and detail pages are downloaded by plain HTTP, and 591 serves those
+# to a browser UA only
+DEFAULT_USER_AGENT = (
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
+    '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+)
+
 class Rental591Spider(ListMixin, DetailMixin):
     name = 'rental591'
     # not used since #176
@@ -32,11 +39,13 @@ class Rental591Spider(ListMixin, DetailMixin):
     @classmethod
     def update_settings(cls, settings):
         super().update_settings(settings)
-        # force to use scrapy-playwright
-        settings.set('DOWNLOAD_HANDLERS', {
-            'https': 'scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler',
-            'http': 'scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler',
-        }, priority='spider')
+
+        # 591 answers Scrapy's default User-Agent with 403, so a project which
+        # never set one would get nothing at all. Only fill in the gap, a
+        # project that picked its own UA keeps it.
+        if (settings.getpriority('USER_AGENT') or 0) <= 0:
+            settings.set('USER_AGENT', DEFAULT_USER_AGENT, priority='spider')
+
         # for backward compatibility
         settings.set('TWISTED_REACTOR', 'twisted.internet.asyncioreactor.AsyncioSelectorReactor', priority='spider')
 

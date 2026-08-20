@@ -43,12 +43,6 @@ if _proxy:
         'rotating_proxies.middlewares.BanDetectionMiddleware': 620,
     }
     ROTATING_PROXY_LIST = [_proxy]
-    PLAYWRIGHT_LAUNCH_OPTIONS = {
-        'proxy': {'server': _proxy}
-    }
-
-if os.environ.get('TWRH_BROWSER_INIT_SCRIPT'):
-    BROWSER_INIT_SCRIPT = os.environ['TWRH_BROWSER_INIT_SCRIPT']
 
 if os.environ.get('SENTRY_DSN'):
     SENTRY_DSN = os.environ['SENTRY_DSN']

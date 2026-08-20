@@ -15,8 +15,6 @@ priority = "explicit"
 [tool.poetry.dependencies]
 python = "^3.10"
 Scrapy = "^2.11.0"
-scrapy-playwright = "^0.0.42"
-playwright = "^1.50.0"
 opencv-python = "^4.11.0.86"
 numpy = "^2.2.3"
 paddlepaddle = {version = "3.0.0rc1", source = "paddle"}
@@ -24,6 +22,12 @@ paddleocr = "^2.10.0"
 
 [tool.poetry.scripts]
 twrh = "scrapy_twrh.cli.main:main"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [build-system]
 requires = ["poetry-core"]
