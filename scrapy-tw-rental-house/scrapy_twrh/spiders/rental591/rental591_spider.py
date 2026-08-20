@@ -40,3 +40,10 @@ class Rental591Spider(ListMixin, DetailMixin):
         # for backward compatibility
         settings.set('TWISTED_REACTOR', 'twisted.internet.asyncioreactor.AsyncioSelectorReactor', priority='spider')
 
+        # 591 replies 403 to the default scrapy user agent, while it serves
+        # requests without user agent just fine. Keep the one set by the
+        # project, if there is any.
+        user_agent = settings.get('USER_AGENT')
+        if not user_agent or user_agent.startswith('Scrapy/'):
+            settings.set('USER_AGENT', None, priority='spider')
+
