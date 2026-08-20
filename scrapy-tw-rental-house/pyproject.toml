@@ -22,6 +22,9 @@ numpy = "^2.2.3"
 paddlepaddle = {version = "3.0.0rc1", source = "paddle"}
 paddleocr = "^2.10.0"
 
+[tool.poetry.scripts]
+twrh = "scrapy_twrh.cli.main:main"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

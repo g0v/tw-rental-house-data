@@ -5,3 +5,5 @@ dist
 *.egg-info
 
 trial
+survey-output
+ocr_cache
