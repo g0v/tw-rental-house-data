@@ -1,10 +1,6 @@
-import cv2
 import base64
-import numpy as np
 import logging
 import os
-from paddleocr import PaddleOCR
-from paddleocr.ppocr.utils.logging import get_logger
 import hashlib
 import json
 from collections import OrderedDict
@@ -13,12 +9,25 @@ from scrapy.utils.project import get_project_settings
 
 logger = logging.getLogger(__name__)
 
-# disable paddleocr debug log
-ppocr_logger = get_logger()
-ppocr_logger.setLevel(logging.ERROR)
+# 591 only obfuscates fields once in a while, and loading the OCR models costs
+# both seconds and hundreds of MB, so keep them out of the import path.
+_paddle_ocr = {}
 
-paddle_ocr_en = PaddleOCR(lang='en')
-paddle_ocr_zh = PaddleOCR(lang='chinese_cht')
+def get_paddle_ocr(lang):
+    '''
+    Get PaddleOCR of the given language, loading its model on first use
+    '''
+    if lang not in _paddle_ocr:
+        from paddleocr import PaddleOCR
+        from paddleocr.ppocr.utils.logging import get_logger
+
+        # disable paddleocr debug log
+        get_logger().setLevel(logging.ERROR)
+
+        logger.info('Loading PaddleOCR model of %s', lang)
+        _paddle_ocr[lang] = PaddleOCR(lang=lang)
+
+    return _paddle_ocr[lang]
 
 # Load settings
 settings = get_project_settings()
@@ -62,6 +71,9 @@ def save_base64_image_to_file(base64_str, output_path=None):
     Returns:
         numpy.ndarray: Image as numpy array
     """
+
+    import cv2
+    import numpy as np
 
     # Magic bytes for common image formats
     MAGIC_BYTES = {
@@ -125,7 +137,7 @@ def ocr_via_paddle(image, char_whitelist='0123456789F/.,', chop_right=0, use_zh=
         str: Recognized digits and specified special characters
     """
 
-    paddle_ocr = paddle_ocr_zh if use_zh else paddle_ocr_en
+    paddle_ocr = get_paddle_ocr('chinese_cht' if use_zh else 'en')
 
     # Chop right side if needed
     if chop_right > 0:
@@ -158,6 +170,9 @@ def base64_to_image(base64_str):
     Returns:
         numpy.ndarray: Image as numpy array (CV2 format)
     """
+    import cv2
+    import numpy as np
+
     # Remove header if present (e.g., "data:image/jpeg;base64,")
     if ',' in base64_str and ';base64,' in base64_str:
         base64_str = base64_str.split(',', 1)[1]
@@ -242,6 +257,8 @@ def get_cached_ocr_result(base64_img, data_type, ocr_func):
     
     # Store original image for investigation
     try:
+        import cv2
+
         img = base64_to_image(base64_img)
         if img is not None:
             cv2.imwrite(str(cache_paths['image']), img)

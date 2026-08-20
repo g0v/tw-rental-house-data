@@ -392,7 +392,9 @@ class DetailMixin(RequestGenerator):
             ret['allow_pet'] = None
 
         # has_perperty_registration
-        proper_meta_title = get(detail_dict, 'misc.產權登記')
+        # 591 renames DOM class from time to time, don't fail the whole house
+        # when a field is gone
+        proper_meta_title = get(detail_dict, 'misc.產權登記') or ''
         ret['has_perperty_registration'] = '已辦理' in proper_meta_title
 
         return ret

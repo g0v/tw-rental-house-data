@@ -72,6 +72,10 @@ BROWSER_SKIP_DOMAIN = [
 
 ### Tests
 
+Tests run against HTML saved under `tests/fixtures`, so they neither hit 591
+nor need a browser. Sockets are blocked while they run, so a test which
+crawls by accident fails instead of reaching 591.
+
 ```bash
 poetry install --with dev
 poetry run pytest
@@ -82,6 +86,20 @@ poetry run pytest
 This package currently support [591](http://rent.591.com.tw/). Each rental house website is a Scrapy Spider class. You can either crawl entire website using default setting , which will take couple days, or customize the behaviour base on your need.
 
 **Note:** The 591 list spider retrieves houses sorted by post date (newest first), instead of using 591's default ordering. This ensures consistent crawling behavior and helps track newly posted listings.
+
+### How pages are downloaded
+
+591 renders both list and detail pages on the server, so every page is
+downloaded by plain HTTP first, which is way cheaper than a browser.
+
+`PlaywrightFallbackMiddleware` watches detail responses, and re-sends the
+request through Playwright only when plain HTTP doesn't give us a page, say a
+detail page without house title, or a status code other than 200/30x/404. It is
+registered automatically, and `DOWNLOAD_HANDLERS` uses scrapy-playwright,
+which only launches a browser for the requests marked by the middleware.
+
+To watch how often the browser is needed, check the `twrh/playwright_fallback`
+counter in scrapy stats.
 
 The most basic usage would be creating a new Spider class that inherit Rental591Spider:
 

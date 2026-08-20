@@ -124,6 +124,55 @@ def get_house_price(response):
 
     return ret
 
+# 台澎金馬 rough bounded box - [21.811027, 118.350467] - [26.443459, 122.289387]
+COORDINATE_PATTERN = r'(2\d\.\d+),(1[12]\d\.\d+)'
+
+def get_coordinate_from_nuxt(response):
+    '''
+    .google-maps-link only shows up after the map is loaded by JS, while the
+    same coordinate is served in the nuxt init script of the plain HTML:
+        positionRound: {..., address: cy, lat: cz, lng: cA, ...}
+    '''
+    for script in response.css('script::text').getall():
+        if 'positionRound' not in script:
+            continue
+
+        positions = SimpleNuxtInitParser(script).get_component_arg_list(
+            ['address', 'lat', 'lng']
+        )
+
+        for position in positions or []:
+            lat = position.get('lat')
+            lng = position.get('lng')
+            if not lat or not lng:
+                continue
+            if re.fullmatch(COORDINATE_PATTERN, f'{lat},{lng}'):
+                return f'{lat},{lng}'
+
+    return None
+
+def get_coordinate_from_gmap_link(response):
+    '''
+    .google-maps-link shows up once the map is loaded, say
+    https://www.google.com/maps?f=q&hl=zh-TW&q=23.0413176,120.2412309&z=16
+    '''
+    gmap_url = response.css('.google-maps-link::attr("href")').get()
+
+    if not gmap_url:
+        return None
+
+    query_params = parse_qs(urlparse.urlparse(gmap_url).query)
+
+    for param in ['q', 'll']:
+        if param not in query_params:
+            continue
+
+        coord_match = re.search(COORDINATE_PATTERN, query_params[param][0])
+        if coord_match:
+            return '{},{}'.format(coord_match.group(1), coord_match.group(2))
+
+    return None
+
 def get_house_address(response):
     '''
     .address 約略經緯度、約略地址
@@ -131,25 +180,12 @@ def get_house_address(response):
     # TODO: support address
     # address_str = css(response, '.address .load-map', self_text=True, default=['NA'])
 
-    # lat lng is in NUXT init script
-    gmap_url = response.css('.google-maps-link::attr("href")').get()
+    # prefer the nuxt init script, as it is served by plain HTTP as well, while
+    # .google-maps-link needs a rendered page. both give the same coordinate.
+    rough_coordinate = get_coordinate_from_nuxt(response)
 
-    rough_coordinate = None
-
-    # https://www.google.com/maps?f=q&hl=zh-TW&q=23.0413176,120.2412309&z=16
-    if gmap_url:
-        parsed_url = urlparse.urlparse(gmap_url)
-        query_params = parse_qs(parsed_url.query)
-
-        if 'q' in query_params:
-            q_value = query_params['q'][0]
-            # 台澎金馬 rough bounded box - [21.811027, 118.350467] - [26.443459, 122.289387]
-            coord_match = re.search(r'(2\d\.\d+),(1[12]\d\.\d+)', q_value)
-
-            if coord_match:
-                lat = coord_match.group(1)
-                lng = coord_match.group(2)
-                rough_coordinate = f'{lat},{lng}'
+    if not rough_coordinate:
+        rough_coordinate = get_coordinate_from_gmap_link(response)
 
     return {
         'rough_coordinate': rough_coordinate,

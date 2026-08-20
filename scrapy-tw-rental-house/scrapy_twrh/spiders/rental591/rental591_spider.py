@@ -33,6 +33,8 @@ class Rental591Spider(ListMixin, DetailMixin):
     def update_settings(cls, settings):
         super().update_settings(settings)
         # force to use scrapy-playwright
+        # it only launches a browser for requests with meta['playwright'],
+        # every other request is downloaded by plain HTTP
         settings.set('DOWNLOAD_HANDLERS', {
             'https': 'scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler',
             'http': 'scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler',
@@ -40,3 +42,11 @@ class Rental591Spider(ListMixin, DetailMixin):
         # for backward compatibility
         settings.set('TWISTED_REACTOR', 'twisted.internet.asyncioreactor.AsyncioSelectorReactor', priority='spider')
 
+        # let detail pages fall back to a browser when plain HTTP is not enough,
+        # keeping whatever middleware the project has already configured
+        middlewares = settings.getdict('DOWNLOADER_MIDDLEWARES')
+        middlewares.setdefault(
+            'scrapy_twrh.middlewares.PlaywrightFallbackMiddleware',
+            585
+        )
+        settings.set('DOWNLOADER_MIDDLEWARES', middlewares, priority='spider')

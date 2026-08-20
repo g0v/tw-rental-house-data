@@ -5,6 +5,7 @@ dist
 *.egg-info
 
 trial
+js_cache
 survey-output
 ocr_cache
 .pytest_cache

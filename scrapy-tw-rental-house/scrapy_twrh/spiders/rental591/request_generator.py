@@ -46,18 +46,31 @@ class RequestGenerator(RentalSpider):
             'meta': {
                 'rental': rental_meta,
                 'handle_httpstatus_list': [400, 404, 302, 301],
-                'playwright': True,
-                'playwright_page_methods': [
-                    PageMethod('wait_for_load_state', 'networkidle'),
-                    PageMethod(self.playwright_utils.open_map)
-                ],
-                'playwright_page_init_callback': self.playwright_utils.init_page,
+                # 591 renders the detail page on the server, so plain HTTP is
+                # enough, and much cheaper than a browser. When it is not,
+                # PlaywrightFallbackMiddleware re-sends this request with the
+                # meta below.
+                'twrh_detail': True,
             },
             # 591 remove session check since #176, for some reason ╮(╯_╰)╭
             # 'headers': {
             #     'device': 'pc',
             #     'deviceid': self.session['PHPSESSID']
             # }
+        }
+
+    def gen_playwright_meta(self):
+        '''
+        meta which renders a detail page in a real browser, used by
+        PlaywrightFallbackMiddleware when plain HTTP doesn't give us a page
+        '''
+        return {
+            'playwright': True,
+            'playwright_page_methods': [
+                PageMethod('wait_for_load_state', 'networkidle'),
+                PageMethod(self.playwright_utils.open_map)
+            ],
+            'playwright_page_init_callback': self.playwright_utils.init_page,
         }
 
     def error_handler(self, failure):
