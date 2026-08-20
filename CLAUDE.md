@@ -12,7 +12,7 @@ Language: project docs and comments are primarily in Traditional Chinese (zh-TW)
 
 | Package | Purpose | Stack |
 |---|---|---|
-| `scrapy-tw-rental-house/` | Core Scrapy spider package (published to PyPI as `scrapy-tw-rental-house`) | Python 3.10+, Poetry, Scrapy, Playwright, PaddleOCR |
+| `scrapy-tw-rental-house/` | Core Scrapy spider package (published to PyPI as `scrapy-tw-rental-house`) | Python 3.10+, Poetry, Scrapy, PaddleOCR (legacy parser only) |
 | `twrh-dataset/` | Full data pipeline: crawling, storage, export | Python 3.10+, Poetry, Django 5, PostgreSQL/GeoDjango |
 | `scrapy-twrh-example/` | Example spiders showing package usage (local path dep on the core package) | Python, Poetry |
 | `ui/` | Public website (rentalhouse.g0v.ddio.io) | Nuxt.js 2, Vue 2, Buefy |
@@ -23,8 +23,7 @@ Language: project docs and comments are primarily in Traditional Chinese (zh-TW)
 ### scrapy-tw-rental-house (core spider package)
 ```bash
 cd scrapy-tw-rental-house
-poetry install
-poetry run playwright install chromium
+poetry install --with dev   # dev group is pytest, for the offline parser tests
 ```
 
 ### twrh-dataset (main data pipeline)
@@ -33,11 +32,10 @@ Requires PostgreSQL 15+ with PostGIS and the GeoDjango system libs (GDAL/GEOS/PR
 ```bash
 cd twrh-dataset
 poetry install
-poetry run playwright install chromium
 
 # Config files are gitignored; create them locally
 cp crawler/settings.sample.py crawler/settings.py   # reads per-env overrides from .env
-cp .env.example .env                                # proxy / UA / token / perf knobs
+cp .env.example .env                                # proxy / UA / perf knobs
 vim django/backend/settings_local.py                # DATABASES, SENTRY_DSN, SLACK_WEBHOOK_URL
 
 poetry run python django/manage.py migrate
@@ -86,15 +84,29 @@ Needs `clickhouse local` on PATH.
 
 ## Testing
 
-There is **no automated test suite** — `django/*/tests.py` are empty stubs and no pytest/unittest
-config exists. Verification is manual, by running spiders against small real datasets.
+`scrapy-tw-rental-house` has an offline pytest suite covering the **parsers** (HTML → raw dict →
+`GenericHouseItem`). It reads saved pages from `tests/fixtures`, blocks sockets while it runs, and
+needs neither DB nor browser. There are no crawler tests.
+
+```bash
+cd scrapy-tw-rental-house
+poetry install --with dev
+poetry run pytest
+```
+
+Fixtures are named by the day they were gathered and are never edited once committed — see
+`scrapy-tw-rental-house/tests/fixtures/README.md` for how they are minimized and scrubbed, and for
+the branches they do not cover yet.
+
+`twrh-dataset` has none — `django/*/tests.py` are empty stubs, and verification there is manual, by
+running spiders against small real datasets.
 
 ### Dev/Test Workflow for scrapy-tw-rental-house
 
 When a change touches `scrapy-tw-rental-house/`:
 
 1. Make changes in `scrapy-tw-rental-house/scrapy_twrh/`.
-2. Spot-check with the `twrh` CLI (plain HTTP, no DB / playwright / BROWSER_INIT_SCRIPT needed).
+2. Spot-check with the `twrh` CLI (plain HTTP, no DB needed).
    It is installed into the twrh-dataset venv by `./dev-core.sh` (see below):
    ```bash
    cd twrh-dataset
@@ -156,20 +168,29 @@ delete or replace it with a copy.
   `gen_*_request_args` methods. Callers can inject `start_list=`, `parse_list=`, `parse_detail=`
   into `__init__` to decorate default behaviour — this is how `twrh-dataset` and the examples
   customize crawling instead of subclassing parse logic.
-- `Rental591Spider = ListMixin + DetailMixin` (both on top of `RequestGenerator`). It forces the
-  scrapy-playwright download handlers and the asyncio reactor via `update_settings`.
+- `Rental591Spider = ListMixin + DetailMixin` (both on top of `RequestGenerator`). Its
+  `update_settings` pins the asyncio reactor and fills in a browser `USER_AGENT` when the project
+  has not set one — 591 answers Scrapy's default UA with 403.
 - Two item types per house per stage: `GenericHouseItem` (normalized schema) and `RawHouseItem`
   (raw HTML + parsed dict). Both are supersets — always check field presence before use.
-- **List requests are plain HTTP; only detail requests run through Playwright** (`playwright: True`
-  in request meta, with `open_map` page method to reveal coordinates).
-- 591 obfuscates price / floor / area in the detail page as base64 images inside
-  `<wc-obfuscate-c-price|c-floor|c-area>` elements. `detail_raw_parser.parse_obfuscate_fields` runs
-  **PaddleOCR** on them (`ocr_utils.py`). This is field de-obfuscation, not CAPTCHA solving. OCR
-  results are cached on disk by image hash (`ocr_cache/`, sharded), controlled by
-  `OCR_CACHE_ENABLED` / `OCR_CACHE_DIR`.
-- `PlaywrightUtils.init_page` blocks images/CSS and `BROWSER_SKIP_DOMAINS`, and disk-caches JS
-  (`BROWSER_JS_CACHE_ENABLED`, `js_cache/`). `BROWSER_INIT_SCRIPT` must be set for 591 pages to
-  render — copy it from a real browser session.
+- **Everything is plain HTTP, list and detail alike.** 591 renders the detail page on the server,
+  so the plain response already holds every field, including the coordinate. No browser is
+  involved and there is no fallback: if 591 starts blocking plain HTTP, the crawl stops getting
+  pages and the error-rate breaker trips.
+- The detail parser is **split by 591 template, one module per gathered date**
+  (`detail_raw_parser_20251209` for pages up to the 2026 redesign, `detail_raw_parser_20260820`
+  for what 591 serves now). `detail_raw_parser.pick_parser` chooses per page by looking for the
+  old template's containers, defaulting to the newest parser. This is what keeps
+  `tools/rerun_detail_raw.py` able to re-parse an archive spanning both templates. Add the next
+  template as the next dated module — never edit an older one.
+- The coordinate is the one field not in the DOM of a plain response: `.google-maps-link` only
+  appears once JS loads the map, so `get_coordinate_from_nuxt` reads `positionRound` out of the
+  Nuxt init script instead.
+- 591 **used to** obfuscate price / floor / area as base64 images inside
+  `<wc-obfuscate-c-price|c-floor|c-area>` elements; only `detail_raw_parser_20251209` still reads
+  those, through **PaddleOCR** (`ocr_utils.py`, imported lazily so a crawl never loads the
+  models). This is field de-obfuscation, not CAPTCHA solving. OCR results are cached on disk by
+  image hash (`ocr_cache/`, sharded), controlled by `OCR_CACHE_ENABLED` / `OCR_CACHE_DIR`.
 - Other 591 fragility handled in `rental591/util.py`: `reorder_inline_flex_dom` un-shuffles
   CSS-`order`-scrambled digits, `SimpleNuxtInitParser` extracts values from the Nuxt init script
   by regex.

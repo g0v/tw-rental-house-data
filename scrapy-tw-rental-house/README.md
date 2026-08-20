@@ -8,8 +8,7 @@ Although this package provide the ability to crawl rental house website, it's de
 ## Requirement
 
 1. Python 3.10+
-2. Playwright (for 591 spiders)
-3. PaddleOCR (for 591 spiders)
+2. PaddleOCR (only to re-parse 591 pages saved before 2026, see below)
 
 ## Installation
 
@@ -17,24 +16,16 @@ Although this package provide the ability to crawl rental house website, it's de
 poetry add scrapy-tw-rental-house
 ```
 
-### Install Playwright
-
-We use Playwright default browser (Chromium) to render JavaScript content. Please install Playwright Chromium before using this package.
-
-For more information, please refer to [official document](https://github.com/scrapy-plugins/scrapy-playwright)
-
-```bash
-poetry shell
-playwright install chromium
-```
+No browser needed. 591 renders both its list and its detail pages on the
+server, so every page is downloaded by plain HTTP.
 
 ### 591 specific
 
-As 591 implements anti-crawler mechanism, it require additional setup to bypass it. To enable Playwright to bypass 591 anti-crawler mechanism, please ensure you 
-get access to browser developer tool on browsing 591, and copy the setting to settings.py.
+591 answers Scrapy's default User-Agent with 403, so the spider fills in a
+browser one when the project has not set its own. To use your own:
 
 ```python
-BROWSER_INIT_SCRIPT = 'console.log("This command enable Playwright")'
+USER_AGENT = 'the UA you want to be seen as'
 ```
 
 ### Configure OCR cache
@@ -55,19 +46,20 @@ You can also customize the cache directory by setting OCR_CACHE_DIR:
 OCR_CACHE_DIR = 'path/to/ocr_cache' # default to ocr_cache
 ```
 
-### Speed up browser page loading
+OCR is only reached by `detail_raw_parser_20251209`, the parser for pages 591
+served before its 2026 redesign, where price / floor / area were base64 images
+inside `<wc-obfuscate-c-*>` elements. Pages 591 serves today are plain text, so
+a crawl never loads PaddleOCR at all.
 
-This package support skip specific domain request and cache JS.
+### Tests
 
-```python
-# Enable cache for JS
-BROWSER_JS_CACHE_ENABLED = True # default to True
-BROWSER_JS_CACHE_DIR = 'path/to/cache' # default to js_cache
+Tests run against HTML saved under `tests/fixtures`, so they neither hit 591
+nor need a browser. Sockets are blocked while they run, so a test which crawls
+by accident fails instead of reaching 591.
 
-# Enable skip specific domain request
-BROWSER_SKIP_DOMAIN = [
-    'https://the.unnecessary.domain',
-]
+```bash
+poetry install --with dev
+poetry run pytest
 ```
 
 ## Basic Usage
@@ -75,6 +67,20 @@ BROWSER_SKIP_DOMAIN = [
 This package currently support [591](http://rent.591.com.tw/). Each rental house website is a Scrapy Spider class. You can either crawl entire website using default setting , which will take couple days, or customize the behaviour base on your need.
 
 **Note:** The 591 list spider retrieves houses sorted by post date (newest first), instead of using 591's default ordering. This ensures consistent crawling behavior and helps track newly posted listings.
+
+### How pages are parsed
+
+591 changes its HTML from time to time, and each template gets its own parser,
+named after the date its pages were gathered:
+
+| module | pages |
+|---|---|
+| `detail_raw_parser_20251209` | up to the 2026 redesign, price / floor / area obfuscated as images |
+| `detail_raw_parser_20260820` | what 591 serves today |
+
+`detail_raw_parser.get_detail_raw_attrs` picks between them per page, so a
+page saved years ago still parses the way it did back then. The next template
+gets the next dated module, never an edit to an older one.
 
 The most basic usage would be creating a new Spider class that inherit Rental591Spider:
 

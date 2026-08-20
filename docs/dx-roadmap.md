@@ -323,6 +323,29 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
   同日補充：`settings.fast.py` 的 token 確認失效（刪〈需要拍板的決定〉，結論收進 0-2 與架構原則）；
   新增 2.5-4 `twrh` CLI 手動測試入口（parse／list／detail／survey 子指令，doctor、harvester 後續併入；
   `survey` 為單一縣市全量完整性報告，即 L3 的手動介面）。
+- **2026-08-20 實作進度（第二批，純 HTTP parser）**：
+  - **2.5-1 完成**：detail parser 改吃純 HTTP response。591 已改版，舊 selector 對不上，
+    因此**依版式分檔**：`detail_raw_parser_20251209`（改版前，凍結，仍是唯一會用到 OCR 的
+    parser）與 `detail_raw_parser_20260820`（現行）；`detail_raw_parser` 依頁面上的容器選擇，
+    預設走最新的。`HouseEtc.detail_raw` 橫跨兩種版式，`tools/rerun_detail_raw.py` 因此仍可用。
+  - **#204 修好**：`misc` / `service` / facility / `rough_coordinate` 從全空回到 21/25
+    （4 筆是車位，本來就沒有這些區塊），GenericHouseItem 由 0/25 變 25/25。
+    同時修掉版式改動造成的靜默錯值：`頂樓加蓋`→`頂層加蓋`、`車位費`→`車位租金`、
+    `已辦理`→`房屋已辦產權登記`、以及沒標數量的 `陽台`（會讓 `apt_feature_code` 炸掉整筆）。
+  - **1-3 / 1-4 完成**：`scrapy-tw-rental-house/tests` 的 pytest 套件（111 個測試，擋 socket），
+    fixture 按 1-1 拍板的策略重做：白名單容器 + 值全換，且「剪枝前後 parse 相同」與
+    「scrub 只改值、不改結構」都在產生時斷言過。檔名帶抓取日期，見
+    `tests/fixtures/README.md`（含尚未涵蓋的分支）。nuxt script 改放同形狀的縮小版，
+    刻意保留四個含逗號的值當作切分 regression。
+  - **2.5-3 決定**：純 HTTP 取代 playwright，**不留 fallback**。移除 scrapy-playwright /
+    playwright 依賴、`playwright_utils.py` 與所有 `BROWSER_*` 設定；#205 的
+    `PlaywrightFallbackMiddleware` 依〈建議不做〉不採納。UA 修正一併收（591 對 scrapy 預設
+    UA 回 403，`Rental591Spider.update_settings` 在專案沒設時補一個瀏覽器 UA）。
+    代價：被擋時沒有備援，只能靠 2-1 熔斷與 3-2 nightly 發現，fallback 形狀待 2.5-2 量測。
+  - PaddleOCR 改為在 `parse_obfuscate_fields` 內才 import（不是 #205 的 ocr_utils 改寫）：
+    現行版式不會走到，legacy parser 又必須能離線 import 才測得到。4-5 整組拔掉時，
+    要拔的東西仍然只集中在 `ocr_utils.py` 與 `detail_raw_parser_20251209`。
+
 - **2026-08-20 實作進度**（branch `feat/dx-groundwork`）：
   - **Phase 0 完成**（0-1 env var 流程、0-2/0-4 刪死檔、0-3 `dev-core.sh`）。
   - **2.5-4 `twrh` CLI 完成**（parse／list／detail／survey），以金門縣實測通過。
