@@ -21,7 +21,8 @@ class List591Spider(Rental591Spider):
             seed_parser=self.parse_seed,
             generate_request_args=self.gen_list_request_args,
             parse_response=self.parse_list_and_stop,
-            start_early=self.start_early
+            start_early=self.start_early,
+            spider=self
         )
     
     @classmethod

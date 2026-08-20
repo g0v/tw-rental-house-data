@@ -34,7 +34,8 @@ class Detail591Spider(Rental591Spider):
             generate_request_args=self.gen_detail_request_args,
             parse_response=self.parse_detail_and_done,
             start_early=self.start_early,
-            batch_size=self.batch_size
+            batch_size=self.batch_size,
+            spider=self
         )
     
     @classmethod
