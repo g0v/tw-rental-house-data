@@ -27,6 +27,10 @@ opencv-python-headless = "^4.11.0.86"
 numpy = "^2.2.3"
 paddlepaddle = {version = "3.0.0rc1", source = "paddle"}
 paddleocr = "^2.10.0"
+# paddle imports this at runtime (paddle/utils/cpp_extension/cpp_extension.py) but
+# doesn't declare it as a dependency; recent Python venvs no longer bundle it by
+# default, so without this pin `import paddleocr` fails with ModuleNotFoundError.
+setuptools = "*"
 
 [tool.poetry.scripts]
 twrh = "scrapy_twrh.cli.main:main"

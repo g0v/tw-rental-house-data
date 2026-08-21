@@ -16,6 +16,9 @@ django = "^5"
 # native builds into the same `cv2` package, which segfaults on import.
 opencv-contrib-python = "^4.11.0.86"
 opencv-python-headless = "^4.11.0.86"
+# paddle imports this at runtime but doesn't declare it as a dependency; recent
+# Python venvs no longer bundle it by default (see scrapy-tw-rental-house/pyproject.toml).
+setuptools = "*"
 scrapy-tw-rental-house = "^2.1.8"
 psycopg2-binary = "^2.9.9"
 pylint-django = "^2.5.5"
