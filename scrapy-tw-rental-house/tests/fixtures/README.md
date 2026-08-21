@@ -59,7 +59,10 @@ Two things are worth knowing about the files:
   replacement keeps that shape and deliberately puts a comma inside four of
   the values (an inline style with `rgb(20, 106, 153)`, a thousands
   separator, a comma joined list, `\u` escapes), because splitting those
-  apart is what used to shift lat / lng onto the wrong value.
+  apart is what used to shift lat / lng onto the wrong value. Like 591, it
+  quotes the coordinate and writes the other numbers bare - reading the
+  argument list positionally cannot tell the two apart, so getting it wrong
+  goes unnoticed there.
 
 ## Gaps
 
