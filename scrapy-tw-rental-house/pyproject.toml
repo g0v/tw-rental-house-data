@@ -18,6 +18,12 @@ Scrapy = "^2.11.0"
 scrapy-playwright = "^0.0.42"
 playwright = "^1.50.0"
 opencv-python = "^4.11.0.86"
+# Pinned to the same 4.x line as opencv-python: paddleocr/albumentations pull these in
+# transitively with no upper bound, and letting them drift to the OpenCV 5.x line while
+# opencv-python stays on 4.x installs mismatched native builds into the same `cv2`
+# package, which segfaults on import.
+opencv-contrib-python = "^4.11.0.86"
+opencv-python-headless = "^4.11.0.86"
 numpy = "^2.2.3"
 paddlepaddle = {version = "3.0.0rc1", source = "paddle"}
 paddleocr = "^2.10.0"

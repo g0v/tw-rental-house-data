@@ -31,7 +31,7 @@
 </template>
 <script>
 import _ from 'lodash'
-import filesize from 'filesize'
+import { filesize } from 'filesize'
 import { S3_BASE } from '~/libs/defs'
 
 const RELEASE_STAGE = {

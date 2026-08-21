@@ -10,6 +10,12 @@ readme = "README.md"
 python = "^3.10"
 # cffi = "==1.13.2"
 django = "^5"
+# Pin these to the same 4.x line as scrapy-tw-rental-house's opencv-python: paddleocr
+# and albumentations pull them in transitively with no upper bound, and letting them
+# drift to the OpenCV 5.x line while opencv-python stays on 4.x installs mismatched
+# native builds into the same `cv2` package, which segfaults on import.
+opencv-contrib-python = "^4.11.0.86"
+opencv-python-headless = "^4.11.0.86"
 scrapy-tw-rental-house = "^2.1.8"
 psycopg2-binary = "^2.9.9"
 pylint-django = "^2.5.5"

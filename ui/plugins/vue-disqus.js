@@ -1,4 +1,5 @@
 import Vue from 'vue'
-import VueDisqus from 'vue-disqus'
+import { Disqus, DisqusCount } from 'vue-disqus'
 
-Vue.use(VueDisqus)
+Vue.component('VueDisqus', Disqus)
+Vue.component('VueDisqusCount', DisqusCount)
