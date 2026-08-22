@@ -7,7 +7,7 @@
     article
       h1 關於資料集
       about-data-brief
-      vue-markdown(:breaks="false", :html="true", :toc="true", tocId="data-set-toc").
+      vue-markdown(:breaks="false", :html="true", :toc="true", tocId="data-set-toc", @toc-rendered="onTocRendered").
         ## 版本資訊
         1. 版本： 0.1
         2. 發行日期： 2018/07/31
@@ -246,6 +246,20 @@ export default {
   methods: {
     visibilityChanged (isVisible) {
       this.isHeaderVisible = isVisible
+    },
+    // vue-markdown's own toc-and-anchor plugin writes the TOC into #data-set-toc via
+    // document.getElementById() *during* its render(), before that element has been
+    // attached to the document on first mount — so the write silently no-ops and the
+    // TOC stays empty until something else forces a re-render (e.g. scrolling toggles
+    // isHeaderVisible above). Re-apply the html here once mounted, when the element is
+    // guaranteed to exist.
+    onTocRendered (tocHtml) {
+      this.$nextTick(() => {
+        const el = document.getElementById('data-set-toc')
+        if (el) {
+          el.innerHTML = tocHtml
+        }
+      })
     }
   }
 }
