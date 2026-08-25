@@ -24,7 +24,8 @@
           }
         }
       ],
-      "comment": "此為試爬期間資料，詳情請見[部落格說明](https://rentalhouse.g0v.ddio.io/blog/post/2025-nov-release/)"
+      "comment": "此為試爬期間資料，詳情請見[部落格說明](https://rentalhouse.g0v.ddio.io/blog/post/2025-nov-release/)",
+      "quality_issue": "beta-2025"
     },
     {
       "schema_ver": "1.0.0",
@@ -47,7 +48,8 @@
           }
         }
       ],
-      "comment": "此為試爬期間資料，詳情請見[部落格說明](https://rentalhouse.g0v.ddio.io/blog/post/2025-nov-release/)"
+      "comment": "此為試爬期間資料，詳情請見[部落格說明](https://rentalhouse.g0v.ddio.io/blog/post/2025-nov-release/)",
+      "quality_issue": "beta-2025"
     },
     {
       "schema_ver": "1.0.0",
@@ -70,7 +72,8 @@
           }
         }
       ],
-      "comment": "此為試爬期間資料，詳情請見[部落格說明](https://rentalhouse.g0v.ddio.io/blog/post/2025-nov-release/)"
+      "comment": "此為試爬期間資料，詳情請見[部落格說明](https://rentalhouse.g0v.ddio.io/blog/post/2025-nov-release/)",
+      "quality_issue": "beta-2025"
     },
     {
       "schema_ver": "1.0.0",
@@ -93,7 +96,8 @@
           }
         }
       ],
-      "comment": "此為試爬期間資料，詳情請見[部落格說明](https://rentalhouse.g0v.ddio.io/blog/post/2025-nov-release/)"
+      "comment": "此為試爬期間資料，詳情請見[部落格說明](https://rentalhouse.g0v.ddio.io/blog/post/2025-nov-release/)",
+      "quality_issue": "beta-2025"
     }
   ]
 }

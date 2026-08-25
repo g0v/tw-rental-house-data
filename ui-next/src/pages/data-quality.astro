@@ -1,0 +1,87 @@
+---
+import Base from '../layouts/Base.astro'
+import { qualityIssues } from '../data/quality-issues'
+---
+
+<Base
+  title="資料品質與已知問題"
+  description="開放台灣民間租屋資料各期間的資料品質紀錄：爬蟲錯誤的影響期間、影響範圍與狀態總表。"
+>
+  <main class="mx-auto w-full max-w-6xl px-4 pb-16">
+    <div class="max-w-3xl pt-10">
+      <h1 class="font-serif text-4xl font-black tracking-wide">
+        資料品質與已知問題
+      </h1>
+      <p class="mt-4 leading-relaxed">
+        長期爬取難免遇到網站改版、機器故障；這裡彙整歷來影響資料品質的事件，
+        讓你在使用某段期間的資料前，可以一眼確認它是否需要特別留意。
+        每次事件的完整分析都在對應的部落格文章裡；<a
+          class="text-tile-deep underline"
+          href="/download#archive">下載頁檔案庫</a
+        >中受影響的資料列，也會標上
+        <span class="text-rust">⚠ 警示</span>指回本頁。
+      </p>
+    </div>
+
+    <div class="mt-8 overflow-x-auto">
+      <table class="w-full min-w-3xl border-collapse text-sm">
+        <thead>
+          <tr class="border-y-2 border-ink text-left">
+            <th class="px-3 py-2 font-medium">影響期間</th>
+            <th class="px-3 py-2 font-medium">事件</th>
+            <th class="px-3 py-2 font-medium">影響範圍</th>
+            <th class="px-3 py-2 font-medium">狀態</th>
+            <th class="px-3 py-2 font-medium">詳細說明</th>
+          </tr>
+        </thead>
+        <tbody>
+          {
+            qualityIssues.map((issue) => (
+              <tr
+                id={issue.id}
+                class="scroll-mt-4 border-b border-rule align-top target:bg-tile-pale"
+              >
+                <td class="px-3 py-3 font-mono whitespace-nowrap">
+                  {issue.period}
+                </td>
+                <td class="px-3 py-3 font-medium whitespace-nowrap">
+                  {issue.title}
+                </td>
+                <td class="min-w-72 px-3 py-3 leading-relaxed text-ink-soft">
+                  {issue.scope}
+                </td>
+                <td class="px-3 py-3">
+                  {issue.status.startsWith('進行中') ? (
+                    <span class="text-rust">{issue.status}</span>
+                  ) : (
+                    issue.status
+                  )}
+                </td>
+                <td class="px-3 py-3">
+                  <a
+                    class="text-tile-deep underline"
+                    href={`/blog/post/${issue.post}/`}
+                  >
+                    部落格全文
+                  </a>
+                </td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <p class="mt-6 max-w-3xl text-sm leading-relaxed text-ink-soft">
+      新的 data-issue 文章發佈時，本頁總表與檔案庫的警示標記會一併更新。
+      若你在資料中發現這裡沒列出的異常，歡迎至
+      <a
+        class="text-tile-deep underline"
+        href="https://github.com/g0v/tw-rental-house-data/issues"
+        target="_blank"
+        rel="noopener">GitHub</a
+      >
+      回報。
+    </p>
+  </main>
+</Base>
