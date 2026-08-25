@@ -8,7 +8,6 @@ Although this package provide the ability to crawl rental house website, it's de
 ## Requirement
 
 1. Python 3.10+
-2. PaddleOCR (for 591 spiders)
 
 ## Installation
 
@@ -24,24 +23,6 @@ server, so every page is downloaded by plain HTTP.
 591 replies 403 to the default scrapy user agent, while it serves requests
 carrying no user agent at all just fine, so this package sets `USER_AGENT` to
 `None` unless the project configures its own.
-
-### Configure OCR cache
-
-As OCR is a time consuming process, we provide a cache mechanism to store OCR result. When OCR cache is enabled, before performing OCR on an image, the crawler will check if the image hash exists in the cache. If it exists, the cached result will be used instead of performing OCR again. OCR cache is enabled by default.
-
-To disable OCR cache, please configure scrapy settings.py as following:
-
-```python
-# Enable OCR cache
-OCR_CACHE_ENABLED = False
-```
-
-You can also customize the cache directory by setting OCR_CACHE_DIR:
-
-```python
-# Customize OCR cache directory
-OCR_CACHE_DIR = 'path/to/ocr_cache' # default to ocr_cache
-```
 
 ### Tests
 

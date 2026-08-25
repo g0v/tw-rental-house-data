@@ -65,8 +65,3 @@ DOWNLOADER_MIDDLEWARES = {
 _proxy = os.environ.get('TWRH_PROXY')
 if _proxy:
     ROTATING_PROXY_LIST = [_proxy]
-
-OCR_CACHE_ENABLED = True
-OCR_CACHE_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), '../cache/ocr'
-)
