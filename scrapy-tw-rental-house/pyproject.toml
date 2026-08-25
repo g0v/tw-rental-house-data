@@ -15,7 +15,7 @@ Scrapy = "^2.11.0"
 twrh = "scrapy_twrh.cli.main:main"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.0.0"
+pytest = "^9.0.3"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
