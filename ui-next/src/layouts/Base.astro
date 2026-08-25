@@ -1,27 +1,44 @@
 ---
 import '../styles/global.css'
+import { SITE_NAME, SITE_URL } from '../lib/site'
 
 interface Props {
   /** 頁面標題，會加上站名後綴；首頁不傳 */
   title?: string
   description?: string
   ogImage?: string
+  /** og:type，部落格單篇傳 'article'（並附 articleMeta） */
+  ogType?: 'website' | 'article'
+  articleMeta?: {
+    /** ISO 8601 */
+    publishedTime: string
+    author: string
+    tags: string[]
+  }
   /** footer 授權聲明：全站 CC0，部落格文章 CC-BY */
   license?: 'cc0' | 'ccby'
 }
 
-const SITE_NAME = '開放台灣民間租屋資料'
 const DEFAULT_DESCRIPTION =
   '「開放民間租屋資料」希望提供對租屋議題有興趣的單位，一份長期、開放，而且詳細的租屋資料集，去除有著作權與隱私疑慮的資料後，以 CC0 釋出，為台灣的租賃市場與居住議題建立研究的基礎資料。'
 
 const {
   title,
   description = DEFAULT_DESCRIPTION,
-  ogImage = 'https://rentalhouse.g0v.ddio.io/imgs/og.png',
+  ogImage = `${SITE_URL}/imgs/og.png`,
+  ogType = 'website',
+  articleMeta,
   license = 'cc0'
 } = Astro.props
 
 const fullTitle = title ? `${title} | ${SITE_NAME}` : SITE_NAME
+
+// canonical 與 og:url：站上頁面一律 directory 格式（結尾斜線）
+const canonicalPath =
+  Astro.url.pathname.endsWith('/') || Astro.url.pathname.includes('.')
+    ? Astro.url.pathname
+    : `${Astro.url.pathname}/`
+const canonicalUrl = new URL(canonicalPath, Astro.site).toString()
 
 const navItems = [
   { href: '/download', label: '打包回家玩' },
@@ -43,7 +60,29 @@ const currentPath = Astro.url.pathname
     />
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
-    <meta name="og:image" content={ogImage} />
+    <link rel="canonical" href={canonicalUrl} />
+    <meta property="og:site_name" content={SITE_NAME} />
+    <meta property="og:title" content={title ?? SITE_NAME} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content={ogType} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:locale" content="zh_TW" />
+    <meta name="twitter:card" content="summary_large_image" />
+    {
+      ogType === 'article' && articleMeta && (
+        <>
+          <meta
+            property="article:published_time"
+            content={articleMeta.publishedTime}
+          />
+          <meta property="article:author" content={articleMeta.author} />
+          {articleMeta.tags.map((tag) => (
+            <meta property="article:tag" content={tag} />
+          ))}
+        </>
+      )
+    }
     <link rel="sitemap" href="/sitemap-index.xml" />
     <link
       rel="alternate"
