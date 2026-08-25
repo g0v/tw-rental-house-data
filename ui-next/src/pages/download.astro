@@ -1,5 +1,6 @@
 ---
 import Base from '../layouts/Base.astro'
+import TwrhCusdis from '../components/TwrhCusdis.astro'
 import AnnualArchive from '../components/AnnualArchive.vue'
 import DatasetQuickCard from '../components/DatasetQuickCard.vue'
 import { allYearStats, latestRelease } from '../data/stats'
@@ -125,5 +126,7 @@ const latestYear = allYearStats[0]!.year
         }
       </div>
     </section>
+
+    <TwrhCusdis pageTitle="打包回家玩" />
   </main>
 </Base>

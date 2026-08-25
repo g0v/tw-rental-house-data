@@ -2,6 +2,7 @@
 import { render } from 'astro:content'
 import Base from '../../../layouts/Base.astro'
 import BlogTagList from '../../../components/BlogTagList.vue'
+import TwrhCusdis from '../../../components/TwrhCusdis.astro'
 import { formatDate, sortedPosts } from '../../../lib/blog'
 
 export async function getStaticPaths() {
@@ -64,5 +65,6 @@ const created = post.data.created
         <meta itemprop="name" content="開放台灣民間租屋資料" />
       </span>
     </article>
+    <TwrhCusdis pageTitle={post.data.title} />
   </main>
 </Base>
