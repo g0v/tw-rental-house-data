@@ -1,9 +1,14 @@
-# 分佈不變量 baseline（L3 drift detector 斷言基準）
+# drift detector 的 committed baseline（docs/dx-roadmap.md 3-3）
 
-`twrh survey <縣市> --baseline baselines/<檔>.json` 會把本次 survey 的
-分佈不變量（樓層中位數、建物／物件型態占比、頂加率、關鍵欄位填充率）
-與 baseline 比對，超出容許差即以非零值退出——這就是 L3 nightly 的斷言核心
-（docs/dx-roadmap.md 3-3）。
+L3 有兩種互補的漂移斷言，各吃一種 baseline 檔，皆由 `nightly.sh` 執行：
+
+1. **填充率漂移**：`twrh probe <縣市> --baseline baselines/hualien-fill-rate.json`
+   —— 欄位有沒有靜默消空（survey 報告格式，probe 取 `detail.fill_rates`）。
+2. **分佈不變量**：`twrh survey <縣市> --baseline baselines/<日期>.<scope>.json`
+   —— 分佈形狀有沒有變（樓層中位數、建物／物件型態占比、頂加率、關鍵欄位
+   填充率），超出容許差即以非零值退出。
+
+不變量 baseline 檔：
 
 - **`*.hualien.json`** — L3 nightly 的目標城市（物件型態多元，能踩到各 parser 分支）。
 - **`*.national.json`** — 全量爬取（go.sh）後的驗收基準，樣本門檻 10,000，
