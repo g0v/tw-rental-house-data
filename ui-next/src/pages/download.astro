@@ -1,0 +1,129 @@
+---
+import Base from '../layouts/Base.astro'
+import AnnualArchive from '../components/AnnualArchive.vue'
+import DatasetQuickCard from '../components/DatasetQuickCard.vue'
+import { allYearStats, latestRelease } from '../data/stats'
+import { S3_BASE } from '../lib/download'
+
+const latestAnnual = latestRelease('annual')
+const latestMonthly = latestRelease('monthly')
+const latestYear = allYearStats[0]!.year
+---
+
+<Base
+  title="打包回家玩"
+  ogImage="https://rentalhouse.g0v.ddio.io/imgs/download-og.png"
+>
+  <main class="mx-auto w-full max-w-6xl px-4 pb-16">
+    <div class="max-w-3xl pt-10">
+      <h1 class="font-serif text-4xl font-black tracking-wide">打包回家玩</h1>
+      <p class="mt-4 leading-relaxed">
+        本頁提供資料集的所有下載連結。關於資料集的欄位與編碼表，請見「<a
+          class="text-tile-deep underline"
+          href="/about-data-set">關於資料集</a
+        >」；各期間資料的已知問題，整理在「<a
+          class="text-tile-deep underline"
+          href="/data-quality">資料品質</a
+        >」。如果好奇本專案的規劃、想要參與，或是發現問題，請至
+        <a
+          class="text-tile-deep underline"
+          href="https://github.com/g0v/tw-rental-house-data"
+          target="_blank"
+          rel="noopener">GitHub</a
+        >
+        開票。若你是資料擁有者，而且認為本資料集有侵犯隱私或其他疑慮的，歡迎<a
+          class="text-tile-deep underline"
+          href="mailto:open-tw-rental-house@ddio.io">來信</a
+        >要求移除。
+      </p>
+    </div>
+
+    <!-- 一、快速下載 -->
+    <section id="quick" class="mt-12">
+      <h2 class="border-b-2 border-ink pb-2 font-serif text-2xl font-bold">
+        快速下載
+      </h2>
+      <div class="mt-6 grid gap-6 lg:grid-cols-2">
+        {
+          latestAnnual && (
+            <DatasetQuickCard
+              heading="最新年度資料"
+              year={latestAnnual.year}
+              prefix=""
+              rows={latestAnnual.rows}
+            />
+          )
+        }
+        {
+          latestMonthly && (
+            <DatasetQuickCard
+              heading="最新月份資料"
+              year={latestMonthly.year}
+              prefix="0"
+              rows={latestMonthly.rows}
+            />
+          )
+        }
+      </div>
+      <aside
+        class="mt-6 max-w-3xl border-l-4 border-tile bg-tile-pale px-4 py-3 text-sm leading-relaxed"
+      >
+        <p>
+          <strong>該下載哪一份？</strong>
+          「原始資料」保留每一則刊登紀錄，適合想自己定義過濾條件的研究；「消除重複住宅」已合併重複刊登的物件並套用保守的住宅過濾，適合直接分析租屋市場。
+          CSV 可直接用試算表或 pandas 開啟，JSON 保留巢狀結構、適合程式處理——不確定就選
+          CSV 的消除重複版。
+        </p>
+      </aside>
+    </section>
+
+    <!-- 二、如何引用 -->
+    <section id="cite" class="mt-12 max-w-3xl">
+      <h2 class="border-b-2 border-ink pb-2 font-serif text-2xl font-bold">
+        如何引用
+      </h2>
+      <p class="mt-4 leading-relaxed">
+        本資料集以
+        <a
+          class="text-tile-deep underline"
+          href="https://creativecommons.org/publicdomain/zero/1.0/deed.zh_TW"
+          target="_blank"
+          rel="noopener">CC0</a
+        >
+        釋出，法律上不要求標示出處；但為了讓讀者能核對你使用的資料範圍與版本，建議在研究或報導中註明資料期間、資料集版本與擷取日期：
+      </p>
+      <blockquote
+        class="mt-4 border-l-4 border-rule bg-terrazzo px-4 py-3 font-mono text-sm leading-relaxed"
+      >
+        開放台灣民間租屋資料（{latestYear} 年 N 月，資料版本
+        0.3）［資料集］。取自 https://rentalhouse.g0v.ddio.io/download（擷取日期：YYYY-MM-DD）
+      </blockquote>
+      <p class="mt-4 text-sm leading-relaxed text-ink-soft">
+        「資料版本」請照抄下方檔案庫中該筆資料的「資料集版本」欄位；若引用的是消除重複住宅資料，請一併註明。
+      </p>
+    </section>
+
+    <!-- 三、完整檔案庫 -->
+    <section id="archive" class="mt-12">
+      <h2 class="border-b-2 border-ink pb-2 font-serif text-2xl font-bold">
+        完整檔案庫
+      </h2>
+      <p class="mt-4 max-w-3xl text-sm leading-relaxed text-ink-soft">
+        依年份收整所有已發布的資料；點年份展開該年清單。想寫程式批次抓檔的話，檔案
+        URL 規則為
+        <code class="font-mono text-xs"
+          >{S3_BASE}&lcub;年份&rcub;/[&lcub;年份&rcub;&lcub;期間&rcub;][&lcub;CSV|JSON&rcub;][&lcub;Raw|Deduplicated&rcub;]
+          TW-Rental-Data.zip</code
+        >，期間為空（年度）、Q1–Q4（季）或
+        01–12（月）；每年的「本表格資料下載 [JSON]」有該年所有檔案的機器可讀清單。
+      </p>
+      <div class="mt-6 border-t border-rule">
+        {
+          allYearStats.map((yearStats) => (
+            <AnnualArchive stats={yearStats} open={yearStats.year === latestYear} />
+          ))
+        }
+      </div>
+    </section>
+  </main>
+</Base>
