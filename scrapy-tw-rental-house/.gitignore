@@ -8,3 +8,4 @@ trial
 survey-output
 ocr_cache
 .pytest_cache
+harvest-output
