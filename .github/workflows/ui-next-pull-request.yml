@@ -36,3 +36,6 @@ jobs:
 
       - name: Build 🏗
         run: npm run build
+
+      - name: URL 保留清單驗收 ✅
+        run: node scripts/check-urls.mjs
