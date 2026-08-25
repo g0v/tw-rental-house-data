@@ -108,6 +108,23 @@ def test_fill_rate_writes_report(tmp_path, monkeypatch):
     assert report['rates']['vendor_house_id'] == 1.0
 
 
+def test_fill_rate_accumulates_same_day_batches(tmp_path, monkeypatch):
+    # go.sh 的 detail 迴圈同一天會跑多個 batch，報告必須累加而非覆蓋
+    monkeypatch.setenv('TWRH_TARGET_DATE', '2026-08-25')
+    run_fill_rate_once(tmp_path, [
+        GenericHouseItem(vendor='591 租屋網', vendor_house_id='1', monthly_price=1000),
+    ])
+    run_fill_rate_once(tmp_path, [
+        GenericHouseItem(vendor='591 租屋網', vendor_house_id='2'),
+        GenericHouseItem(vendor='591 租屋網', vendor_house_id='3'),
+    ])
+
+    report = json.loads((tmp_path / '2026-08-25.stub591.json').read_text())
+    assert report['n_items'] == 3
+    assert report['counts']['monthly_price'] == 1
+    assert report['rates']['monthly_price'] == pytest.approx(1 / 3)
+
+
 def test_fill_rate_flags_a_collapsed_field(tmp_path, monkeypatch, caplog):
     full = [GenericHouseItem(vendor='591 租屋網', vendor_house_id=str(i),
                              monthly_price=1000) for i in range(3)]
