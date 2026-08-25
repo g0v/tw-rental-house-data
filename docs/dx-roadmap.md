@@ -202,8 +202,9 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
 
 - **L1 離線 golden**（每個 PR，公開 CI）：凍結 HTML、不連網，ID 永久有效。
   回答「我的改動有沒有弄壞 parser」。
-- **L2 live probe**（nightly，自架 runner）：**不 hardcode 任何 ID**。抓 list（金門縣，最小城市）
-  → 取**當下**前 K 筆 → 抓 detail。斷言全部是比率／不變量：
+- **L2 live probe**（nightly，自架 runner）：**不 hardcode 任何 ID**。抓 list（花蓮縣——物件量小
+  但類型較多元，比金門縣更能踩到各 property_type 的分支）→ 取**當下**前 K 筆 → 抓 detail。
+  斷言全部是比率／不變量：
   - list 至少回 N 筆
   - detail ≥X% 得到 200 且非 `about:blank`（anti-anti-crawler 還活著）
   - 其中 ≥X% 解出 price / floor / floor_ping（selector 漂移哨兵）
@@ -230,7 +231,7 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
 | 4-2 | `go.sh` 改用 exit code / DB 狀態取代 `grep -q 'Batch limit reached'` | dataset | 小 | 用 log 字串當控制流，改一句訊息就壞 |
 | 4-3 | `RequestTS.seed` 改成有 key 的 dict | dataset | 中 | 現在 `ListRequestMeta(*seed)` 是位置參數，改欄位順序會靜默錯位。需要 migration |
 | 4-4 | `PersistQueue.queue_length` / `n_live_spider` 從 class attribute 改 instance | dataset | 極小 | 現況靠 `self.x -= 1` 隱式建實例屬性，是 footgun |
-| 4-5 | **拔掉 OCR**：移除 paddlepaddle/PaddleOCR 依賴、`ocr_utils.py`、`parse_obfuscate_fields`、`OCR_CACHE_*` 設定 | package | 小 | 591 已改回純文字，OCR 路徑不會被走到；`paddlepaddle 3.0.0rc1`（釘死 rc 版 + 自訂 source）是最重的安裝負擔。若 591 恢復圖片混淆（L2 哨兵會告警）再重新引入 |
+| 4-5 | **拔掉 OCR**：移除 paddlepaddle/PaddleOCR 依賴、`ocr_utils.py`、`parse_obfuscate_fields`、`OCR_CACHE_*` 設定 | package | 小 | **已併入 2.5-1 一次做掉**（2026-08-25，見編修紀錄——不留舊版式 parser，OCR 失去唯一的存在理由）。若 591 恢復圖片混淆（L2 哨兵會告警）再重新引入 |
 | 4-6 | 多站點抽象：`PersistQueue` 的 vendor 改從 spider class attribute 取；enums 拆 shared vs vendor-specific | 兩邊 | 大 | **由真的要加第二站時驅動**，見〈建議不做〉 |
 
 ### Backlog（已知但痛感低）
@@ -333,3 +334,38 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
     熔斷與填充率先放 dataset 側 `crawler/extensions/`——dataset 裝的是已發布 package，
     放 package 側會依賴未發布版本；2.5-1 發版時上移。已以 stub crawler 單元驗證，
     live 驗證待下次真實爬蟲。
+- **2026-08-25 IvanaGyro 第二批 PR 的處置**：
+  - **#208（nuxt 逗號切分）、#209（591 對 scrapy 預設 UA 回 403）已合併**——採納清單前兩項完成，
+    2.5-1 的時序 gate 解除。pytest 骨架（`scrapy-tw-rental-house/tests/`、擋 socket 的 conftest）
+    隨之入 repo，1-3 有了起點。
+  - **#210（純 HTTP + parser 依版式分檔）已關閉，改由自己實作**，採納其：純 HTTP 化與移除
+    playwright、#204 selector 修正、靜默錯值修正（`頂樓加蓋`→`頂層加蓋`、`車位費`→`車位租金`、
+    `已辦理`→`房屋已辦產權登記`、無編號`陽台`）、離線測試與 fixture 方法論（白名單剪枝斷言
+    parse 不變、scrub 斷言只改值）。commit 需 `Co-authored-by` 並引用 #210。
+  - **拍板：不保留舊版式 parser**（否決 #210 的 dated-module dispatch 設計）。理由：重放路徑走
+    `detail_dict`（`rerun_detail_dict.py`），不經 raw HTML；凍結 parser 只能重現已落庫的 dict，
+    修 bug 或抽新欄位都得寫新 code，舊 parser 從 git history 或 PyPI 舊版號取得即可；
+    dated module 是只增不減的 ratchet；且它是 PaddleOCR 活著的唯一理由。
+    **4-5（拔 OCR/paddle）併入 2.5-1 一次做掉**。唯一保留的安全裝置：偵測到舊版式頁面
+    → warn + skip，避免 rerun 工具對改版前 HTML 靜默 parse 出空欄位。
+  - **L2 live probe 改用花蓮縣**（原金門縣）：物件類型較多元，較能踩到各 property_type 分支。
+    金門縣仍適合當 CLI 快速 spot-check 的最小樣本。
+  - #210 揪出的遺留問題，已本機確認：`scrapy-twrh-example/crawler/settings.py` 0-1 時只加了
+    gitignore、沒 `git rm --cached`，仍 tracked 且含 `BROWSER_INIT_SCRIPT` token → 待 untrack
+    並確認該 token 失效。
+  - 連帶待辦：自實作落地後關 #205；#211（dependabot 清倉）的 poetry.lock 需在新 parser 定案後
+    rebase（其 opencv/paddle 修補將隨 OCR 拔除而無對象），ui 那半可先拆出來收。
+- **2026-08-25 實作進度**（branch `feat/pure-http-parser`，每項一 commit）：
+  - **2.5-1 完成**：純 HTTP 化（拔 playwright 與全部 `BROWSER_*`）+ detail parser 重寫為
+    **單一模組**（採 #210 的 selector 與 detail_mixin 修正；`misc_of` 讓 dict 層新舊 label
+    都認，raw 層舊版式以 `LEGACY_MARKERS` 偵測、丟 `LegacyTemplateError` 拒絕）。
+    #204 修復；金門縣 live 實測 detail_dict 與 GenericHouseItem 全欄位產出。
+  - **4-5 完成**：OCR 整組拔掉（ocr_utils、paddle 依賴、OCR_CACHE 設定、README 段落）。
+  - **1-3／1-4 完成**：115 個離線測試（擋 socket）、8 個剪枝+scrub fixture 入 git，
+    dispatch 測試改寫為 legacy 拒絕測試。
+  - **1-2 完成**：`twrh harvest` 分層取樣器——分層 = parser 實際分支（property／contact／
+    價格區間／floor 五格式），稀有 bucket 先選，0 樣本 bucket 顯性回報；輸出 fixture 候選
+    HTML + manifest（含填充率，即 1-5 baseline 的輸入）。花蓮縣實測：379 筆、11/12 bucket
+    有樣本（車位、B1、頂加、代理人都有——金門縣掃不到這些），選 10 筆全數 parse 成功。
+  - 註：1-5 花蓮縣 baseline 已可由本次 manifest 起算；正式 baseline 建議發版後以
+    `twrh harvest` 定期重跑。CLAUDE.md 同步更新（無 playwright／OCR、單一 parser 政策）。

@@ -8,8 +8,6 @@ Although this package provide the ability to crawl rental house website, it's de
 ## Requirement
 
 1. Python 3.10+
-2. Playwright (for 591 spiders)
-3. PaddleOCR (for 591 spiders)
 
 ## Installation
 
@@ -17,63 +15,20 @@ Although this package provide the ability to crawl rental house website, it's de
 poetry add scrapy-tw-rental-house
 ```
 
-### Install Playwright
-
-We use Playwright default browser (Chromium) to render JavaScript content. Please install Playwright Chromium before using this package.
-
-For more information, please refer to [official document](https://github.com/scrapy-plugins/scrapy-playwright)
-
-```bash
-poetry shell
-playwright install chromium
-```
+No browser needed. 591 renders both its list and its detail pages on the
+server, so every page is downloaded by plain HTTP.
 
 ### 591 specific
 
-As 591 implements anti-crawler mechanism, it require additional setup to bypass it. To enable Playwright to bypass 591 anti-crawler mechanism, please ensure you 
-get access to browser developer tool on browsing 591, and copy the setting to settings.py.
-
-```python
-BROWSER_INIT_SCRIPT = 'console.log("This command enable Playwright")'
-```
-
-591 also replies 403 to the default scrapy user agent, so this package sets
-`USER_AGENT` to `None` unless the project configures its own.
-
-### Configure OCR cache
-
-As OCR is a time consuming process, we provide a cache mechanism to store OCR result. When OCR cache is enabled, before performing OCR on an image, the crawler will check if the image hash exists in the cache. If it exists, the cached result will be used instead of performing OCR again. OCR cache is enabled by default.
-
-To disable OCR cache, please configure scrapy settings.py as following:
-
-```python
-# Enable OCR cache
-OCR_CACHE_ENABLED = False
-```
-
-You can also customize the cache directory by setting OCR_CACHE_DIR:
-
-```python
-# Customize OCR cache directory
-OCR_CACHE_DIR = 'path/to/ocr_cache' # default to ocr_cache
-```
-
-### Speed up browser page loading
-
-This package support skip specific domain request and cache JS.
-
-```python
-# Enable cache for JS
-BROWSER_JS_CACHE_ENABLED = True # default to True
-BROWSER_JS_CACHE_DIR = 'path/to/cache' # default to js_cache
-
-# Enable skip specific domain request
-BROWSER_SKIP_DOMAIN = [
-    'https://the.unnecessary.domain',
-]
-```
+591 replies 403 to the default scrapy user agent, while it serves requests
+carrying no user agent at all just fine, so this package sets `USER_AGENT` to
+`None` unless the project configures its own.
 
 ### Tests
+
+Tests run against HTML saved under `tests/fixtures`, so they neither hit 591
+nor need network access. Sockets are blocked while they run, so a test which
+crawls by accident fails instead of reaching 591.
 
 ```bash
 poetry install --with dev

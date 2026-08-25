@@ -25,7 +25,6 @@
 ```sh
 # 使用 poetry 安裝相關套件
 poetry install
-poetry run playwright install chromium
 
 # 進入 virtualenv
 poetry shell

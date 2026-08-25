@@ -39,12 +39,40 @@ def split_string_to_dict(string, seperator):
 
     return None
 
+# how 591 writes a unit built on top of the highest floor, old wording first
+ROOFTOP_FLOORS = ('頂樓加蓋', '頂層加蓋')
+
+def misc_of(detail_dict, *labels):
+    '''
+    Value of the first 591 label which is present, as a list.
+
+    591 renames these labels once in a while - 車位費 became 車位租金 in the
+    2026 template - so every caller passes the labels it knows about, newest
+    first. The list is always a list, both parsers store one entry per value.
+    '''
+    misc = get(detail_dict, 'misc', default={}) or {}
+    for label in labels:
+        if label in misc:
+            value = misc[label]
+            return value if isinstance(value, list) else [value]
+
+    return []
+
+def misc_text_of(detail_dict, *labels):
+    '''
+    Same as misc_of, joined back into the text 591 shows, say '2,035元/月'
+    '''
+    return '、'.join(misc_of(detail_dict, *labels))
+
 class DetailMixin(RequestGenerator):
     apt_features = {
         'n_living_room': '廳',
         'n_bed_room': '房',
         'n_bath_room': '衛'
     }
+
+    # 身份要求 listing all of them means the house is open to anyone
+    all_tenants = {'學生', '上班族', '家庭'}
 
     def default_parse_detail(self, response):
         house_id = response.meta['rental'].id
@@ -131,16 +159,13 @@ class DetailMixin(RequestGenerator):
                 ret['deposit'] = None
 
         # is_management_fee, monthly_management_fee
-        price_includes = []
-        misc_data = detail_dict['misc']
-        if '租金含' in misc_data:
-            price_includes = misc_data['租金含']
+        price_includes = misc_of(detail_dict, '租金含')
+        mgmt_fee = misc_text_of(detail_dict, '管理費')
 
         if '管理費' in price_includes:
             ret['is_require_management_fee'] = False
             ret['monthly_management_fee'] = 0
-        elif '管理費' in misc_data:
-            mgmt_fee = misc_data['管理費']
+        elif mgmt_fee:
             # could be xxx元/月, --, -, !@$#$%...
             if '元/月' in mgmt_fee:
                 ret['is_require_management_fee'] = True
@@ -150,12 +175,13 @@ class DetailMixin(RequestGenerator):
                 ret['monthly_management_fee'] = 0
 
         # *_parking*
+        parking_str = misc_text_of(detail_dict, '車位租金', '車位費')
+
         if '車位費' in price_includes:
             ret['has_parking'] = True
             ret['is_require_parking_fee'] = False
             ret['monthly_parking_fee'] = 0
-        elif '車位費' in misc_data:
-            parking_str = misc_data['車位費']
+        elif parking_str:
             parking = clean_number(parking_str)
             ret['has_parking'] = True
             if parking:
@@ -265,7 +291,8 @@ class DetailMixin(RequestGenerator):
             ret['total_floor'] = total_floor
             ret['is_rooftop'] = False
 
-            if floor_info[0] == '頂樓加蓋':
+            # 頂樓加蓋 in the old template, 頂層加蓋 since 2026
+            if floor_info[0] in ROOFTOP_FLOORS:
                 ret['is_rooftop'] = True
                 ret['floor'] = ret['total_floor'] + 1
             elif 'B' in floor_info[0] and floor:
@@ -282,9 +309,12 @@ class DetailMixin(RequestGenerator):
         n_balcony = 0
         # When no 陽台， name is '陽台'
         # When there's 陽台， name is 'x陽台'...
+        # ...except 591 also lists a plain '陽台' as provided, meaning one.
+        # Without the fallback n_balcony would be None, which then breaks
+        # apt_feature_code and drops the whole house.
         for name in detail_dict['supported_facility']:
             if name.endswith('陽台'):
-                n_balcony = clean_number(name)
+                n_balcony = clean_number(name) or 1
         ret['n_balcony'] = n_balcony
 
         if ret['property_type'] == enums.PropertyType.整層住家:
@@ -329,10 +359,7 @@ class DetailMixin(RequestGenerator):
 
     def get_shared_environment(self, detail_dict):
         # additional fee
-        cost_data = detail_dict['misc']
-        price_includes = []
-        if '租金含' in cost_data:
-            price_includes = cost_data['租金含']
+        price_includes = misc_of(detail_dict, '租金含')
 
         additional_fee = {
             'eletricity': '電費' not in price_includes,
@@ -354,14 +381,27 @@ class DetailMixin(RequestGenerator):
     def get_shared_boolean_info(self, detail_dict):
         ret = {}
 
-        # has_tenant_restriction
-        rule = get(detail_dict, 'service.房屋守則', default='')
+        # 房屋守則 used to be one paragraph. The 2026 template splits it into
+        # labelled rows - 身份要求 / 性別 / 養寵物 / 開伙 - so read the whole
+        # section as one text and keep matching keywords on it.
+        service = get(detail_dict, 'service', default={}) or {}
+        if isinstance(service, dict):
+            rule = ' '.join(str(value) for value in service.values())
+        else:
+            rule = str(service)
+
         tags = get(detail_dict, 'tags', default=[])
 
+        # has_tenant_restriction
         # 2021 591 API use more soft word, with the same meaning...
         # 適合學生 === 限學生
         # 適合上班族及家庭 === 限上班族及家庭
-        ret['has_tenant_restriction'] = '適合' in rule
+        # 2026 591 lists who the house is for, 學生、上班族、家庭 being all of
+        # them, so anything shorter than that is a restriction.
+        tenants = service.get('身份要求') if isinstance(service, dict) else None
+        ret['has_tenant_restriction'] = '適合' in rule or (
+            bool(tenants) and set(tenants.split('、')) != self.all_tenants
+        )
 
         # has_gender_restriction
         # 2021 591 API use 此房屋限男生租住 / 此房屋限女生租住 / 此房屋男女皆可租住 / None
@@ -378,7 +418,7 @@ class DetailMixin(RequestGenerator):
         # can_cook
         if '不可開伙' in rule:
             ret['can_cook'] = False
-        elif '可開伙' in tags:
+        elif '可開伙' in rule or '可開伙' in tags:
             ret['can_cook'] = True
         else:
             ret['can_cook'] = None
@@ -386,14 +426,16 @@ class DetailMixin(RequestGenerator):
         # allow pet
         if '不可養寵物' in rule:
             ret['allow_pet'] = False
-        elif '可養寵物' in tags:
+        elif '可養寵物' in rule or '可養寵物' in tags:
             ret['allow_pet'] = True
         else:
             ret['allow_pet'] = None
 
         # has_perperty_registration
-        proper_meta_title = get(detail_dict, 'misc.產權登記')
-        ret['has_perperty_registration'] = '已辦理' in proper_meta_title
+        # 已辦理產權登記 in the old template, 房屋已辦產權登記 in the 2026 one,
+        # and the row is missing altogether on some houses
+        registration = misc_text_of(detail_dict, '產權登記')
+        ret['has_perperty_registration'] = '已辦' in registration
 
         return ret
 
@@ -431,10 +473,12 @@ class DetailMixin(RequestGenerator):
         ret['facilities'] = facilities
 
         # contact, agent, and author
-        [role, author] = get(detail_dict, 'author_name').split(': ')
+        # 屋主: 陳先生 / 仲介: 戴先生, no contact card at all on some pages
+        contact_name = get(detail_dict, 'author_name') or ''
+        [role, _, author] = contact_name.partition(': ')
         phone = get(detail_dict, 'author_phone')
 
-        if not phone:
+        if not phone or not author:
             # when it's dealt, phone become empty, do not update author
             return ret
 

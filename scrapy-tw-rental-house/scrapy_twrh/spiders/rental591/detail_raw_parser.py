@@ -1,35 +1,70 @@
+'''
+Detail page parser for the 591 HTML served since the 2026 redesign, read from
+the plain HTTP response.
+
+591 renders the detail page on the server, so everything below is already in
+the plain HTML. Two things are not in the DOM the way they used to be:
+
+- the coordinate now only reaches `.google-maps-link` after the map is loaded
+  by JS, so we read it out of the nuxt init script instead
+- price / floor / area are plain text again, the `<wc-obfuscate-c-*>` images
+  are gone, so no OCR here. Should 591 bring them back, this parser loses
+  those fields quietly - the obfuscate-rate sentinel of the nightly probe is
+  what is meant to catch that.
+
+This module tracks the template 591 serves *today*, and only that one. When
+591 redesigns again, this parser is edited in place - the parser for a past
+template lives in git history and in released packages, not in the tree. The
+structured data every crawl stores (`detail_dict`) is what historical rework
+runs on; re-parsing archived raw HTML is the rare exception, and for that you
+check out or `pip install` the release which was current when the page was
+crawled. Pages from before the 2026 redesign are detected below and refused
+loudly, so a rerun over a mixed-era archive fails per page instead of parsing
+empty fields silently.
+'''
 import re
-import logging
 import urllib.parse as urlparse
 from urllib.parse import parse_qs
-from .ocr_utils import parse_floor, parse_ping, parse_price
+
 from .util import SimpleNuxtInitParser, css
 
+# 台澎金馬 rough bounded box - [21.811027, 118.350467] - [26.443459, 122.289387]
+COORDINATE_PATTERN = r'(2\d\.\d+),(1[12]\d\.\d+)'
 
-def parse_obfuscate_fields(response):
+# 591 joins list-ish values with a full width comma, say 租金含 or 其他特色.
+# The old template put each of them in its own <span>, keep that shape.
+VALUE_SEPARATOR = '、'
+
+# Containers only the pre-2026 template has: the 租金含 / 產權登記 blocks,
+# 提供設備, 房屋守則, and the obfuscated price / floor / area images.
+LEGACY_MARKERS = ', '.join([
+    '.house-detail .content.left',
+    '.house-detail .content.right',
+    '.service .service-cate',
+    '.service .service-facility',
+    'wc-obfuscate-c-price',
+    'wc-obfuscate-c-floor',
+    'wc-obfuscate-c-area',
+])
+
+
+class LegacyTemplateError(ValueError):
     '''
-    Use OCR to parse obfuscated fields in the detail page
+    The page at hand is in a 591 template this parser no longer supports.
+
+    Raised instead of returning a half-empty dict, so that a rerun over
+    archived raw HTML fails per page instead of silently storing empty
+    fields. To re-parse such a page, use the scrapy-tw-rental-house release
+    that was current when the page was crawled (git history / PyPI).
     '''
-    ret = {}
 
-    img_selectors = [
-        { 'name': 'floor_ping', 'dom': 'wc-obfuscate-c-area', 'fn': parse_ping },
-        { 'name': 'floor', 'dom': 'wc-obfuscate-c-floor', 'fn': parse_floor },
-        { 'name': 'price', 'dom': 'wc-obfuscate-c-price', 'fn': parse_price },
-        # { 'name': 'address', 'dom': 'wc-obfuscate-rent-map-address' }
-    ]
 
-    for selector in img_selectors:
-        img = response.css(f'{selector["dom"]} + img::attr("src")').get()
-        if not img:
-            continue
+def is_legacy_template(response):
+    '''
+    True when the page shows containers only the pre-2026 template has.
+    '''
+    return bool(response.css(LEGACY_MARKERS))
 
-        # output_path = os.path.join(os.getcwd(), 'ocr-test', selector['name'], house_id)
-        # convert_base64_to_img(img, output_path)
-
-        ret[selector['name']] = selector['fn'](img)
-
-    return ret
 
 def get_detail_raw_attrs(response):
     '''
@@ -38,10 +73,15 @@ def get_detail_raw_attrs(response):
 
     TODO: photo list
     '''
+    if is_legacy_template(response):
+        raise LegacyTemplateError(
+            f'{response.url} is in the pre-2026 591 template, which this '
+            'version no longer parses. Re-parse it with the release that was '
+            'current when the page was crawled (git history / PyPI).'
+        )
 
-    ret = {
+    return {
         **get_title(response),
-        **parse_obfuscate_fields(response),
         **get_house_pattern(response),
         **get_house_price(response),
         **get_house_address(response),
@@ -51,8 +91,6 @@ def get_detail_raw_attrs(response):
         **get_misc_info(response),
         **get_contact(response)
     }
-
-    return ret
 
 def get_title(response):
     '''
@@ -69,19 +107,17 @@ def get_title(response):
 def get_house_pattern(response):
     '''
     .house-label 新上架、可開伙、有陽台
-    .house-pattern 物件類型、坪數、樓層/總樓層、建物類型
+    .pattern 物件類型、坪數、樓層/總樓層、建物類型
     '''
     tag_list = css(response, '.house-label > span', self_text=True)
     item_list = css(response, '.pattern > span:not(.line)', self_text=True)
-
-    items = {}
 
     breadcrumb = css(response, '.crumbs a.t5-link', self_text=True)
     real_property_type = None
     if len(breadcrumb) >= 3:
         real_property_type = breadcrumb[2]
 
-    # list of item_list per property_type  
+    # list of item_list per property_type
     # 車位 - floor_ping, 戶外廣場, 平面式, 最短租期
     # 整層住家 - x房x衛x廳, floor_ping, floor, building_type
     # else - <proper_type>, floor_ping, floor, building_type
@@ -93,9 +129,7 @@ def get_house_pattern(response):
     else:
         if len(item_list) >= 1:
             items['property_type'] = item_list[0]
-        # skip floor_ping and floor as they are parsed separately
         if len(item_list) >= 4:
-            # somehow floor_ping and floor are not obfuscated here
             items['floor_ping'] = item_list[1]
             items['floor'] = item_list[2]
             items['building_type'] = item_list[3]
@@ -124,56 +158,89 @@ def get_house_price(response):
 
     return ret
 
-def get_house_address(response):
+def get_coordinate_from_nuxt(response):
     '''
-    .address 約略經緯度、約略地址
+    .google-maps-link only shows up after the map is loaded by JS, while the
+    same coordinate is served in the nuxt init script of the plain HTML:
+        positionRound: {..., address: cy, lat: cz, lng: cA, ...}
     '''
-    # TODO: support address
-    # address_str = css(response, '.address .load-map', self_text=True, default=['NA'])
+    for script in response.css('script::text').getall():
+        if 'positionRound' not in script:
+            continue
 
-    # lat lng is in NUXT init script
+        positions = SimpleNuxtInitParser(script).get_component_arg_list(
+            ['address', 'lat', 'lng']
+        )
+
+        for position in positions or []:
+            lat = position.get('lat')
+            lng = position.get('lng')
+            if not lat or not lng:
+                continue
+            if re.fullmatch(COORDINATE_PATTERN, f'{lat},{lng}'):
+                return f'{lat},{lng}'
+
+    return None
+
+def get_coordinate_from_gmap_link(response):
+    '''
+    .google-maps-link shows up once the map is loaded, say
+    https://www.google.com/maps?f=q&hl=zh-TW&q=23.0413176,120.2412309&z=16
+    '''
     gmap_url = response.css('.google-maps-link::attr("href")').get()
 
-    rough_coordinate = None
+    if not gmap_url:
+        return None
 
-    # https://www.google.com/maps?f=q&hl=zh-TW&q=23.0413176,120.2412309&z=16
-    if gmap_url:
-        parsed_url = urlparse.urlparse(gmap_url)
-        query_params = parse_qs(parsed_url.query)
+    query_params = parse_qs(urlparse.urlparse(gmap_url).query)
 
-        if 'q' in query_params:
-            q_value = query_params['q'][0]
-            # 台澎金馬 rough bounded box - [21.811027, 118.350467] - [26.443459, 122.289387]
-            coord_match = re.search(r'(2\d\.\d+),(1[12]\d\.\d+)', q_value)
+    for param in ['q', 'll']:
+        if param not in query_params:
+            continue
 
-            if coord_match:
-                lat = coord_match.group(1)
-                lng = coord_match.group(2)
-                rough_coordinate = f'{lat},{lng}'
+        coord_match = re.search(COORDINATE_PATTERN, query_params[param][0])
+        if coord_match:
+            return '{},{}'.format(coord_match.group(1), coord_match.group(2))
+
+    return None
+
+def get_house_address(response):
+    '''
+    約略經緯度、約略地址
+    '''
+    # TODO: support address, .address .load-map holds 中山區農安街
+
+    # prefer the nuxt init script, as plain HTTP always carries it, while
+    # .google-maps-link needs a rendered page. both give the same coordinate.
+    rough_coordinate = get_coordinate_from_nuxt(response) \
+        or get_coordinate_from_gmap_link(response)
 
     return {
         'rough_coordinate': rough_coordinate,
-        # 'rough_address': address_str[0]
     }
 
 def get_service(response):
     '''
-    .service .service-cate 租住說明、房屋守則、裝潢信息、etc
-    '''
-    services = {}
-    cate_list = response.css('.service .service-cate > div')
-    for cate in cate_list:
-        title = css(cate, 'p', self_text=True)
-        content = css(cate, 'span', self_text=True)
-        if content and title:
-            services[title[0]] = content[0]
+    .service .desc-item 最短租期、身份要求、性別、可遷入日、養寵物、開伙
+    .service .facility 提供設備/家具，dl.del is the one 591 crosses out
 
-    # .service .service-facility 提供設備
-    supported_facility = css(response, '.service .service-facility dl:not(.del) dd', self_text=True)
-    unsupported_facility = css(response, '.service .service-facility dl.del dd', self_text=True)
-    services['supported_facility'] = supported_facility
-    services['unsupported_facility'] = unsupported_facility
-    return services
+    591 used to group these under .service-cate titles, say 房屋守則, which is
+    why the values live under a `service` key instead of the top level.
+    '''
+    service = {}
+    for item in response.css('.service .desc-item'):
+        label = css(item, '.desc-label', self_text=True)
+        value = css(item, '.desc-value', self_text=True)
+        if label and value:
+            service[label[0]] = value[0]
+
+    return {
+        'service': service,
+        'supported_facility': css(
+            response, '.service .facility dl:not(.del) dd', self_text=True),
+        'unsupported_facility': css(
+            response, '.service .facility dl.del dd', self_text=True)
+    }
 
 def get_promotion(response):
     '''
@@ -188,27 +255,37 @@ def get_description(response):
     '''
     .house-condition .house-condition-content .article 說明全文
     '''
-    description = css(response, '.house-condition .house-condition-content .article', deep_text=True)
+    description = css(
+        response,
+        '.house-condition .house-condition-content .article',
+        deep_text=True
+    )
 
     return {
         'description': description
     }
 
+def split_value(value):
+    '''
+    '水費、網路、第四台' -> ['水費', '網路', '第四台']
+    '''
+    return [token.strip() for token in value.split(VALUE_SEPARATOR) if token.strip()]
+
 def get_misc_info(response):
     '''
-    .house-detail .house-detail-content-left 租金含、押金、停車費
-    .house-detail .house-detail-content-right  產權登記、法定用途、隔間材料
+    .house-detail-content 基礎資料（產權登記、法定用途、坪數、車位…）
+                          與房屋價格（租金、押金、服務費、管理費、租金含…）
+
+    Beware, .house-detail alone also matches a paragraph in the site footer,
+    and each .value wraps its text in a span, next to icon spans which hold no
+    text of their own.
     '''
     misc = {}
-    items = [
-        *response.css('.house-detail .content.left .item'),
-        *response.css('.house-detail .content.right .item')
-    ]
-    for item in items:
-        title = css(item, '.label', self_text=True)
-        content = css(item, '.value', self_text=True)
-        if content and title:
-            misc[title[0]] = content
+    for item in response.css('.house-detail-content .detail-section .item'):
+        label = css(item, '.label', self_text=True)
+        value = css(item, '.value span', self_text=True)
+        if label and value:
+            misc[label[0]] = split_value(value[0])
 
     return {
         'misc': misc

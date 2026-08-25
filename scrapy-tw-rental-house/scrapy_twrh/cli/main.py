@@ -4,8 +4,10 @@
   twrh detail <house-id 或 URL>       抓單一 detail 並解析
   twrh list <縣市名或 list URL>       抓一頁 list 並解析
   twrh survey <縣市名> [--limit N]    全量 list + detail，輸出完整性報告（不寫 DB）
+  twrh harvest <縣市名> [-k N]        分層取樣 detail HTML → fixture 候選 + manifest
 
 survey 是 L3 drift detector 的手動介面，斷言請下在比率、不要下在特定 ID。
+harvest 是 1-2 的分層取樣器，分層維度 = parser 實際的分支，見 cli/harvest.py。
 '''
 import argparse
 import json
@@ -19,6 +21,7 @@ from pathlib import Path
 # 若從 scrapy 專案目錄執行，get_project_settings() 會載入該專案設定並產生副作用
 os.environ.setdefault('SCRAPY_SETTINGS_MODULE', 'scrapy_twrh.cli.null_settings')
 
+from . import harvest as harvest_mod
 from . import http, runner
 
 
@@ -174,6 +177,33 @@ def cmd_survey(args):
     print('\n報告已存：{}'.format(report_path))
 
 
+def cmd_harvest(args):
+    fetcher = http.Fetcher(delay=args.delay)
+    region = _resolve_region(args.city)
+    manifest, batch_dir = harvest_mod.harvest(
+        fetcher, region, args.per_stratum, Path(args.out),
+        log=lambda msg: print(msg, file=sys.stderr))
+
+    print('\nHarvest: {} ({})'.format(manifest['city'], manifest['date']))
+    print('── list ──')
+    print('  頁數 {}（失敗 {}），共 {} 筆'.format(
+        manifest['list']['pages_ok'], manifest['list']['pages_fail'],
+        manifest['list']['n_houses']))
+    print('── 分層涵蓋（bucket → list 頁找到幾筆；0 = 該分層本批沒樣本）──')
+    for stratum, count in manifest['coverage'].items():
+        print('  {:16s} {}'.format(stratum, count))
+    n_ok = sum(1 for h in manifest['houses'] if h['raw_parsed'])
+    print('── 樣本 ──')
+    print('  選出 {} 筆，raw 解析成功 {}，GenericHouseItem 成功 {}'.format(
+        len(manifest['houses']), n_ok,
+        sum(1 for h in manifest['houses'] if h['generic_parsed'])))
+    print('── 填充率（樣本內，非全城 baseline 前請看 manifest）──')
+    for key, (n, total) in manifest['fill_rates'].items():
+        bar = '' if total == 0 else '{:4.0%}'.format(n / total)
+        print('  {:24s} {:>7s} ({}/{})'.format(str(key), bar, n, total))
+    print('\nfixture 候選與 manifest 已存：{}'.format(batch_dir))
+
+
 def main():
     parser = argparse.ArgumentParser(prog='twrh', description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -201,6 +231,13 @@ def main():
     p.add_argument('--out', default='survey-output', help='報告輸出目錄')
     p.add_argument('--save-html', action='store_true', help='保存 HTML 作為 fixture 候選')
     p.set_defaults(func=cmd_survey)
+
+    p = sub.add_parser('harvest', help='分層取樣 detail HTML（fixture 候選，不寫 DB）')
+    p.add_argument('city', help='縣市名或 list URL')
+    p.add_argument('-k', '--per-stratum', type=int, default=2,
+                   help='每個分層 bucket 取 N 筆（預設 2）')
+    p.add_argument('--out', default='harvest-output', help='輸出目錄')
+    p.set_defaults(func=cmd_harvest)
 
     args = parser.parse_args()
     args.func(args)
