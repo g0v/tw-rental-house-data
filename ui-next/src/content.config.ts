@@ -16,4 +16,21 @@ const blog = defineCollection({
   })
 })
 
-export const collections = { blog }
+const aboutDataSet = defineCollection({
+  loader: glob({
+    pattern: '**/*.md',
+    base: './src/content/about-data-set',
+    // 預設的 slug 化會把「0.0」變成「00」，這裡保留檔名作為版本號
+    generateId: ({ entry }) => entry.replace(/\.md$/, '')
+  }),
+  schema: z.object({
+    version: z.string(),
+    released: z.coerce.date(),
+    /** 適用期間，版本沿革目錄頁用 */
+    period: z.string(),
+    /** 變更摘要，版本沿革目錄頁用 */
+    summary: z.string()
+  })
+})
+
+export const collections = { blog, aboutDataSet }
