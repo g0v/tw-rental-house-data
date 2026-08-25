@@ -1,0 +1,27 @@
+{
+  "name": "twrh-ui",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check"
+  },
+  "dependencies": {
+    "@astrojs/check": "^0.9.6",
+    "@astrojs/mdx": "^7.0.8",
+    "@astrojs/rss": "^4.0.15",
+    "@astrojs/sitemap": "^3.7.0",
+    "@astrojs/vue": "^7.0.2",
+    "@tailwindcss/typography": "^0.5.20",
+    "@tailwindcss/vite": "^4.3.3",
+    "astro": "^7.2.6",
+    "marked": "^18.0.11",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3",
+    "vue": "^3.5.41",
+    "zod": "^4.4.3"
+  }
+}

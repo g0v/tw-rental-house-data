@@ -1,0 +1,63 @@
+---
+import { getCollection, render } from 'astro:content'
+import Base from '../../layouts/Base.astro'
+import AboutDataBrief from '../../components/AboutDataBrief.vue'
+import TocSidebar from '../../components/TocSidebar.vue'
+
+export async function getStaticPaths() {
+  const versions = await getCollection('aboutDataSet')
+  return versions.map((entry) => ({
+    params: { version: entry.id },
+    props: { entry }
+  }))
+}
+
+const { entry } = Astro.props
+const { Content, headings } = await render(entry)
+
+const allVersions = (await getCollection('aboutDataSet'))
+  .map((item) => item.id)
+  .sort()
+---
+
+<Base title={`關於資料集 ${entry.data.version} 版`}>
+  <main class="mx-auto w-full max-w-6xl px-4 pb-16">
+    <div class="flex gap-10">
+      <TocSidebar
+        headings={headings.filter((heading) => heading.depth <= 3)}
+      />
+      <article class="min-w-0 max-w-3xl flex-auto">
+        <h1 class="mt-8 font-serif text-4xl font-black tracking-wide">
+          關於資料集
+        </h1>
+        <p class="mt-2 text-sm text-ink-soft">
+          資料集版本
+          {
+            allVersions.map((version) => (
+              <a
+                href={`/about-data-set/${version}`}
+                class:list={[
+                  'ml-2 font-mono underline-offset-2',
+                  version === entry.id
+                    ? 'font-medium text-tile-deep underline'
+                    : 'text-ink-soft hover:underline'
+                ]}
+              >
+                {version}
+              </a>
+            ))
+          }
+          <a class="ml-2 text-ink-soft hover:underline" href="/about-data-set"
+            >版本沿革</a
+          >
+        </p>
+        <div class="mt-6">
+          <AboutDataBrief />
+        </div>
+        <div class="prose prose-neutral mt-8 max-w-none">
+          <Content />
+        </div>
+      </article>
+    </div>
+  </main>
+</Base>

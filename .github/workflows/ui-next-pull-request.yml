@@ -1,17 +1,20 @@
-name: ui-deploy
+name: ui-next-pull-request
 
 defaults:
   run:
     working-directory: ui-next
 
 on:
-  push:
+  pull_request:
     branches:
       - main
       - master
+    paths:
+      - 'ui-next/**'
+      - '.github/workflows/ui-next-pull-request.yml'
 
 jobs:
-  cd:
+  ci:
     runs-on: ubuntu-latest
 
     steps:
@@ -28,15 +31,11 @@ jobs:
       - name: Install dependencies 👨🏻‍💻
         run: npm ci --prefer-offline --no-audit
 
-      - name: Build UI
+      - name: Type check 🔍
+        run: npx astro check
+
+      - name: Build 🏗
         run: npm run build
 
       - name: URL 保留清單驗收 ✅
         run: node scripts/check-urls.mjs
-
-      - name: Deploy
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
-          publish_branch: gh-pages
-          publish_dir: ./ui-next/dist

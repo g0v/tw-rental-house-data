@@ -1,0 +1,56 @@
+---
+import { getCollection } from 'astro:content'
+import Base from '../../layouts/Base.astro'
+import { formatDate } from '../../lib/blog'
+
+// 新在前
+const versions = (await getCollection('aboutDataSet')).sort((a, b) =>
+  b.id.localeCompare(a.id)
+)
+const latest = versions[0]!
+---
+
+<Base title="關於資料集">
+  <main class="mx-auto w-full max-w-3xl px-4 pb-16">
+    <h1 class="mt-8 font-serif text-4xl font-black tracking-wide">
+      關於資料集：版本沿革
+    </h1>
+    <p class="mt-4 leading-relaxed">
+      資料集的欄位與編碼會隨版本演進；每筆資料屬於哪個版本，寫在
+      <a class="text-tile-deep underline" href="/download#archive"
+        >下載頁檔案庫</a
+      >的「資料集版本」欄位。目前最新版本為
+      <a
+        class="font-mono text-tile-deep underline"
+        href={`/about-data-set/${latest.id}`}>{latest.id}</a
+      >。
+    </p>
+    <div class="mt-8 border-t-2 border-ink">
+      {
+        versions.map((entry) => (
+          <section class="border-b border-rule py-5">
+            <div class="flex flex-wrap items-baseline gap-x-4">
+              <h2 class="font-serif text-2xl font-bold">
+                <a
+                  class="text-tile-deep hover:underline"
+                  href={`/about-data-set/${entry.id}`}
+                >
+                  {entry.data.version} 版
+                </a>
+              </h2>
+              <span class="font-mono text-sm text-ink-soft">
+                發行 {formatDate(entry.data.released)}
+              </span>
+              <span class="text-sm text-ink-soft">
+                適用期間：{entry.data.period}
+              </span>
+            </div>
+            <p class="mt-2 leading-relaxed text-ink-soft">
+              {entry.data.summary}
+            </p>
+          </section>
+        ))
+      }
+    </div>
+  </main>
+</Base>

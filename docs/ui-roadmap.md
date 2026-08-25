@@ -18,6 +18,7 @@
 | 流量分析 | **Plausible 停用，改用 GoatCounter**（`ddio.goatcounter.com`，與 8h-probe 同一套） | 一行 `<script data-goatcounter=…>` embed，無 framework 整合依賴，個人專案集中在同一個 GoatCounter 帳號 |
 | 留言系統 | **Disqus 退場，改用 [Cusdis](https://cusdis.com)（hosted 方案）**；舊 Disqus 留言不遷移 | 匿名留言不綁任何帳號（不限 GitHub）、無廣告無 cookie、embed 約 5KB，與換 GoatCounter 同方向。留言預設進審核，低流量站可負擔。風險：小型專案，hosted 服務若收掉，換家成本只是一段 script |
 | Sentry | **移除，不帶到新站** | 靜態站的前端錯誤監控價值低，卻是 build 依賴與 CI secrets 裡最重的一塊；錯誤回報靠使用者留言/開票即可 |
+| 視覺方向 | **資料新聞編輯室 × 磁磚綠**（2026-08-25 定案，mockup 見 design canvas「開租新站設計」）：編輯室版面（明體刊頭、「本期資料 No.」、資料品質備忘側欄、細線年份檔案庫）＋磁磚綠 `#2F7E68`／磨石子 `#E9E6DE`／鐵鏽紅 `#B5543B`（僅品質警示）／墨 `#22271F`；字型 Noto Serif TC（標題）＋ Noto Sans TC（內文）＋ IBM Plex Mono（數據） | 曾比較街屋鐵窗花方向——配色獲採用，但鐵窗花 pattern 與「一年一層樓」被否決（太俗）；綠色系同時延續現站識別 |
 
 **Vue SFC 不加 `client:*` 指令時由 Astro 在 build 時渲染成純 HTML、不出貨任何 JS** —— 這是整個架構的核心心智規則，寫元件時唯一要記得的事。
 
@@ -77,7 +78,10 @@ Astro 預設 directory 輸出格式與現況 gh-pages 相同）：
   每年固定 +12 列，只會越來越長。最常見的任務（拿最新完整資料）與新訪客最需要的判斷
   （原始 vs 消除重複差在哪、該下載哪份）都埋在表格海裡，沒有視覺重點。
 - **資料品質資訊散落在 blog**：8 篇 data-issue 文章記錄了「某段期間資料遺失 35%」這類
-  研究員判斷資料可用性的關鍵事實，但從 download 頁完全看不到警告，得自己翻部落格。
+  研究員判斷資料可用性的關鍵事實。download 頁的附註欄有 markdown 連結指向個別文章
+  （production 已確認），但它埋在各資料列中、非結構化——沒有一個地方能一眼看出
+  「哪些期間的資料要小心」，跨期間的全貌仍得自己翻部落格拼湊。`/data-quality` 的價值
+  是彙整成總表，而非從零補上警告。
 - **沒有「如何引用」**：記者與研究員只能自行發明引用格式。
 - **開發者資訊無站上入口**：S3 URL 規則、schema、爬蟲套件（PyPI）、參與方式散落
   GitHub README 與 about-data-set，站上沒有導流。
@@ -201,6 +205,24 @@ Astro 預設 directory 輸出格式與現況 gh-pages 相同）：
 | 保留 Pug / Tachyons / Buefy | Pug 增加工具鏈依賴無對價；Tachyons 由 Tailwind 取代；Buefy 現況本來就零使用 |
 | 把 stats JSON 改成自動產生 | 是資料管線側的題目（export 流程），與 UI 改版無相依；現況手動流程運作正常，不混進這一輪 |
 | 舊 blog 文章改寫成 MDX | 19 篇維持 `.md` 原樣，降低遷移 diff；MDX 只給未來要嵌圖表的新文章 |
+
+---
+
+## 實作狀態（2026-08-25）
+
+Phase 0 ～ 4-2 已在 `ui-next/` 完成（Astro 7.2 + Vue 3.5 + Tailwind 4.3，每個 task 一個 commit）：
+
+- Phase 0：scaffold、Base layout（含 GoatCounter、site-verification）、首頁三受眾卡、`ui-next` PR CI（`astro check` + build + URL 驗收）
+- Phase 1：stats JSON 搬入 `src/data/stats/` + zod schema；download 頁三段式（快速下載／#cite／#archive 以 `<details>` 依年份折疊）；S3 連結邏輯與「本表格資料下載 JSON」保留
+- Phase 2：19 篇 md 原樣搬入 Content Collection、`<!--more-->` 摘要工具；列表／單篇／tag 頁（microdata、OG 照搬）；Cusdis 元件（app id 待註冊，見下）；`/rss.xml`
+- Phase 3：0.0–0.3 抽成 `.md`＋共用版本頁；TOC 改 build-time `headings`＋CSS sticky；`/about-data-set` 改版本沿革目錄頁；`/data-quality` 總表＋檔案庫 `quality_issue` 警示標記
+- Phase 4-1：`ui-next/scripts/check-urls.mjs` 驗收通過（35 頁 + 27 資產），並掛進 CI
+- Phase 4-2：`ui-deploy.yml` 改建置 `ui-next/`（Node 24，移除 Sentry secrets）
+
+**尚待人工處理**：
+
+1. Cusdis：至 cusdis.com 註冊 site 後，把 app id 填入 `ui-next/src/lib/site.ts` 的 `CUSDIS_APP_ID`（留空時留言區不顯示），並在後台開啟審核與通知
+2. Phase 4-3：上線觀察一週無異常後，刪除舊 `ui/`（連同 `ui-pull-request.yml`）、`ui-next/` 改名 `ui/`、更新 CLAUDE.md 與 README
 
 ---
 

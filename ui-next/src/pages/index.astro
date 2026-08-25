@@ -1,0 +1,133 @@
+---
+import Base from '../layouts/Base.astro'
+import AboutDataBrief from '../components/AboutDataBrief.vue'
+import AudienceCard from '../components/AudienceCard.vue'
+import BlogPostList from '../components/BlogPostList.vue'
+import DatasetQuickCard from '../components/DatasetQuickCard.vue'
+import { latestRelease } from '../data/stats'
+import { sortedPosts, toCard } from '../lib/blog'
+
+const latestAnnual = latestRelease('annual')
+const latestMonthly = latestRelease('monthly')
+const recentPosts = (await sortedPosts()).slice(0, 3).map(toCard)
+
+const audiences = [
+  {
+    title: '我要拿資料',
+    description:
+      '想快速拿到最新一份完整的租屋資料，弄清楚該下載哪個檔案、怎麼引用。',
+    links: [
+      { href: '/download', label: '下載最新資料集' },
+      { href: '/download#cite', label: '如何引用本資料' }
+    ]
+  },
+  {
+    title: '我要做研究',
+    description:
+      '需要長期的完整資料、欄位與編碼定義，以及各期間資料品質的完整紀錄。',
+    links: [
+      { href: '/download#archive', label: '完整檔案庫' },
+      { href: '/about-data-set', label: '欄位定義與版本沿革' },
+      { href: '/data-quality', label: '資料品質與已知問題' }
+    ]
+  },
+  {
+    title: '我要參與開發',
+    description:
+      '好奇資料怎麼收集、想直接用程式批次抓檔，或想為開源專案貢獻力氣。',
+    links: [
+      {
+        href: 'https://github.com/g0v/tw-rental-house-data',
+        label: 'GitHub 專案',
+        external: true
+      },
+      {
+        href: 'https://pypi.org/project/scrapy-tw-rental-house/',
+        label: '爬蟲套件（PyPI）',
+        external: true
+      },
+      { href: '/download#archive', label: '檔案 URL 規則' }
+    ]
+  }
+]
+---
+
+<Base>
+  <main>
+    <!-- 刊頭：mission -->
+    <section class="border-b border-rule bg-paper">
+      <div class="mx-auto max-w-6xl px-4 pt-10 pb-8 lg:pt-16 lg:pb-12">
+        <h1 class="font-serif text-4xl font-black tracking-wide lg:text-5xl">
+          開放台灣民間租屋資料
+        </h1>
+        <div class="mt-6 max-w-3xl">
+          <AboutDataBrief />
+        </div>
+      </div>
+    </section>
+
+    <!-- 三受眾入口卡 -->
+    <section class="border-b border-rule bg-terrazzo">
+      <div class="mx-auto max-w-6xl px-4 py-10">
+        <div class="grid gap-4 md:grid-cols-3">
+          {
+            audiences.map((audience) => (
+              <AudienceCard
+                title={audience.title}
+                description={audience.description}
+                links={audience.links}
+              />
+            ))
+          }
+        </div>
+      </div>
+    </section>
+
+    <!-- 最新發布 -->
+    <section class="border-b border-rule bg-paper">
+      <div class="mx-auto max-w-6xl px-4 py-10">
+        <h2 class="font-serif text-2xl font-bold">最新發布</h2>
+        <div class="mt-6 grid gap-6 lg:grid-cols-2">
+          {
+            latestAnnual && (
+              <DatasetQuickCard
+                heading="最新年度資料"
+                year={latestAnnual.year}
+                prefix=""
+                rows={latestAnnual.rows}
+              />
+            )
+          }
+          {
+            latestMonthly && (
+              <DatasetQuickCard
+                heading="最新月份資料"
+                year={latestMonthly.year}
+                prefix="0"
+                rows={latestMonthly.rows}
+              />
+            )
+          }
+        </div>
+        <div class="mt-4 text-right">
+          <a class="text-tile-deep underline" href="/download"
+            >查看所有資料集 ➡️</a
+          >
+        </div>
+      </div>
+    </section>
+
+    <!-- 近期公告 -->
+    <section class="bg-paper">
+      <div class="mx-auto max-w-6xl px-4 py-10">
+        <h2 class="font-serif text-2xl font-bold">近期公告</h2>
+        <div class="mt-6">
+          <BlogPostList posts={recentPosts} />
+        </div>
+        <div class="mt-4 text-right">
+          <a class="text-tile-deep underline" href="/blog">所有文章 ➡️</a>
+        </div>
+      </div>
+    </section>
+  </main>
+</Base>
