@@ -58,7 +58,14 @@ class Detail591Spider(Rental591Spider):
 
     def start_detail_requests(self):
 
-        if not self.persist_queue.has_request():
+        if not self.persist_queue.has_request() and self.persist_queue.has_run_today():
+            # queue 耗盡 + 今天已跑過 = go.sh batch 重啟時的正常收尾，不是新的一天。
+            # 少了這個判斷，恰好在 batch 邊界耗盡 queue 會觸發下面的全量重生成，
+            # 把全台 open 房源再排一輪（2026-08-26 實測 55,943 筆）。
+            # 若要同日強制重生成（例如 --date 重跑），先刪當日 logs/progress/*.detail.json。
+            self.logger.info(
+                'queue empty and progress file exists — resume with nothing to do')
+        elif not self.persist_queue.has_request():
             # find all opened houses and crawl all of them
             query = House.objects.filter(
                 deal_status = enums.DealStatusType.OPENED
