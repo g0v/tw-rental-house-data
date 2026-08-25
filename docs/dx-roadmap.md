@@ -380,9 +380,28 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
   - 遺留清理確認：`scrapy-twrh-example/crawler/settings.py` 已 untrack（repo 已無
     `BROWSER_INIT_SCRIPT`）；#205 已關閉。#211 的 poetry.lock rebase 條件已成熟（parser
     定案且 OCR 已拔），待處理。
-  - 量測過程發現四個小問題，於 branch `worktree-dx-phase3` 修復：
+  - 量測過程發現四個小問題，於同 branch 修復（見下一條）：
     (1) `PersistQueue.has_record()` 不分城市——同日先爬過任一城市後，其他城市的 list
     在一般模式會直接不生種子；(2) `FillRateMonitor` 同日多次執行互相覆蓋報告，
     批次迴圈下只剩最後一批；(3) `detail591 -a append=True` 的 `monthly_price__isnull`
     過濾失效——2026 改版後 list 頁 item 就帶價格，append 模式會跳過所有新物件；
     (4) detail progress 的 Overall 分母跨 restart 不隨新種子更新（純顯示問題）。
+- **2026-08-25 實作進度（1-5 + Phase 3 + 四個小問題，每項一 commit）**：
+  - 四個小問題全數修復：(1) list 種子生成改逐城市判斷（`has_record(top_region=…)`）；
+    (2) `FillRateMonitor` 同日報告改累加；(3) detail append 過濾改
+    `etc__detail_raw__isnull`（「從未爬過 detail」的本意）；(4) overall 分母改
+    `max(stored, completed + pending)`。
+  - **1-5 完成**：花蓮縣全量 survey（375/375 raw 與 generic 全數解析成功）產出正式
+    baseline，committed 於 `scrapy-tw-rental-house/baselines/hualien-fill-rate.json`；
+    parser 改版後以 `twrh survey 花蓮縣` 重新產出。
+  - **3-2 完成**：
+    - **L1 公開 CI**：`.github/workflows/python-tests.yml`——repo 第一個 Python CI，
+      只跑離線 pytest（conftest 擋 socket），live 不進公開 CI。
+    - **L2/L3 入口 `twrh probe`**：比率斷言（list 筆數、detail 200 率、raw parse 率、
+      舊版式哨兵、price/floor/floor_ping 填充哨兵）+ `--baseline` 填充率漂移比對
+      （即 3-3 的 drift detector，與 survey 共用 plumbing）+ exit code。
+      離線斷言測試 9 個；花蓮縣 live 實測含 baseline 比對全數 PASS。
+    - **`scrapy-tw-rental-house/nightly.sh`**：pytest + probe（含 baseline）。
+      拍板：本機**不排 cron、維持偶爾手動跑**，轉正式環境後再掛真的 nightly。
+  - Phase 3 至此收完；剩餘開放項：ramp-up 持續量測（2.5-2 延伸）、2.5-3（待真實
+    被擋樣本）、Phase 4 的 4-1〜4-4、#211 poetry.lock rebase、Backlog。
