@@ -1,0 +1,24 @@
+---
+import Base from '../../layouts/Base.astro'
+import BlogPostList from '../../components/BlogPostList.vue'
+import BlogTagList from '../../components/BlogTagList.vue'
+import { collectTags, sortedPosts, toCard } from '../../lib/blog'
+
+const posts = await sortedPosts()
+const tags = collectTags(posts)
+const cards = posts.map(toCard)
+---
+
+<Base title="部落格" license="ccby">
+  <main class="mx-auto w-full max-w-6xl px-4 pb-16">
+    <div class="pt-10 pb-8 text-center">
+      <h1 class="font-serif text-3xl font-black tracking-wide">
+        關於爬蟲錯誤說明、專案開發、衍生應用
+      </h1>
+      <p class="mt-3 text-sm text-ink-soft">
+        標籤：<BlogTagList tags={tags} />
+      </p>
+    </div>
+    <BlogPostList posts={cards} />
+  </main>
+</Base>

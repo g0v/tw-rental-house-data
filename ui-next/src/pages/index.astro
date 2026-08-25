@@ -2,11 +2,14 @@
 import Base from '../layouts/Base.astro'
 import AboutDataBrief from '../components/AboutDataBrief.vue'
 import AudienceCard from '../components/AudienceCard.vue'
+import BlogPostList from '../components/BlogPostList.vue'
 import DatasetQuickCard from '../components/DatasetQuickCard.vue'
 import { latestRelease } from '../data/stats'
+import { sortedPosts, toCard } from '../lib/blog'
 
 const latestAnnual = latestRelease('annual')
 const latestMonthly = latestRelease('monthly')
+const recentPosts = (await sortedPosts()).slice(0, 3).map(toCard)
 
 const audiences = [
   {
@@ -114,11 +117,16 @@ const audiences = [
       </div>
     </section>
 
-    <!-- 近期公告（Phase 2 接上部落格） -->
-    <section class="bg-paper" data-todo="phase-2">
+    <!-- 近期公告 -->
+    <section class="bg-paper">
       <div class="mx-auto max-w-6xl px-4 py-10">
         <h2 class="font-serif text-2xl font-bold">近期公告</h2>
-        <p class="mt-4 text-sm text-ink-soft">（建置中）</p>
+        <div class="mt-6">
+          <BlogPostList posts={recentPosts} />
+        </div>
+        <div class="mt-4 text-right">
+          <a class="text-tile-deep underline" href="/blog">所有文章 ➡️</a>
+        </div>
       </div>
     </section>
   </main>
