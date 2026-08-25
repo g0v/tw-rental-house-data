@@ -6,6 +6,10 @@ class List591Spider(Rental591Spider):
     name = 'list591'
 
     def __init__(self, append=False, start_early=False, **kwargs):
+        # scrapy -a target_cities=A,B 傳進來是字串，直接迭代會變成逐字比對
+        if isinstance(kwargs.get('target_cities'), str):
+            kwargs['target_cities'] = kwargs['target_cities'].split(',')
+
         super().__init__(
             start_list=self.start_list_from_persist_queue,
             **kwargs
