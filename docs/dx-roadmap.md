@@ -255,7 +255,7 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
 | **live smoke 放進公開 GitHub Actions** | 要把 token 放進 secret，且讓公開 repo 的 CI 去打 591。道德與實務都不好，改自架 runner 或本機 `make nightly` |
 | **現在就做 4-6 多站點重構** | 沒有第二個站點時的抽象是猜的。`vendors.json` 裡 好房網／蟹居網 放了很久沒實作，說明需求沒那麼急。等真的要加時，用它驅動重構 |
 | **補 Django 層的測試覆蓋率** | 真正的風險在 parser 與 anti-anti-crawler，不在 ORM。低報酬 |
-| **升級 `ui` 的 Node / Nuxt 2** | Nuxt 2 已 EOL 是真問題，但與這四個痛點無關。不要混進這一輪 |
+| **升級 `ui` 的 Node / Nuxt 2** | Nuxt 2 已 EOL 是真問題，但與這四個痛點無關。不要混進這一輪。已另立獨立計畫 `docs/ui-roadmap.md`（2026-08-25，Astro 改版），與本計畫無相依、分開排程 |
 | **刪 `scrapy_tw_rental_house` symlink** | 它是 Poetry 打包（套件名推導）與舊 import path 的必要條件 |
 | **nightly 對特定 house ID 斷言** | 就是「ID 不會永遠有效」這個陷阱本身 |
 | **整包合併 PR #205 的 `PlaywrightFallbackMiddleware`** | fallback 的形狀應由 2.5-2 的量測結果驅動，先上重型 fallback 是用方案蓋住還沒回答的問題。PR 的其他零件照〈採納清單〉收 |
