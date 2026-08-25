@@ -37,6 +37,9 @@ get access to browser developer tool on browsing 591, and copy the setting to se
 BROWSER_INIT_SCRIPT = 'console.log("This command enable Playwright")'
 ```
 
+591 also replies 403 to the default scrapy user agent, so this package sets
+`USER_AGENT` to `None` unless the project configures its own.
+
 ### Configure OCR cache
 
 As OCR is a time consuming process, we provide a cache mechanism to store OCR result. When OCR cache is enabled, before performing OCR on an image, the crawler will check if the image hash exists in the cache. If it exists, the cached result will be used instead of performing OCR again. OCR cache is enabled by default.
