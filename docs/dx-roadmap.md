@@ -196,7 +196,7 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
 |---|---|---|---|---|
 | 3-1 | `doctor` / `probe`：分階段回報 (a) proxy (b) 是否被擋 (c) obfuscate 元素是否重新出現 (d) selector 命中率 | package | 中 | 作為 2.5-4 `twrh` CLI 的子指令。第一項檢查就是「`BROWSER_INIT_SCRIPT` 沒設 → 告訴你要自己準備」，讓「下載即用」與「不散佈 token」並存 |
 | 3-2 | 三層 nightly | 兩邊 | 中 | 見下 |
-| 3-3 | drift detector 與 harvester 共用同一支程式 | package | 小 | 差別只在要不要寫入 baseline；手動介面即 2.5-4 的 `twrh survey` |
+| 3-3 | drift detector 與 harvester 共用同一支程式 | package | 小 | 差別只在要不要寫入 baseline；手動介面即 2.5-4 的 `twrh survey`。**斷言核心已落地**（2026-08-26）：`survey --baseline` 比對分佈不變量（樓層中位數、型態占比、頂加率、填充率，雙向、含 min_samples 護欄），基準值在 `baselines/`（全國＋花蓮縣，由首次全量 × 202409 公開資料集驗證產出） |
 
 **三層設計（這是「591 資料每天變、ID 不會永遠有效」的解法）**：
 
@@ -369,3 +369,17 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
     有樣本（車位、B1、頂加、代理人都有——金門縣掃不到這些），選 10 筆全數 parse 成功。
   - 註：1-5 花蓮縣 baseline 已可由本次 manifest 起算；正式 baseline 建議發版後以
     `twrh harvest` 定期重跑。CLAUDE.md 同步更新（無 playwright／OCR、單一 parser 政策）。
+- **2026-08-26 首次本機全台全量**（go.sh 完整 pipeline，00:17–02:56，56,521 筆，零被擋）：
+  - live 驗證抓到三個 bug：本機缺 `LOG_FILE` 讓 batch 迴圈失效、batch 額滿後
+    start_requests generator 變唯一餵食者把整條 queue 跑完（皆已修，
+    branch `fix/go-batch-pipeline`）；queue 耗盡時 batch 重啟誤觸全量重生成（待修，
+    建議以當日 progress 檔存在與否作 resume 判據，或直上 4-2 exit code）。
+    另有 batch 額滿後仍多爬一段的 scheduler backlog 疑點，指向 `n_live_spider`
+    記帳漏損 → 併入 4-4 驗證。熔斷全程未觸發（正確）、填充率監控 live 運作。
+  - 套件層新 bug：list 頁「超過最後一頁」時 `list_mixin.py` `page_items[-1]`
+    IndexError（宜蘭邊界頁實測）→ 待修＋fixture。
+  - 資料驗證：與 202409 公開資料集做縣市級分佈比對**通過**（21 縣市齊、
+    全國樓層／建物分佈重合、租金 +5~12% 合理漲幅、無欄位整批消失；
+    頂加率 0%→2.2% 為新 parser 修復舊缺漏）。
+  - **3-3 斷言核心落地**：`twrh survey --baseline` 分佈不變量比對（見 3-3 列），
+    驗證產出的全國＋花蓮縣基準值入 `baselines/`。
