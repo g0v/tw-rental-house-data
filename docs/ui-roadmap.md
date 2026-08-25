@@ -208,6 +208,24 @@ Astro 預設 directory 輸出格式與現況 gh-pages 相同）：
 
 ---
 
+## 實作狀態（2026-08-25）
+
+Phase 0 ～ 4-2 已在 `ui-next/` 完成（Astro 7.2 + Vue 3.5 + Tailwind 4.3，每個 task 一個 commit）：
+
+- Phase 0：scaffold、Base layout（含 GoatCounter、site-verification）、首頁三受眾卡、`ui-next` PR CI（`astro check` + build + URL 驗收）
+- Phase 1：stats JSON 搬入 `src/data/stats/` + zod schema；download 頁三段式（快速下載／#cite／#archive 以 `<details>` 依年份折疊）；S3 連結邏輯與「本表格資料下載 JSON」保留
+- Phase 2：19 篇 md 原樣搬入 Content Collection、`<!--more-->` 摘要工具；列表／單篇／tag 頁（microdata、OG 照搬）；Cusdis 元件（app id 待註冊，見下）；`/rss.xml`
+- Phase 3：0.0–0.3 抽成 `.md`＋共用版本頁；TOC 改 build-time `headings`＋CSS sticky；`/about-data-set` 改版本沿革目錄頁；`/data-quality` 總表＋檔案庫 `quality_issue` 警示標記
+- Phase 4-1：`ui-next/scripts/check-urls.mjs` 驗收通過（35 頁 + 27 資產），並掛進 CI
+- Phase 4-2：`ui-deploy.yml` 改建置 `ui-next/`（Node 24，移除 Sentry secrets）
+
+**尚待人工處理**：
+
+1. Cusdis：至 cusdis.com 註冊 site 後，把 app id 填入 `ui-next/src/lib/site.ts` 的 `CUSDIS_APP_ID`（留空時留言區不顯示），並在後台開啟審核與通知
+2. Phase 4-3：上線觀察一週無異常後，刪除舊 `ui/`（連同 `ui-pull-request.yml`）、`ui-next/` 改名 `ui/`、更新 CLAUDE.md 與 README
+
+---
+
 ## 編修紀錄
 
 - **2026-08-25** 建立。決策脈絡：#212（TOC DOM 時序 bug）觸發改版討論；技術選型比較了
