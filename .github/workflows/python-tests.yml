@@ -1,0 +1,36 @@
+# L1 離線 golden（docs/dx-roadmap.md 3-2）：
+# 凍結 fixture、不連網（tests/conftest.py 擋 socket），回答「我的改動有沒有弄壞 parser」。
+# live probe 與 drift detector（L2/L3）刻意不進公開 CI —— 見 roadmap〈建議不做〉。
+name: python-tests
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'scrapy-tw-rental-house/**'
+      - '.github/workflows/python-tests.yml'
+  pull_request:
+    paths:
+      - 'scrapy-tw-rental-house/**'
+      - '.github/workflows/python-tests.yml'
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scrapy-tw-rental-house
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install poetry
+        run: pipx install poetry
+      - name: Install dependencies
+        run: poetry install --with dev
+      - name: Run offline test suite
+        run: poetry run pytest -q

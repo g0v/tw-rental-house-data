@@ -81,12 +81,21 @@ class FillRateMonitor:
         path = os.path.join(
             self.report_dir, '{}.{}.json'.format(date, spider.name))
 
+        # 同一天可能分多個 batch 執行（go.sh 的 detail 迴圈）——
+        # 累加既有報告，否則每個 batch 都把前一批的統計蓋掉
+        n_items, counts = self.n_items, dict(self.counts)
+        existing = self.load_report(path)
+        if existing and existing.get('date') == date:
+            n_items += existing.get('n_items', 0)
+            for field, count in existing.get('counts', {}).items():
+                counts[field] = counts.get(field, 0) + count
+
         report = {
             'date': date,
             'spider': spider.name,
-            'n_items': self.n_items,
-            'counts': self.counts,
-            'rates': self.rates(),
+            'n_items': n_items,
+            'counts': counts,
+            'rates': {field: count / n_items for field, count in counts.items()},
         }
 
         previous = self.load_previous(spider.name, exclude=path)
@@ -94,8 +103,8 @@ class FillRateMonitor:
             json.dump(report, report_file, ensure_ascii=False, indent=2)
 
         logger.info(
-            '[fill-rate] %s: %d items, report written to %s',
-            spider.name, self.n_items, path)
+            '[fill-rate] %s: %d items this run (%d today), report written to %s',
+            spider.name, self.n_items, n_items, path)
 
         if previous:
             self.compare(spider.name, previous, report)
@@ -106,8 +115,12 @@ class FillRateMonitor:
             if os.path.abspath(p) != os.path.abspath(exclude))
         if not paths:
             return None
+        return self.load_report(paths[-1])
+
+    @staticmethod
+    def load_report(path):
         try:
-            with open(paths[-1]) as report_file:
+            with open(path) as report_file:
                 return json.load(report_file)
         except (OSError, ValueError):
             return None

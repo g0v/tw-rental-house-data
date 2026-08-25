@@ -194,9 +194,9 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
 
 | # | 項目 | 位置 | 成本 | 說明 |
 |---|---|---|---|---|
-| 3-1 | `doctor` / `probe`：分階段回報 (a) proxy (b) 是否被擋 (c) obfuscate 元素是否重新出現 (d) selector 命中率 | package | 中 | 作為 2.5-4 `twrh` CLI 的子指令。第一項檢查就是「`BROWSER_INIT_SCRIPT` 沒設 → 告訴你要自己準備」，讓「下載即用」與「不散佈 token」並存 |
-| 3-2 | 三層 nightly | 兩邊 | 中 | 見下 |
-| 3-3 | drift detector 與 harvester 共用同一支程式 | package | 小 | 差別只在要不要寫入 baseline；手動介面即 2.5-4 的 `twrh survey` |
+| 3-1 | ~~`doctor` / `probe` 分階段診斷~~ **已併入 3-2**（2026-08-25） | package | — | 原四項檢查中：(a) proxy 與 token 檢查隨 2.5-1 拔除 playwright／`BROWSER_INIT_SCRIPT` 而失去對象；(b) 被擋形式偵測等 ramp-up 有真實樣本再加（同 2.5-3 的暫緩理由）；(c)(d) 併入 `twrh probe` 的哨兵斷言。獨立 doctor 不再需要 |
+| 3-2 | 三層 nightly；入口 `twrh probe` = survey plumbing + 比率斷言 + exit code | 兩邊 | 小 | 見下。probe 供 cron 以 exit code 判紅綠 |
+| 3-3 | drift detector 與 harvester 共用同一支程式 | package | 小 | 差別只在要不要寫入 baseline；手動介面即 2.5-4 的 `twrh survey`，baseline 比對掛在 `twrh probe --baseline` |
 
 **三層設計（這是「591 資料每天變、ID 不會永遠有效」的解法）**：
 
@@ -206,9 +206,9 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
   但類型較多元，比金門縣更能踩到各 property_type 的分支）→ 取**當下**前 K 筆 → 抓 detail。
   斷言全部是比率／不變量：
   - list 至少回 N 筆
-  - detail ≥X% 得到 200 且非 `about:blank`（anti-anti-crawler 還活著）
+  - detail ≥X% 得到 200 且 raw parse 成功（404 是預期行為，斷言下在比率）
   - 其中 ≥X% 解出 price / floor / floor_ping（selector 漂移哨兵）
-  - obfuscate 元素出現率哨兵，**雙向**告警（2026-08 已歸零；若再出現代表 591 恢復圖片混淆，需重新引入 OCR）
+  - 舊版式（`LEGACY_MARKERS`）出現率哨兵，**雙向**告警（2026-08 已歸零；若再出現代表 591 版式回退或恢復圖片混淆）
 - **L3 drift detector**（nightly）：harvest 新鮮分層樣本 → parse → 比對填充率分佈與 baseline。
   抓的是「591 變了」，不是「我的 code 變了」，同樣不需要穩定 ID。
 
@@ -369,3 +369,39 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
     有樣本（車位、B1、頂加、代理人都有——金門縣掃不到這些），選 10 筆全數 parse 成功。
   - 註：1-5 花蓮縣 baseline 已可由本次 manifest 起算；正式 baseline 建議發版後以
     `twrh harvest` 定期重跑。CLAUDE.md 同步更新（無 playwright／OCR、單一 parser 政策）。
+- **2026-08-25 盤點與決策（2.2.0 發版後）**：
+  - **Phase 2 完成 live 驗證**：熔斷與填充率 extension（已於 2.2.0 上移 package 側）在真實
+    單城市與大城市全量 crawl 中運作正常。
+  - **2.5-2 首輪量測完成**：單一大城市全量純 HTTP 驗證通過；量測數據與門檻屬營運敏感資訊，
+    記錄於非公開報告，不進本文件。**2.5-3 拍板暫緩**——首輪未觀察到任何被擋形式，
+    fallback 沒有素材可定形狀；改為逐日加城市 ramp-up，取得真實觸發樣本後再設計。
+  - **3-1 併入 3-2**（表格已改）：proxy／token 檢查隨 playwright 拔除而失去對象，
+    剩餘價值收斂為 `twrh probe` 的比率斷言與 legacy 版式哨兵。
+  - 遺留清理確認：`scrapy-twrh-example/crawler/settings.py` 已 untrack（repo 已無
+    `BROWSER_INIT_SCRIPT`）；#205 已關閉。#211 的 poetry.lock rebase 條件已成熟（parser
+    定案且 OCR 已拔），待處理。
+  - 量測過程發現四個小問題，於同 branch 修復（見下一條）：
+    (1) `PersistQueue.has_record()` 不分城市——同日先爬過任一城市後，其他城市的 list
+    在一般模式會直接不生種子；(2) `FillRateMonitor` 同日多次執行互相覆蓋報告，
+    批次迴圈下只剩最後一批；(3) `detail591 -a append=True` 的 `monthly_price__isnull`
+    過濾失效——2026 改版後 list 頁 item 就帶價格，append 模式會跳過所有新物件；
+    (4) detail progress 的 Overall 分母跨 restart 不隨新種子更新（純顯示問題）。
+- **2026-08-25 實作進度（1-5 + Phase 3 + 四個小問題，每項一 commit）**：
+  - 四個小問題全數修復：(1) list 種子生成改逐城市判斷（`has_record(top_region=…)`）；
+    (2) `FillRateMonitor` 同日報告改累加；(3) detail append 過濾改
+    `etc__detail_raw__isnull`（「從未爬過 detail」的本意）；(4) overall 分母改
+    `max(stored, completed + pending)`。
+  - **1-5 完成**：花蓮縣全量 survey（375/375 raw 與 generic 全數解析成功）產出正式
+    baseline，committed 於 `scrapy-tw-rental-house/baselines/hualien-fill-rate.json`；
+    parser 改版後以 `twrh survey 花蓮縣` 重新產出。
+  - **3-2 完成**：
+    - **L1 公開 CI**：`.github/workflows/python-tests.yml`——repo 第一個 Python CI，
+      只跑離線 pytest（conftest 擋 socket），live 不進公開 CI。
+    - **L2/L3 入口 `twrh probe`**：比率斷言（list 筆數、detail 200 率、raw parse 率、
+      舊版式哨兵、price/floor/floor_ping 填充哨兵）+ `--baseline` 填充率漂移比對
+      （即 3-3 的 drift detector，與 survey 共用 plumbing）+ exit code。
+      離線斷言測試 9 個；花蓮縣 live 實測含 baseline 比對全數 PASS。
+    - **`scrapy-tw-rental-house/nightly.sh`**：pytest + probe（含 baseline）。
+      拍板：本機**不排 cron、維持偶爾手動跑**，轉正式環境後再掛真的 nightly。
+  - Phase 3 至此收完；剩餘開放項：ramp-up 持續量測（2.5-2 延伸）、2.5-3（待真實
+    被擋樣本）、Phase 4 的 4-1〜4-4、#211 poetry.lock rebase、Backlog。

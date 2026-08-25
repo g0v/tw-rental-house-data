@@ -140,13 +140,16 @@ class PersistQueue(object):
         """Check if the batch limit has been reached."""
         return self.batch_size > 0 and self.progress_tracker.completed >= self.batch_size
 
-    def has_record(self):
+    def has_record(self, **extra_filters):
+        # extra_filters 讓 caller 縮小判斷範圍，例如 top_region=<city enum>
+        # ——同一天可能分city多次啟動，不能因為別的城市有記錄就跳過生種子
         today_houses = HouseTS.objects.filter(
             year = self.ts['y'],
             month = self.ts['m'],
             day = self.ts['d'],
             hour = self.ts['h'],
-            vendor = self.vendor
+            vendor = self.vendor,
+            **extra_filters
         )[:1]
 
         return today_houses.count() > 0

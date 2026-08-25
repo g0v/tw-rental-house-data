@@ -53,8 +53,14 @@ class ProgressTracker:
         if os.path.exists(progress_file):
             with open(progress_file, 'r') as f:
                 data = json.load(f)
-            self.overall_total = data['total']
             self.overall_completed = data['completed']
+            # batch_total is the pending queue size right now; if seeds were
+            # added since the file was written (e.g. another city appended the
+            # same day), the stored total is stale — grow it, never shrink it.
+            self.overall_total = max(
+                data['total'], self.overall_completed + batch_total)
+            if self.overall_total != data['total']:
+                self._write_progress_file()
             self.logger.info(
                 f'Restored overall progress: {self.overall_completed}/{self.overall_total} '
                 f'| Batch: {batch_total} items'
