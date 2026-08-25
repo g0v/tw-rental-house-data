@@ -65,28 +65,8 @@ DOWNLOADER_MIDDLEWARES = {
 _proxy = os.environ.get('TWRH_PROXY')
 if _proxy:
     ROTATING_PROXY_LIST = [_proxy]
-    PLAYWRIGHT_LAUNCH_OPTIONS = {
-        'proxy': {'server': _proxy}
-    }
-
-PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT = 1800000
-
-PLAYWRIGHT_CONTEXTS = {
-  "persistent": {
-    "ignore_https_errors": True
-  }
-}
 
 OCR_CACHE_ENABLED = True
 OCR_CACHE_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), '../cache/ocr'
 )
-
-
-BROWSER_JS_CACHE_ENABLED = True
-BROWSER_JS_CACHE_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), '../cache/js'
-)
-
-# 591 頁面要能 render 必須設定，值請自備（不可 commit，理由見 docs/dx-roadmap.md 架構原則）
-BROWSER_INIT_SCRIPT = os.environ.get('TWRH_BROWSER_INIT_SCRIPT', 'console.log("Browser Init");')

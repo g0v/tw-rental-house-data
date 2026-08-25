@@ -32,11 +32,9 @@ class Rental591Spider(ListMixin, DetailMixin):
     @classmethod
     def update_settings(cls, settings):
         super().update_settings(settings)
-        # force to use scrapy-playwright
-        settings.set('DOWNLOAD_HANDLERS', {
-            'https': 'scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler',
-            'http': 'scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler',
-        }, priority='spider')
+        # both list and detail pages are downloaded by plain HTTP — 591
+        # renders them on the server, so the response already holds every
+        # field the parser reads, the coordinate included
         # for backward compatibility
         settings.set('TWISTED_REACTOR', 'twisted.internet.asyncioreactor.AsyncioSelectorReactor', priority='spider')
 

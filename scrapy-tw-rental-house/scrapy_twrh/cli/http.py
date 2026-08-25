@@ -1,6 +1,6 @@
 '''純 HTTP fetcher，供 CLI 手動測試用。
 
-不走 scrapy／playwright，因此不需要 BROWSER_INIT_SCRIPT。
+不走 scrapy，因此不需要 scrapy 專案設定。
 591 以 30x 表示房源狀態，所以不跟隨 redirect、原樣回報 status code。
 '''
 import time

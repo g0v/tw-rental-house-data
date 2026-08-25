@@ -12,7 +12,6 @@ This package illustrate all example usage of latest (main/master) `scrapy-tw-ren
 ```bash
 # Install package with poetry
 poetry install
-poetry run playwright install chromium
 ```
 
 ## Example 0 - Simplest usage / 直接用
