@@ -35,6 +35,26 @@ poetry install --with dev
 poetry run pytest
 ```
 
+### CLI
+
+The package ships a `twrh` command for manual testing and monitoring —
+plain HTTP, no database, no Scrapy project needed:
+
+```bash
+twrh parse <saved-detail.html>   # offline: run the parser on a saved page
+twrh detail <house-id>           # fetch + parse one detail page
+twrh list 金門縣                  # fetch + parse one list page
+twrh survey 花蓮縣                # full city sweep → completeness report
+twrh harvest 花蓮縣               # stratified fixture harvest + manifest
+twrh probe 花蓮縣                 # ratio assertions + exit code, for nightly checks
+```
+
+`probe` asserts on ratios over freshly discovered listings (list volume,
+detail success rate, parse rate, key-field fill rates) and can compare
+fill rates against a saved `survey` report via `--baseline` to catch
+silent selector drift. City names follow `tw_regions.json`; most
+subcommands also accept a raw URL or house id.
+
 ## Basic Usage
 
 This package currently support [591](http://rent.591.com.tw/). Each rental house website is a Scrapy Spider class. You can either crawl entire website using default setting , which will take couple days, or customize the behaviour base on your need.

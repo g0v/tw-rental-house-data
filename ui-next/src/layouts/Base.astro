@@ -1,0 +1,182 @@
+---
+import '../styles/global.css'
+import { SITE_NAME, SITE_URL } from '../lib/site'
+
+interface Props {
+  /** 頁面標題，會加上站名後綴；首頁不傳 */
+  title?: string
+  description?: string
+  ogImage?: string
+  /** og:type，部落格單篇傳 'article'（並附 articleMeta） */
+  ogType?: 'website' | 'article'
+  articleMeta?: {
+    /** ISO 8601 */
+    publishedTime: string
+    author: string
+    tags: string[]
+  }
+  /** footer 授權聲明：全站 CC0，部落格文章 CC-BY */
+  license?: 'cc0' | 'ccby'
+}
+
+const DEFAULT_DESCRIPTION =
+  '「開放民間租屋資料」希望提供對租屋議題有興趣的單位，一份長期、開放，而且詳細的租屋資料集，去除有著作權與隱私疑慮的資料後，以 CC0 釋出，為台灣的租賃市場與居住議題建立研究的基礎資料。'
+
+const {
+  title,
+  description = DEFAULT_DESCRIPTION,
+  ogImage = `${SITE_URL}/imgs/og.png`,
+  ogType = 'website',
+  articleMeta,
+  license = 'cc0'
+} = Astro.props
+
+const fullTitle = title ? `${title} | ${SITE_NAME}` : SITE_NAME
+
+// canonical 與 og:url：站上頁面一律 directory 格式（結尾斜線）
+const canonicalPath =
+  Astro.url.pathname.endsWith('/') || Astro.url.pathname.includes('.')
+    ? Astro.url.pathname
+    : `${Astro.url.pathname}/`
+const canonicalUrl = new URL(canonicalPath, Astro.site).toString()
+
+const navItems = [
+  { href: '/download', label: '打包回家玩' },
+  { href: '/about-data-set', label: '關於資料集' },
+  { href: '/data-quality', label: '資料品質' },
+  { href: '/blog', label: '部落格' }
+]
+const currentPath = Astro.url.pathname
+---
+
+<!doctype html>
+<html lang="zh-Hant-TW">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="google-site-verification"
+      content="uCUr0xYNUdjv0NqVRBNBDlnRHqkbLOmc_E8uzfkNxtY"
+    />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonicalUrl} />
+    <meta property="og:site_name" content={SITE_NAME} />
+    <meta property="og:title" content={title ?? SITE_NAME} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content={ogType} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:locale" content="zh_TW" />
+    <meta name="twitter:card" content="summary_large_image" />
+    {
+      ogType === 'article' && articleMeta && (
+        <>
+          <meta
+            property="article:published_time"
+            content={articleMeta.publishedTime}
+          />
+          <meta property="article:author" content={articleMeta.author} />
+          {articleMeta.tags.map((tag) => (
+            <meta property="article:tag" content={tag} />
+          ))}
+        </>
+      )
+    }
+    <link rel="sitemap" href="/sitemap-index.xml" />
+    <link
+      rel="alternate"
+      type="application/rss+xml"
+      title={SITE_NAME}
+      href={new URL('rss.xml', Astro.site)}
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@500;700;900&display=swap"
+    />
+    <script
+      is:inline
+      data-goatcounter="https://ddio.goatcounter.com/count"
+      async
+      src="//gc.zgo.at/count.js"></script>
+  </head>
+  <body class="flex min-h-screen flex-col">
+    <header class="border-b-2 border-ink bg-paper">
+      <div
+        class="mx-auto flex max-w-6xl flex-wrap items-baseline gap-x-6 gap-y-1 px-4 py-3"
+      >
+        <a href="/" class="font-serif text-lg font-black tracking-wide text-ink"
+          >{SITE_NAME}</a
+        >
+        <nav class="flex flex-wrap gap-x-5 text-sm">
+          {
+            navItems.map((item) => (
+              <a
+                href={item.href}
+                class:list={[
+                  'py-1 hover:text-tile-deep hover:underline',
+                  currentPath.startsWith(item.href)
+                    ? 'font-medium text-tile-deep underline decoration-tile decoration-2 underline-offset-4'
+                    : 'text-ink-soft'
+                ]}
+              >
+                {item.label}
+              </a>
+            ))
+          }
+        </nav>
+      </div>
+    </header>
+
+    <slot />
+
+    <footer class="mt-auto border-t border-rule bg-terrazzo">
+      <div
+        class="mx-auto max-w-6xl px-4 py-6 text-sm leading-relaxed text-ink-soft"
+      >
+        {
+          license === 'ccby' ? (
+            <p>
+              本部落格的所有文章，除另外註明，皆以
+              <a
+                class="text-tile-deep underline"
+                href="https://creativecommons.org/licenses/by/4.0/deed.zh_TW"
+                target="_blank"
+                rel="noopener"
+              >
+                CC-BY
+              </a>
+              授權，提供公眾使用。
+            </p>
+          ) : (
+            <p>
+              本網站的所有資料，除另外註明，皆以
+              <a
+                class="text-tile-deep underline"
+                href="https://creativecommons.org/publicdomain/zero/1.0/deed.zh_TW"
+                target="_blank"
+                rel="noopener"
+              >
+                CC0
+              </a>
+              拋棄一切著作相關權利，提供公眾使用。
+            </p>
+          )
+        }
+        <p class="mt-1">
+          若有使用上的疑問，歡迎於網站留言、<a
+            class="text-tile-deep underline"
+            href="mailto:open-tw-rental-house@ddio.io">來信</a
+          >，或至<a
+            class="text-tile-deep underline"
+            href="https://github.com/g0v/tw-rental-house-data"
+            target="_blank"
+            rel="noopener">專案頁面</a
+          >詢問。
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>

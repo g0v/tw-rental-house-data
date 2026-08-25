@@ -64,9 +64,11 @@ class Detail591Spider(Rental591Spider):
                 deal_status = enums.DealStatusType.OPENED
             )
             
-            # In append mode, also filter by monthly_price is null
+            # In append mode, only houses never detail-crawled. monthly_price
+            # can't tell anymore — since the 2026 redesign the list page item
+            # already carries the price, so it is never null for new houses.
             if self.append:
-                query = query.filter(monthly_price__isnull=True)
+                query = query.filter(etc__detail_raw__isnull=True)
                 
             houses = query.values('vendor_house_id')
 

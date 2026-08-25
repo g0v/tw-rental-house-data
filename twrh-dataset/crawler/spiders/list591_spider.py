@@ -1,5 +1,6 @@
 from scrapy import Request, signals
 from scrapy_twrh.spiders.rental591 import Rental591Spider, util
+from rental.enums import TopRegionType
 from .persist_queue import PersistQueue
 
 class List591Spider(Rental591Spider):
@@ -42,24 +43,21 @@ class List591Spider(Rental591Spider):
         return util.ListRequestMeta(*seed)
 
     def start_list_from_persist_queue (self):
-        # In append mode, skip if has_record() and generate persist request if not has_request
-        # In normal mode, only generate if no request and no record
-        should_generate = False
-        
-        if self.append:
-            should_generate = True
-        elif not self.persist_queue.has_record():
-            should_generate = True
-        
-        if should_generate:
-            self.logger.info('Generating initial requests (append mode: {})'.format(self.append))
-            for city in self.target_cities:
-                # let's do BFS
-                self.persist_queue.gen_persist_request([
-                    city['id'],
-                    city['city'],
-                    0
-                ])
+        # In append mode, always regenerate seeds.
+        # In normal mode, generate per city — has_record() must be scoped to the
+        # city, or a same-day run for city B is silently skipped after city A.
+        for city in self.target_cities:
+            if not self.append and self.persist_queue.has_record(
+                    top_region=TopRegionType[city['city']]):
+                continue
+            self.logger.info('Generating initial requests for {} (append mode: {})'.format(
+                city['city'], self.append))
+            # let's do BFS
+            self.persist_queue.gen_persist_request([
+                city['id'],
+                city['city'],
+                0
+            ])
         
         # Initialize progress tracking
         self.persist_queue.init_progress_tracking()

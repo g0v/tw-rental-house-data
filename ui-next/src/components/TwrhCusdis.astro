@@ -1,0 +1,28 @@
+---
+import { CUSDIS_APP_ID } from '../lib/site'
+
+interface Props {
+  pageTitle?: string
+}
+
+const { pageTitle } = Astro.props
+const pageId = Astro.url.pathname
+---
+
+{
+  CUSDIS_APP_ID && (
+    <section class="mt-12 border-t border-rule pt-6">
+      <h2 class="font-serif text-xl font-bold">留言</h2>
+      <div
+        id="cusdis_thread"
+        class="mt-4"
+        data-host="https://cusdis.com"
+        data-app-id={CUSDIS_APP_ID}
+        data-page-id={pageId}
+        data-page-url={new URL(pageId, Astro.site).toString()}
+        data-page-title={pageTitle}
+      />
+      <script is:inline async defer src="https://cusdis.com/js/cusdis.es.js" />
+    </section>
+  )
+}

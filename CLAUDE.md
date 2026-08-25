@@ -109,11 +109,17 @@ When a change touches `scrapy-tw-rental-house/`:
    poetry run twrh list 金門縣                      # fetch + parse one list page
    poetry run twrh survey 金門縣 --save-html        # full city sweep → completeness report
    poetry run twrh harvest 花蓮縣                   # stratified fixture harvest + manifest
+   poetry run twrh probe 花蓮縣 --baseline scrapy-tw-rental-house/baselines/hualien-fill-rate.json
+                                                   # ratio assertions + exit code (nightly entry)
    ```
    `survey` reports list/detail success rates, property_type distribution, and per-field fill
    rates — compare against the previous report to catch silent field loss. `harvest` samples
    per parser branch (property/contact/price/floor strata) and saves fixture-candidate HTML with
-   a manifest; 花蓮縣 covers far more strata than 金門縣. No DB writes.
+   a manifest; 花蓮縣 covers far more strata than 金門縣. No DB writes. `probe` is the
+   assertion version of survey (list volume, 200 rate, parse rate, legacy-template sentinel,
+   fill-rate drift vs the committed baseline in `scrapy-tw-rental-house/baselines/`);
+   `scrapy-tw-rental-house/nightly.sh` bundles pytest + probe — run manually for now
+   (no local cron; production nightly comes later).
 3. To run the real pipeline against local core changes, link it in editable mode
    (revert with `poetry install --sync`):
    ```bash
@@ -242,4 +248,6 @@ Caveat: `export` does **not** honour it — it always uses the real current date
 - `.github/workflows/ui-deploy.yml` builds `ui/` with `npm run generate` and deploys `ui/dist` to
   gh-pages on push to master.
 - `.github/workflows/ui-pull-request.yml` runs ESLint on `ui/`.
-- Nothing in CI touches the Python packages or the data pipeline.
+- `.github/workflows/python-tests.yml` runs the offline pytest suite of `scrapy-tw-rental-house/`
+  on pushes/PRs touching that package. Live probes stay out of public CI by design.
+- Nothing in CI touches `twrh-dataset` or the data pipeline.

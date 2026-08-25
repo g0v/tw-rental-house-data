@@ -998,16 +998,6 @@ files = [
 ]
 
 [[package]]
-name = "pycrypto"
-version = "2.6.1"
-description = "Cryptographic modules for Python."
-optional = false
-python-versions = "*"
-files = [
-    {file = "pycrypto-2.6.1.tar.gz", hash = "sha256:f2ce1e989b272cfcb677616763e0a2e7ec659effa67a88aa92b3a65528f60a3c"},
-]
-
-[[package]]
 name = "pydispatcher"
 version = "2.0.7"
 description = "Multi-producer multi-consumer in-memory signal dispatch system"
@@ -1174,7 +1164,7 @@ typing = "*"
 
 [[package]]
 name = "scrapy-tw-rental-house"
-version = "2.1.8"
+version = "2.2.0"
 description = "Scrapy spider for TW Rental House"
 optional = false
 python-versions = "^3.10"
@@ -1434,4 +1424,4 @@ testing = ["coverage[toml]", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "b1d049697e6ff8cfb64ae314f0b41d688f8c9456ac7c08fba4e7469bc8d50e71"
+content-hash = "2f49eba2dc7abba1d494da14cc795e5358d306ca904cde4750203cc6e0d576f7"

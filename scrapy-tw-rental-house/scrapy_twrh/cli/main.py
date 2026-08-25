@@ -5,8 +5,10 @@
   twrh list <縣市名或 list URL>       抓一頁 list 並解析
   twrh survey <縣市名> [--limit N]    全量 list + detail，輸出完整性報告（不寫 DB）
   twrh harvest <縣市名> [-k N]        分層取樣 detail HTML → fixture 候選 + manifest
+  twrh probe <縣市名> [-k N]          nightly 比率斷言，exit code 判紅綠（3-2）
 
-survey 是 L3 drift detector 的手動介面，斷言請下在比率、不要下在特定 ID。
+survey 是 L3 drift detector 的手動介面，斷言請下在比率、不要下在特定 ID；
+probe 是同一套 plumbing 的斷言版，`--baseline` 接 survey 報告做填充率漂移比對。
 harvest 是 1-2 的分層取樣器，分層維度 = parser 實際的分支，見 cli/harvest.py。
 '''
 import argparse
@@ -22,7 +24,7 @@ from pathlib import Path
 os.environ.setdefault('SCRAPY_SETTINGS_MODULE', 'scrapy_twrh.cli.null_settings')
 
 from . import harvest as harvest_mod
-from . import http, runner
+from . import http, probe as probe_mod, runner
 
 
 def _json_default(value):
@@ -251,6 +253,8 @@ def main():
     p.add_argument('--baseline', default=None,
                    help='不變量 baseline JSON（見 baselines/），比對失敗以非零值退出')
     p.set_defaults(func=cmd_survey)
+
+    probe_mod.register(sub)
 
     p = sub.add_parser('harvest', help='分層取樣 detail HTML（fixture 候選，不寫 DB）')
     p.add_argument('city', help='縣市名或 list URL')

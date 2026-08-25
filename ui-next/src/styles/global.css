@@ -1,0 +1,37 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/*
+ * 視覺方向：資料新聞編輯室 × 磁磚綠（docs/ui-roadmap.md 拍板）
+ * - 磁磚綠 #2F7E68 / 磨石子 #E9E6DE / 鐵鏽紅 #B5543B（僅品質警示）/ 墨 #22271F
+ * - Noto Serif TC（標題）＋ Noto Sans TC（內文）＋ IBM Plex Mono（數據）
+ */
+@theme {
+  --color-tile: #2f7e68;
+  --color-tile-deep: #24614f;
+  --color-tile-pale: #e3efeb;
+  --color-terrazzo: #e9e6de;
+  --color-paper: #f7f5f0;
+  --color-rust: #b5543b;
+  --color-ink: #22271f;
+  --color-ink-soft: #4c5248;
+  --color-rule: #c9c4b8;
+
+  --font-sans: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  --font-serif: "Noto Serif TC", "PingFang TC", serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+html {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+/* 編輯室細節：標題一律明體 */
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-serif);
+}

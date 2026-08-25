@@ -1,0 +1,20 @@
+# build output
+dist/
+# generated types
+.astro/
+
+# repo 根目錄的 .gitignore 有一行 `lib`（Python venv 用），會誤吞 src/lib/，在此救回
+!src/lib/
+
+# dependencies
+node_modules/
+
+# logs
+npm-debug.log*
+
+# environment variables
+.env
+.env.production
+
+# macOS-specific files
+.DS_Store
