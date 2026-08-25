@@ -1,0 +1,38 @@
+name: ui-next-pull-request
+
+defaults:
+  run:
+    working-directory: ui-next
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+    paths:
+      - 'ui-next/**'
+      - '.github/workflows/ui-next-pull-request.yml'
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout 🛎
+        uses: actions/checkout@v4
+
+      - name: Setup node env 🏗
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ui-next/.nvmrc
+          cache: 'npm'
+          cache-dependency-path: ui-next/package-lock.json
+
+      - name: Install dependencies 👨🏻‍💻
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Type check 🔍
+        run: npx astro check
+
+      - name: Build 🏗
+        run: npm run build
