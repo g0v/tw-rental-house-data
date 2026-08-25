@@ -118,3 +118,85 @@ def distribution(dicts, key):
             value = '(未解出)'
         ret[value] = ret.get(value, 0) + 1
     return dict(sorted(ret.items(), key=lambda kv: -kv[1]))
+
+
+def _enum_name(value):
+    return getattr(value, 'name', str(value))
+
+
+def _median_int(values):
+    values = sorted(v for v in values if isinstance(v, int))
+    if not values:
+        return None
+    return values[len(values) // 2]
+
+
+def invariants(generics):
+    '''分佈不變量（L3 drift 斷言用，docs/dx-roadmap.md 3-3）。
+
+    對「解析成功的 GenericHouseItem dict」計算跨時間不該亂動的統計量：
+    樓層中位數、建物型態與物件型態占比、頂加率、關鍵欄位填充率。
+    斷言下在比率與中位數，永不下在特定 ID 或特定值。
+    基準值來源見 baselines/README.md（2026-08-26 全量驗證產出）。
+    '''
+    n = len(generics)
+    if n == 0:
+        return {'n': 0}
+
+    def share(pred):
+        return round(sum(1 for g in generics if pred(g)) / n, 3)
+
+    def fill(key):
+        return round(sum(1 for g in generics if is_filled(g.get(key))) / n, 3)
+
+    return {
+        'n': n,
+        'median_floor': _median_int(g.get('floor') for g in generics),
+        'median_total_floor': _median_int(g.get('total_floor') for g in generics),
+        'share_電梯大樓': share(lambda g: _enum_name(g.get('building_type')) == '電梯大樓'),
+        'share_公寓': share(lambda g: _enum_name(g.get('building_type')) == '公寓'),
+        'share_整層住家': share(lambda g: _enum_name(g.get('property_type')) == '整層住家'),
+        'share_套房': share(
+            lambda g: _enum_name(g.get('property_type')) in ('獨立套房', '分租套房')),
+        'rooftop_rate': share(lambda g: g.get('is_rooftop') is True),
+        'fill_rough_coordinate': fill('rough_coordinate'),
+        'fill_floor_ping': fill('floor_ping'),
+        'fill_monthly_price': fill('monthly_price'),
+    }
+
+
+def compare_invariants(current, baseline):
+    '''比對 invariants() 結果與 baseline 檔（見 baselines/）。
+
+    回傳 (results, passed, skipped_reason)：
+    - results: [(名稱, 是否通過, 現值, 基準值, 容許差)]
+    - 樣本數 < baseline 的 min_samples 時不做硬斷言（skipped_reason 說明），
+      避免小樣本的抽樣噪音造成 nightly 誤報。
+    - 所有比對皆雙向：填充率「變好」也視為漂移（例如頂加率歸零或暴增，
+      都代表 591 或 parser 有變，需要人看）。
+    '''
+    tol = baseline.get('tolerance', {})
+    tol_median = tol.get('median', 1)
+    tol_share = tol.get('share', 0.10)
+    tol_fill = tol.get('fill', 0.05)
+    min_samples = baseline.get('min_samples', 100)
+
+    if current.get('n', 0) < min_samples:
+        return [], True, '樣本 {} < min_samples {}，跳過硬斷言'.format(
+            current.get('n', 0), min_samples)
+
+    results = []
+    for key, base_value in baseline['invariants'].items():
+        if key == 'n':
+            continue
+        cur_value = current.get(key)
+        if key.startswith('median_'):
+            tolerance = tol_median
+        elif key.startswith('fill_'):
+            tolerance = tol_fill
+        else:  # share_* 與 rooftop_rate
+            tolerance = tol_share
+        ok = (cur_value is not None and base_value is not None
+              and abs(cur_value - base_value) <= tolerance)
+        results.append((key, ok, cur_value, base_value, tolerance))
+    return results, all(ok for _, ok, *_ in results), None

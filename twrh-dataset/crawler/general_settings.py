@@ -22,6 +22,10 @@ class QuietLogFormatter(LogFormatter):
 # Settings common to all environments    
 LOG_FORMATTER = "crawler.general_settings.QuietLogFormatter"
 LOG_SCRAPED_ITEMS = False
+# go.sh 依賴每個 spider run 寫出 ./scrapy.log（mv 成 ../logs/*.log 後
+# grep 'Batch limit reached' 當作 batch 迴圈的控制流，見 dx-roadmap 4-2），
+# 所以這是 repo 層的契約，不是個人偏好設定
+LOG_FILE = 'scrapy.log'
 
 BOT_NAME = 'tw-rental-house-data'
 FEED_FORAMT = 'jsonlines'

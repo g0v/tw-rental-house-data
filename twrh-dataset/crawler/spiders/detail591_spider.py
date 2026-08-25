@@ -88,6 +88,11 @@ class Detail591Spider(Rental591Spider):
         # quick fix for concurrency issue
         mercy = 10
         while True:
+            # start_requests 是被 engine 惰性消費的 generator，batch 額滿後若不在這裡
+            # 一起停，parser_wrapper 的早退會讓這條路變成唯一餵食者、把整條 queue 跑完
+            # （2026-08-26 全量實測踩到）
+            if self.persist_queue.is_batch_complete():
+                break
             next_request = self.persist_queue.next_request()
             if next_request:
                 yield next_request

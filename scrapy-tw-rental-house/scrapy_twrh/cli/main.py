@@ -157,6 +157,8 @@ def cmd_survey(args):
             'fill_rates': runner.fill_rates(raw_dicts),
             'property_type_dist': runner.distribution(raw_dicts, 'property_type'),
         },
+        # L3 drift 斷言用的分佈不變量；任何一份 survey 報告都可回頭當新 baseline
+        'invariants': runner.invariants([d['generic'] for d in generic_ok]),
     }
     report_path = out_dir / 'survey-{}-{}.json'.format(region['city'], today)
     report_path.write_text(
@@ -177,6 +179,22 @@ def cmd_survey(args):
         bar = '' if total == 0 else '{:4.0%}'.format(n / total)
         print('  {:24s} {:>7s} ({}/{})'.format(str(key), bar, n, total))
     print('\n報告已存：{}'.format(report_path))
+
+    # ---- baseline 斷言（L3 drift detector 的核心）----
+    if args.baseline:
+        baseline = json.loads(Path(args.baseline).read_text())
+        results, passed, skipped = runner.compare_invariants(
+            report['invariants'], baseline)
+        print('\n── 不變量斷言（baseline: {}，{}）──'.format(
+            baseline.get('scope', '?'), baseline.get('source', '')))
+        if skipped:
+            print('  SKIP：{}'.format(skipped))
+            return
+        for key, ok, cur, base, tolerance in results:
+            print('  {:6s} {:24s} 現值 {} / 基準 {}（容許 ±{}）'.format(
+                'PASS' if ok else 'FAIL', key, cur, base, tolerance))
+        if not passed:
+            sys.exit('不變量斷言未通過——591 或 parser 可能有變，請人工比對報告')
 
 
 def cmd_harvest(args):
@@ -232,6 +250,8 @@ def main():
     p.add_argument('--limit', type=int, default=0, help='detail 最多抓 N 筆（0=全部）')
     p.add_argument('--out', default='survey-output', help='報告輸出目錄')
     p.add_argument('--save-html', action='store_true', help='保存 HTML 作為 fixture 候選')
+    p.add_argument('--baseline', default=None,
+                   help='不變量 baseline JSON（見 baselines/），比對失敗以非零值退出')
     p.set_defaults(func=cmd_survey)
 
     probe_mod.register(sub)

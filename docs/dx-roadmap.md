@@ -196,7 +196,7 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
 |---|---|---|---|---|
 | 3-1 | ~~`doctor` / `probe` 分階段診斷~~ **已併入 3-2**（2026-08-25） | package | — | 原四項檢查中：(a) proxy 與 token 檢查隨 2.5-1 拔除 playwright／`BROWSER_INIT_SCRIPT` 而失去對象；(b) 被擋形式偵測等 ramp-up 有真實樣本再加（同 2.5-3 的暫緩理由）；(c)(d) 併入 `twrh probe` 的哨兵斷言。獨立 doctor 不再需要 |
 | 3-2 | 三層 nightly；入口 `twrh probe` = survey plumbing + 比率斷言 + exit code | 兩邊 | 小 | 見下。probe 供 cron 以 exit code 判紅綠 |
-| 3-3 | drift detector 與 harvester 共用同一支程式 | package | 小 | 差別只在要不要寫入 baseline；手動介面即 2.5-4 的 `twrh survey`，baseline 比對掛在 `twrh probe --baseline` |
+| 3-3 | drift detector 與 harvester 共用同一支程式 | package | 小 | 差別只在要不要寫入 baseline；手動介面即 2.5-4 的 `twrh survey`。兩種漂移各有斷言入口：填充率漂移掛 `twrh probe --baseline`；**分佈不變量**（樓層中位數、型態占比、頂加率，雙向、min_samples 護欄）掛 `survey --baseline`（2026-08-26 落地），基準值 `baselines/2026-08-26.*.json` 由首次全量 × 202409 公開資料集驗證產出，兩者皆入 nightly.sh |
 
 **三層設計（這是「591 資料每天變、ID 不會永遠有效」的解法）**：
 
@@ -405,3 +405,18 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
       拍板：本機**不排 cron、維持偶爾手動跑**，轉正式環境後再掛真的 nightly。
   - Phase 3 至此收完；剩餘開放項：ramp-up 持續量測（2.5-2 延伸）、2.5-3（待真實
     被擋樣本）、Phase 4 的 4-1〜4-4、#211 poetry.lock rebase、Backlog。
+- **2026-08-26 首次本機全台全量**（go.sh 完整 pipeline，00:17–02:56，56,521 筆，零被擋）：
+  - live 驗證抓到三個 bug：本機缺 `LOG_FILE` 讓 batch 迴圈失效、batch 額滿後
+    start_requests generator 變唯一餵食者把整條 queue 跑完（皆已修，
+    branch `fix/go-batch-pipeline`）；queue 耗盡時 batch 重啟誤觸全量重生成（待修，
+    建議以當日 progress 檔存在與否作 resume 判據，或直上 4-2 exit code）。
+    另有 batch 額滿後仍多爬一段的 scheduler backlog 疑點，指向 `n_live_spider`
+    記帳漏損 → 併入 4-4 驗證。熔斷全程未觸發（正確）、填充率監控 live 運作。
+  - 套件層新 bug：list 頁「超過最後一頁」時 `list_mixin.py` `page_items[-1]`
+    IndexError（宜蘭邊界頁實測）→ 待修＋fixture。
+  - 資料驗證：與 202409 公開資料集做縣市級分佈比對**通過**（21 縣市齊、
+    全國樓層／建物分佈重合、租金 +5~12% 合理漲幅、無欄位整批消失；
+    頂加率 0%→2.2% 為新 parser 修復舊缺漏）。
+  - **3-3 分佈不變量斷言落地**：`twrh survey --baseline` 比對分佈不變量（見 3-3 列），
+    與 probe 的填充率漂移互補；驗證產出的全國＋花蓮縣基準值入 `baselines/`，
+    花蓮縣 384 筆 live survey 十項全 PASS，並接入 `nightly.sh`。
