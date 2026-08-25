@@ -14,8 +14,6 @@ from crawler import signals as twrh_signals
 from .progress_tracker import ProgressTracker
 
 class PersistQueue(object):
-    queue_length = 30
-    n_live_spider = 0
 
     def __init__(
         self,
@@ -55,6 +53,10 @@ class PersistQueue(object):
             d = models.current_day()
 
         h = models.current_stepped_hour()
+
+        # 4-4：原為 class attribute，靠 `self.x -= 1` 隱式轉 instance 是 footgun
+        self.queue_length = 30
+        self.n_live_spider = 0
 
         self.spider_id = str(uuid.uuid4())
         self.logger = logger
@@ -125,16 +127,29 @@ class PersistQueue(object):
         """
         total = self.get_total_count()
         if self.request_type == RequestType.DETAIL:
-            progress_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'logs', 'progress')
-            os.makedirs(progress_dir, exist_ok=True)
-            progress_file = os.path.join(
-                progress_dir,
-                f"{self.ts['y']}-{self.ts['m']:02d}-{self.ts['d']:02d}.detail.json"
-            )
+            progress_file = self.progress_file_path()
+            os.makedirs(os.path.dirname(progress_file), exist_ok=True)
             self.progress_tracker.init_overall(progress_file, total)
         else:
             self.progress_tracker.set_total(total)
         return total
+
+    def progress_file_path(self):
+        progress_dir = os.path.join(
+            os.path.dirname(__file__), '..', '..', '..', 'logs', 'progress')
+        return os.path.join(
+            progress_dir,
+            f"{self.ts['y']}-{self.ts['m']:02d}-{self.ts['d']:02d}.detail.json"
+        )
+
+    def has_run_today(self):
+        """今天的 detail 是否已經跑過（progress 檔存在）。
+
+        用途：區分「batch 重啟時 queue 恰好耗盡」與「今天還沒生成過種子」——
+        兩者的 has_request() 都是 False，但前者重生成會把全台 open 房源
+        再排一輪（2026-08-26 全量實測踩到）。
+        """
+        return os.path.exists(self.progress_file_path())
 
     def is_batch_complete(self):
         """Check if the batch limit has been reached."""
@@ -271,6 +286,12 @@ class PersistQueue(object):
         # quick fix for concurrency issue
         mercy = 10
         while True:
+            # 這個 generator 每次 yield 都會懸掛，item pipeline 是非同步的，
+            # 所以觸頂前懸掛在迴圈中間的 wrapper 會在觸頂後恢復並繼續認領——
+            # 迴圈內也要檢查，僅靠迴圈前那次檢查擋不住（2026-08-26 batch 13 實測：
+            # 觸頂後仍多爬 2,559 筆，enqueue 全由懸掛中的補貨迴圈餵出）
+            if self.is_batch_complete():
+                break
             next_request = self.next_request()
             if next_request:
                 yield next_request
