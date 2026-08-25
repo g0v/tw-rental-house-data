@@ -1,0 +1,19 @@
+{
+  "scope": "全國",
+  "source": "2026-08-26 全台全量爬取（55,400 筆）× 202409 公開資料集縣市級驗證通過後產出",
+  "min_samples": 10000,
+  "tolerance": {"median": 1, "share": 0.10, "fill": 0.05},
+  "invariants": {
+    "n": 55400,
+    "median_floor": 4,
+    "median_total_floor": 7,
+    "share_電梯大樓": 0.546,
+    "share_公寓": 0.221,
+    "share_整層住家": 0.569,
+    "share_套房": 0.382,
+    "rooftop_rate": 0.022,
+    "fill_rough_coordinate": 0.993,
+    "fill_floor_ping": 1.0,
+    "fill_monthly_price": 1.0
+  }
+}
