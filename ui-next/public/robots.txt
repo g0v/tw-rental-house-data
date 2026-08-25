@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://rentalhouse.g0v.ddio.io/sitemap-index.xml
