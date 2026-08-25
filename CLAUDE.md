@@ -12,7 +12,7 @@ Language: project docs and comments are primarily in Traditional Chinese (zh-TW)
 
 | Package | Purpose | Stack |
 |---|---|---|
-| `scrapy-tw-rental-house/` | Core Scrapy spider package (published to PyPI as `scrapy-tw-rental-house`) | Python 3.10+, Poetry, Scrapy, Playwright, PaddleOCR |
+| `scrapy-tw-rental-house/` | Core Scrapy spider package (published to PyPI as `scrapy-tw-rental-house`) | Python 3.10+, Poetry, Scrapy (plain HTTP, no browser) |
 | `twrh-dataset/` | Full data pipeline: crawling, storage, export | Python 3.10+, Poetry, Django 5, PostgreSQL/GeoDjango |
 | `scrapy-twrh-example/` | Example spiders showing package usage (local path dep on the core package) | Python, Poetry |
 | `ui/` | Public website (rentalhouse.g0v.ddio.io) | Nuxt.js 2, Vue 2, Buefy |
@@ -23,8 +23,7 @@ Language: project docs and comments are primarily in Traditional Chinese (zh-TW)
 ### scrapy-tw-rental-house (core spider package)
 ```bash
 cd scrapy-tw-rental-house
-poetry install
-poetry run playwright install chromium
+poetry install --with dev
 ```
 
 ### twrh-dataset (main data pipeline)
@@ -33,11 +32,10 @@ Requires PostgreSQL 15+ with PostGIS and the GeoDjango system libs (GDAL/GEOS/PR
 ```bash
 cd twrh-dataset
 poetry install
-poetry run playwright install chromium
 
 # Config files are gitignored; create them locally
 cp crawler/settings.sample.py crawler/settings.py   # reads per-env overrides from .env
-cp .env.example .env                                # proxy / UA / token / perf knobs
+cp .env.example .env                                # proxy / UA / perf knobs
 vim django/backend/settings_local.py                # DATABASES, SENTRY_DSN, SLACK_WEBHOOK_URL
 
 poetry run python django/manage.py migrate
@@ -102,7 +100,7 @@ by running spiders against small real datasets.
 When a change touches `scrapy-tw-rental-house/`:
 
 1. Make changes in `scrapy-tw-rental-house/scrapy_twrh/`.
-2. Spot-check with the `twrh` CLI (plain HTTP, no DB / playwright / BROWSER_INIT_SCRIPT needed).
+2. Spot-check with the `twrh` CLI (plain HTTP, no DB needed).
    It is installed into the twrh-dataset venv by `./dev-core.sh` (see below):
    ```bash
    cd twrh-dataset
@@ -110,9 +108,12 @@ When a change touches `scrapy-tw-rental-house/`:
    poetry run twrh detail <house-id>               # fetch + parse one detail page
    poetry run twrh list 金門縣                      # fetch + parse one list page
    poetry run twrh survey 金門縣 --save-html        # full city sweep → completeness report
+   poetry run twrh harvest 花蓮縣                   # stratified fixture harvest + manifest
    ```
    `survey` reports list/detail success rates, property_type distribution, and per-field fill
-   rates — compare against the previous report to catch silent field loss. No DB writes.
+   rates — compare against the previous report to catch silent field loss. `harvest` samples
+   per parser branch (property/contact/price/floor strata) and saves fixture-candidate HTML with
+   a manifest; 花蓮縣 covers far more strata than 金門縣. No DB writes.
 3. To run the real pipeline against local core changes, link it in editable mode
    (revert with `poetry install --sync`):
    ```bash
@@ -128,8 +129,11 @@ When a change touches `scrapy-tw-rental-house/`:
    ```
 5. Review `scrapy.log` and console output for errors/warnings.
 
+The offline pytest suite runs on scrubbed fixtures under `scrapy-tw-rental-house/tests/fixtures/`
+(sockets blocked; see `tests/fixtures/README.md` for the prune/scrub strategy and known gaps).
 The trial project (`scrapy-tw-rental-house/trial/`, not in git) predates the CLI; its
-`detail-archive/` still holds 431 pre-2026 detail pages useful as old-format parse fixtures.
+`detail-archive/` holds 431 pre-2026 detail pages in the old template, which the current parser
+refuses (`LegacyTemplateError`) — parse those with a pre-2026 package release if ever needed.
 
 ### Publishing the core package
 
@@ -164,20 +168,20 @@ delete or replace it with a copy.
   `gen_*_request_args` methods. Callers can inject `start_list=`, `parse_list=`, `parse_detail=`
   into `__init__` to decorate default behaviour — this is how `twrh-dataset` and the examples
   customize crawling instead of subclassing parse logic.
-- `Rental591Spider = ListMixin + DetailMixin` (both on top of `RequestGenerator`). It forces the
-  scrapy-playwright download handlers and the asyncio reactor via `update_settings`.
+- `Rental591Spider = ListMixin + DetailMixin` (both on top of `RequestGenerator`). Its
+  `update_settings` pins the asyncio reactor (backward compatibility) and sets `USER_AGENT` to
+  `None` unless the project chose its own — 591 403s the scrapy default UA but serves UA-less
+  requests fine.
 - Two item types per house per stage: `GenericHouseItem` (normalized schema) and `RawHouseItem`
   (raw HTML + parsed dict). Both are supersets — always check field presence before use.
-- **List requests are plain HTTP; only detail requests run through Playwright** (`playwright: True`
-  in request meta, with `open_map` page method to reveal coordinates).
-- 591 obfuscates price / floor / area in the detail page as base64 images inside
-  `<wc-obfuscate-c-price|c-floor|c-area>` elements. `detail_raw_parser.parse_obfuscate_fields` runs
-  **PaddleOCR** on them (`ocr_utils.py`). This is field de-obfuscation, not CAPTCHA solving. OCR
-  results are cached on disk by image hash (`ocr_cache/`, sharded), controlled by
-  `OCR_CACHE_ENABLED` / `OCR_CACHE_DIR`.
-- `PlaywrightUtils.init_page` blocks images/CSS and `BROWSER_SKIP_DOMAINS`, and disk-caches JS
-  (`BROWSER_JS_CACHE_ENABLED`, `js_cache/`). `BROWSER_INIT_SCRIPT` must be set for 591 pages to
-  render — copy it from a real browser session.
+- **Both list and detail requests are plain HTTP** — 591 renders pages on the server since its
+  2026 redesign (no playwright, no browser, no init-script token). There is deliberately no
+  fallback for being blocked yet; the 2.5-2 measurement in `docs/dx-roadmap.md` decides its shape.
+- `detail_raw_parser.py` tracks **only the template 591 serves today** and is edited in place on
+  redesigns; parsers for past templates live in git history / released packages. A pre-2026 page
+  (detected via `LEGACY_MARKERS`, e.g. `wc-obfuscate-c-*`) is refused with `LegacyTemplateError`
+  instead of parsing empty. OCR was removed with the legacy parser (dx 4-5); the coordinate is
+  read from the nuxt init script (`positionRound`).
 - Other 591 fragility handled in `rental591/util.py`: `reorder_inline_flex_dom` un-shuffles
   CSS-`order`-scrambled digits, `SimpleNuxtInitParser` extracts values from the Nuxt init script
   by regex.

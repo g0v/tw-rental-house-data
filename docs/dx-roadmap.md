@@ -355,3 +355,17 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
     並確認該 token 失效。
   - 連帶待辦：自實作落地後關 #205；#211（dependabot 清倉）的 poetry.lock 需在新 parser 定案後
     rebase（其 opencv/paddle 修補將隨 OCR 拔除而無對象），ui 那半可先拆出來收。
+- **2026-08-25 實作進度**（branch `feat/pure-http-parser`，每項一 commit）：
+  - **2.5-1 完成**：純 HTTP 化（拔 playwright 與全部 `BROWSER_*`）+ detail parser 重寫為
+    **單一模組**（採 #210 的 selector 與 detail_mixin 修正；`misc_of` 讓 dict 層新舊 label
+    都認，raw 層舊版式以 `LEGACY_MARKERS` 偵測、丟 `LegacyTemplateError` 拒絕）。
+    #204 修復；金門縣 live 實測 detail_dict 與 GenericHouseItem 全欄位產出。
+  - **4-5 完成**：OCR 整組拔掉（ocr_utils、paddle 依賴、OCR_CACHE 設定、README 段落）。
+  - **1-3／1-4 完成**：115 個離線測試（擋 socket）、8 個剪枝+scrub fixture 入 git，
+    dispatch 測試改寫為 legacy 拒絕測試。
+  - **1-2 完成**：`twrh harvest` 分層取樣器——分層 = parser 實際分支（property／contact／
+    價格區間／floor 五格式），稀有 bucket 先選，0 樣本 bucket 顯性回報；輸出 fixture 候選
+    HTML + manifest（含填充率，即 1-5 baseline 的輸入）。花蓮縣實測：379 筆、11/12 bucket
+    有樣本（車位、B1、頂加、代理人都有——金門縣掃不到這些），選 10 筆全數 parse 成功。
+  - 註：1-5 花蓮縣 baseline 已可由本次 manifest 起算；正式 baseline 建議發版後以
+    `twrh harvest` 定期重跑。CLAUDE.md 同步更新（無 playwright／OCR、單一 parser 政策）。
