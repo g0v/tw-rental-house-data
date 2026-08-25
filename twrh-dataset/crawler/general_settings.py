@@ -50,8 +50,9 @@ ITEM_PIPELINES = {
 
 EXTENSIONS = {
     "crawler.extensions.sentry.SentryLogger": 10,
-    "crawler.extensions.breaker.ErrorRateBreaker": 20,
-    "crawler.extensions.fill_rate.FillRateMonitor": 30,
+    # 熔斷與填充率機制在 package 側（dx 2-1/2-2，2026-08-25 上移）；門檻值在下面
+    "scrapy_twrh.extensions.breaker.ErrorRateBreaker": 20,
+    "scrapy_twrh.extensions.fill_rate.FillRateMonitor": 30,
 }
 
 # 錯誤率熔斷（dx 2-1）：滑動視窗內樣本 >= MIN_SAMPLES 且失敗率 >= THRESHOLD 即關閉 spider
@@ -64,6 +65,8 @@ TWRH_BREAKER_MIN_SAMPLES = 20
 TWRH_FILL_RATE_ENABLED = True
 TWRH_FILL_RATE_DROP = 0.3
 TWRH_FILL_RATE_MIN_SAMPLES = 20
+TWRH_FILL_RATE_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), '..', '..', 'logs', 'fill-rates')
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See https://doc.scrapy.org/en/latest/topics/autothrottle.html

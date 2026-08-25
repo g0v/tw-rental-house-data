@@ -4,9 +4,16 @@
 失敗率 >= TWRH_BREAKER_THRESHOLD 時關閉 spider，避免 591 改版後
 繼續空轉幾千個 request。
 
-只設 CLOSESPIDER_ERRORCOUNT 沒有用 —— parser_wrapper 吃掉例外後
-scrapy 收不到 spider_error，所以這裡聽的是 crawler.signals 的自訂訊號
-（見 crawler/signals.py），native spider_error 也一併計入以防萬一。
+只設 CLOSESPIDER_ERRORCOUNT 沒有用 —— 營運端的 parser_wrapper 吃掉例外後
+scrapy 收不到 spider_error，所以這裡聽的是 scrapy_twrh.signals 的自訂訊號，
+由包住 parser 的那一層主動送；native spider_error 也一併計入，讓沒有自己
+包 parser 的 spider（例外自然逃出 callback）同樣受熔斷保護。
+
+啟用方式（scrapy settings）::
+
+    EXTENSIONS = {
+        'scrapy_twrh.extensions.breaker.ErrorRateBreaker': 20,
+    }
 '''
 import logging
 from collections import deque
@@ -14,7 +21,7 @@ from collections import deque
 from scrapy import signals as scrapy_signals
 from scrapy.exceptions import NotConfigured
 
-from crawler import signals as twrh_signals
+from scrapy_twrh import signals as twrh_signals
 
 logger = logging.getLogger(__name__)
 
