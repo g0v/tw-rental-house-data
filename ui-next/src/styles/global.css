@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 /*
  * 視覺方向：資料新聞編輯室 × 磁磚綠（docs/ui-roadmap.md 拍板）
