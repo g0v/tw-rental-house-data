@@ -10,8 +10,17 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
+import os
 from pathlib import Path
 import sentry_sdk
+
+# 與 crawler/settings 共用同一份 .env（repo 根目錄，gitignored）；
+# 真環境變數（AWS task definition / SSM 注入）優先於 .env 檔
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent.parent / '.env')
+except ImportError:
+    pass
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -130,7 +139,7 @@ STATIC_URL = 'static/'
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
 
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'  # 既有表全為 int4，勿讓 makemigrations 產生 bigint 遷移
 
 # To overwrite config, or define per-env conf, use backend.settings_local
 # Additional features:
@@ -139,6 +148,23 @@ try:
     from backend.settings_local import *
 except ImportError:
     print('backend.settings_local.py is not found, use default setting.')
+
+# 環境變數優先（AWS 部署：非機密放 task definition、機密由 SSM 注入；
+# 本機無這些變數時沿用 settings_local / 預設值）——dx aws-deployment-plan A1
+if os.environ.get('TWRH_DB_NAME'):
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.contrib.gis.db.backends.postgis',
+            'NAME': os.environ['TWRH_DB_NAME'],
+            'USER': os.environ.get('TWRH_DB_USER', 'postgres'),
+            'PASSWORD': os.environ.get('TWRH_DB_PASSWORD', ''),
+            'HOST': os.environ.get('TWRH_DB_HOST', '127.0.0.1'),
+            'PORT': os.environ.get('TWRH_DB_PORT', '5432'),
+        }
+    }
+SECRET_KEY = os.environ.get('TWRH_SECRET_KEY', SECRET_KEY)
+SENTRY_DSN = os.environ.get('SENTRY_DSN', SENTRY_DSN)
+SLACK_WEBHOOK_URL = os.environ.get('SLACK_WEBHOOK_URL', SLACK_WEBHOOK_URL)
 
 if SENTRY_DSN:
     sentry_sdk.init(
