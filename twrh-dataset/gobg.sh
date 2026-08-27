@@ -14,6 +14,8 @@ Options:
   -h, --help      Show this help message and exit
 
 Output is logged to ../logs/<timestamp>.go.log
+Also starts watchdog.sh alongside (heartbeat/progress/error monitoring,
+logs to ../logs/<timestamp>.watchdog; Slack on anomaly & finish).
 USAGE
     exit 0
 }
@@ -29,5 +31,15 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd $DIR
 mkdir -p ../logs
 
+TS=`date +'%Y.%m.%d.%H%M'`
+GO_LOG=../logs/$TS.go.log
+PID_FILE=../logs/$TS.go.pid
+
 # Pass through all arguments (--append, --start-early, --date, etc.)
-setsid ./go.sh "$@" >> ../logs/`date +'%Y.%m.%d.%H%M'`.go.log 2>&1 &
+# setsid 可能會 fork，$! 不可靠 —— 由子 shell 自己寫 pidfile 交給 watchdog
+setsid bash -c 'echo $$ > "$0"; exec ./go.sh "$@"' "$PID_FILE" "$@" >> $GO_LOG 2>&1 &
+
+# 隨行監控（.watchdog 不用 .log 結尾，避開 go.sh FINALIZE 的 gzip ../logs/*.log）
+setsid ./watchdog.sh --pid-file "$PID_FILE" --log "$GO_LOG" >> ../logs/$TS.watchdog 2>&1 &
+echo "pipeline log: $GO_LOG"
+echo "watchdog log: ../logs/$TS.watchdog"
