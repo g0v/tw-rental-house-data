@@ -1,0 +1,66 @@
+{
+  "_comment": "開發機遷移用 IAM user 的 policy（aws-deployment-plan 遷移節「權限模式」）。人工建 user 時貼上。刻意不含：RDS 停機/刪除、snapshot 刪除、S3 DeleteObject——破壞性操作永遠人工。<ACCOUNT>/<REGION>/<RAW-BUCKET> 依拍板結果代入。",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "RawOffloadUpload",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:ListBucket"],
+      "Resource": [
+        "arn:aws:s3:::<RAW-BUCKET>",
+        "arn:aws:s3:::<RAW-BUCKET>/raw/*"
+      ]
+    },
+    {
+      "Sid": "AnnualDumpRead",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:ListBucket"],
+      "Resource": [
+        "arn:aws:s3:::twrh",
+        "arn:aws:s3:::twrh/misc/annual-dump/*"
+      ]
+    },
+    {
+      "Sid": "WorkbenchRunTask",
+      "Effect": "Allow",
+      "Action": ["ecs:RunTask", "ecs:StopTask", "ecs:DescribeTasks", "ecs:ExecuteCommand"],
+      "Resource": "*",
+      "Condition": {
+        "ArnEquals": { "ecs:cluster": "arn:aws:ecs:<REGION>:<ACCOUNT>:cluster/twrh" }
+      }
+    },
+    {
+      "Sid": "WorkbenchPassRole",
+      "Effect": "Allow",
+      "Action": ["iam:PassRole"],
+      "Resource": [
+        "arn:aws:iam::<ACCOUNT>:role/twrh-execution",
+        "arn:aws:iam::<ACCOUNT>:role/twrh-crawler-task"
+      ]
+    },
+    {
+      "Sid": "WorkbenchSsmSession",
+      "Effect": "Allow",
+      "Action": [
+        "ssmmessages:CreateControlChannel",
+        "ssmmessages:CreateDataChannel",
+        "ssmmessages:OpenControlChannel",
+        "ssmmessages:OpenDataChannel",
+        "ssm:StartSession"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SsmParamRead",
+      "Effect": "Allow",
+      "Action": ["ssm:GetParameter", "ssm:GetParameters"],
+      "Resource": "arn:aws:ssm:<REGION>:<ACCOUNT>:parameter/twrh/*"
+    },
+    {
+      "Sid": "PricingLookup",
+      "Effect": "Allow",
+      "Action": ["pricing:GetProducts"],
+      "Resource": "*"
+    }
+  ]
+}

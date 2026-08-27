@@ -4,7 +4,8 @@ crawler/settings.py
 *.log
 *.csv
 rental_house.json
-devop
+devop/*
+!devop/aws/
 datas/*.zip
 js_cache
 ocr_cache
