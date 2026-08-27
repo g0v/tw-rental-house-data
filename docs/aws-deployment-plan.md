@@ -45,8 +45,8 @@ GitHub push ──▶ GitHub Actions build ──▶ ECR image
   例如 `["./go.sh"]`、`["./go.sh","--append"]`、未來 `["./go-<vendor>.sh"]`。
 - 改組合（平日增量、週末全量、加新平台）＝加／改一條 schedule，**不動 code、不動 image**。
 - EventBridge Scheduler 原生支援時區（`Asia/Taipei`），不用再算 UTC 偏移；也支援
-  one-off 排程（`at()`），補跑某天可用 `--date`（注意 `export` 不吃 `TWRH_TARGET_DATE`
-  的既有 caveat，dx-roadmap Backlog）。
+  one-off 排程（`at()`），補跑某天可用 `--date`（`export` 不吃 `TWRH_TARGET_DATE`
+  的舊 caveat 已於 2026-08-28 修掉——export 現在與 pipeline 其他環節同日期語意）。
 - go.sh 的 detail batch 重啟迴圈整段跑在同一個 task 裡，Fargate 對執行時長沒有上限
   （全台全量實測數小時內完成）。`gobg.sh` 的 setsid 背景化在容器裡不需要，直接跑 `go.sh`，
   stdout 就是 log。
@@ -72,6 +72,11 @@ GitHub push ──▶ GitHub Actions build ──▶ ECR image
 - **stdout → CloudWatch Logs**（awslogs driver），log group 設保留期（建議 90 天），
   超過自動清，不會無限長費用。breaker 的 `error_rate_exceeded` 之後可直接掛
   metric filter 告警（不在本期範圍）。
+- **watchdog 的雲上對應**（2026-08-28 補）：本機 `twrh-dataset/watchdog.sh` 的職責
+  在 Fargate 由 CloudWatch 接手，其中**零產出斷言必須保留**——「FINALIZE 但
+  progress 為零」的靜默失敗真實發生過（scrapy 2.18 不呼叫 start_requests，
+  pipeline 5 秒無錯誤地「正常」跑完），形態上 metric filter 告警或 statscheck
+  自我檢查皆可，A4 上線前落地。
 - **檔案類全部放 EFS**，掛進每個 task 的 `twrh-dataset` 工作目錄外層：
   - `../logs/`（go.sh 搬過去的 scrapy log、`logs/progress/<date>.detail.json`、fill-rates）
   - `datas/`（export 的月 zip——**publish 前的中繼檔**，紅燈月會在這裡停留到人工補完敘事）
@@ -171,7 +176,7 @@ GitHub push ──▶ GitHub Actions build ──▶ ECR image
 |---|---|---|---|
 | A1 | Dockerfile（crawler/publisher 兩 target）＋ settings 全面環境變數化 | 中 | 唯一動到 code 的一段；本機 docker run 對 local PostGIS 驗證 go.sh 全程 |
 | A2 | AWS 基礎建設：VPC public subnet、ECR、EFS、ECS cluster、task definitions、SSM 參數、IAM（task role 最小權限） | 中 | 建議用 Terraform 或 CDK 收在 `devop/aws/`，一次寫完可重建 |
-| A3 | **風控探測**：先用 workbench task 從 Fargate IP 跑 `twrh probe`／小城市 survey | 小 | 本機量測來自住宅 IP；**AWS 資料中心 IP 段是否被 591 差別對待未知**，這是整個計畫的前提假設，要先驗（見開放問題 2） |
+| A3 | **風控探測**：用 workbench task 從 Fargate IP 跑 `twrh probe`／小城市 survey，**大阪與 us-west-2 兩區各跑** | 小 | 本機量測來自住宅 IP；**AWS 資料中心 IP 段是否被 591 差別對待未知**，這是整個計畫的前提假設，要先驗（見開放問題 2）；兩區結果同時是 region 拍板依據（開放問題 1） |
 | A4 | EventBridge 排程上線：先單條「每日全量」，與本機手動跑並行驗證數日後切換 | 小 | 本機退役為備援 |
 | A5 | workbench.sh / Adminer service / publish wrapper | 小 | QoL 收尾 |
 | A6 | CI：GitHub Actions build & push ECR | 小 | 完成「push 即 deploy」閉環 |
@@ -218,6 +223,12 @@ GitHub push ──▶ GitHub Actions build ──▶ ECR image
   此值（新物件淨增量 < 每日爬量）；瘦身估算偏保守方向，不影響結論。
 - Cost Explorer 被 Organization 的 payer 帳號擋住，實際帳單需從主帳號看；
   上面費用為定價推算。
+- **實帳單比對（2026-08-28，以 2025-10 月帳單核對）**：定價推算與實帳相符
+  （RDS 單價、storage 單價均驗證）；帳單另揭露約四成為閒置資源費
+  （停機機器殘留的 EBS、閒置 IPv4、誤開的 DevOps Guru、超額備份——均已清理）。
+  結論校準：新方案（t4g.small、無 RI）名目費用與清理後現況相近，
+  內容從「養一台快滿的 DB」變成「每日例行爬蟲＋瘦身後有成長空間」；
+  RI 或 micro 撐得住則再省二至四成。
 
 ### 三個節省槓桿（依大小排序）
 
@@ -231,14 +242,17 @@ Raw 的唯一用途是事後 re-parse（`tools/rerun_detail_raw.py`，修 parser
   （或新 command）為「**raw offload**」：把超過保留窗口（建議 90 天）的
   `detail_raw`/`list_raw` 批次打包上 S3 後清空欄位（`detail_dict` 留在 DB，查詢有用）。
   排程每月跑一次（又一條 EventBridge schedule）。DB 內 raw 穩態維持 ~15 GB 滾動窗口，
-  近期資料的 rerun 工具照常可用。
+  近期資料的 rerun 工具照常可用。house_etc 加一個 `raw_archived_at`（或 S3 key）
+  標記欄位，讓 rerun 工具對已剝列明確報「需從 S3 撈」而非靜默拿到 NULL——
+  唯一的 schema 微調，不動寫入路徑。
 - 打包格式：`s3://<bucket>/raw/<vendor>/<YYYY-MM>.tar.zst`＋同名 index json
   （house_id → offset）。按月打包而非逐檔上傳：逐檔 63 KB 會踩 Glacier IR 的
   128 KB 最低計費與 53 萬次 PUT 請求費；打包則一個月一個物件。要讀時 workbench 拉包解開。
 - Storage class：Glacier Instant Retrieval（US$0.004/GB/月，可即時讀）。
   「基本上不會用到」的存取模式正是它的設計目標。
-- 案 B（pipeline 直寫 S3、DB 完全不存 raw）改動大（寫入路徑多外部依賴、
-  rerun/invalidate 全要改讀 S3），**列 Backlog**，等案 A 跑順再議。
+- 案 B（pipeline 直寫 S3、DB 完全不存 raw）改動大（寫入路徑多外部依賴、失敗語意
+  要重新設計、rerun/invalidate 全要改讀 S3、本地開發環境失去零雲相依），
+  **列 Backlog**，等案 A 跑順且真有痛點再議（2026-08-28 重新確認維持案 A）。
 
 **2. HouseTS 滾動窗口（成長率槓桿）**
 
@@ -296,19 +310,23 @@ Raw 的唯一用途是事後 re-parse（`tools/rerun_detail_raw.py`，修 parser
    組成（house_ts 幾年份？house_etc 還有多少 raw？）、歷年 archivehistory tar 的下落
 1. 小表一次搬：vendor / sub_region / rental_author / crawlerrequest_stats
    （pg_dump 直灌，數十 MB，分鐘級）
-2. house / house_ts：\copy 依 id range 分批（devop.md 既有的 500k 列/批 pattern），
-   每批完成寫 state marker，斷點續跑——與 persist queue 同哲學
-3. house_etc（本機這份，2025-10 起）：「剝離式搬運」——
-   依 house_id range 分批：讀一批 → detail_raw/list_raw 打包上 S3（沿用常態
-   offload 的格式與 bucket）→ 只把 raw 以外欄位 INSERT 進新 DB → 寫 marker
-   （36 GB raw 只過境、不進新 DB）
-4. 歷史段（2018–2026-04）：detail_dict 已有現成 dump（s3://twrh/misc/annual-dump/，
-   11.5 GB jsonl.gz）——直接從 S3 灌新 DB 即可，不用再過舊 RDS；
-   house / house_ts 歷史列仍以舊 RDS 為源走步驟 2 的腳本。
-   **歷史 raw 全在舊 RDS（85 GB 的主要成分）**：按步驟 3 同法從舊 RDS 分批讀出、
-   打包上 S3 後不進新 DB——在 workbench task 上跑（AWS 內網，不出公網），
-   這是歷史段最大的一段工作量
-5. 驗證：各表 row count 對帳、抽樣比對、export dry-run 產出與既有公開 zip 對比
+2. **歷史段先跑**（舊 RDS 2018–2026-04，在 workbench task 上跑、AWS 內網）：
+   house / house_ts 依 id range 分批 \copy（devop.md 既有的 500k 列/批 pattern），
+   每批完成寫 state marker，斷點續跑——與 persist queue 同哲學；
+   house_etc 走「剝離式搬運」——**單趟讀全欄位**：detail_raw/list_raw 打包上 S3
+   （沿用常態 offload 的格式與 bucket）、其餘欄位（含 detail_dict）進新 DB、寫 marker
+   （歷史 raw 是舊 RDS 85 GB 的主要成分，只過境、不進新 DB；這是歷史段最大工作量）。
+   annual-dump（s3://twrh/misc/annual-dump/）**降級為對帳基準＋備援**（2026-08-28）：
+   它是 2026-04-29 的獨立快照，用於步驟 5 抽樣比對 detail_dict，以及舊 RDS
+   大掃描出狀況（t4g.micro 1 GB RAM、burstable credits）時的第二來源——
+   不再是資料主線，因為歷史段反正逐列過舊 RDS，同趟帶走 detail_dict 成本為零、
+   且欄位比 dump（僅 6 欄）完整
+3. **本機段後跑**（2025-10 起，在開發機跑）：同一套剝離腳本對 local PostGIS——
+   raw 打包上 S3（~36 GB，家用頻寬分晚跑）、其餘 \copy/upsert 進新 RDS（~5 GB）；
+   後跑讓重疊段的本機新值自然蓋過歷史舊值（見開放問題 8 的 upsert guard）
+4. 所有 insert 一律帶 `updated` 時間戳 upsert guard（開放問題 8），批次重跑冪等
+5. 驗證：各表 row count 對帳、抽樣比對（含 annual-dump 交叉驗證）、
+   export dry-run 產出與既有公開 zip 對比
 6. 切換：爬蟲排程指向新 DB（改一個 SSM 參數）；舊 instance 停機留 snapshot 一個月後刪
 ```
 
@@ -316,20 +334,28 @@ Raw 的唯一用途是事後 re-parse（`tools/rerun_detail_raw.py`，修 parser
 最後的增量補批（搬運期間新寫入的部分）選在當日 pipeline 結束後做，再切換。
 
 風險備註：
-- 步驟 3/4 的批次腳本先在小 range 上演練（如 house_id 前 1 萬筆），驗 S3 包可解、
-  index 可查、新 DB 列數正確，再放量。
-- 現行資料（2025-10 起這份）若走「上傳到新 RDS」路線，出境流量是 ~5 GB dump＋
-  36 GB raw 上 S3——家用頻寬跑得動，分批分晚跑即可。
+- **本機全套彩排（零 AWS 相依，最先做）**：local PostGIS 開空 DB `twrh_new` 扮演
+  新 RDS、本機目錄扮演 S3，對真資料跑完整剝離流程——小 range（前 1 萬筆）驗
+  S3 包可解、index 可查、列數對帳、中斷續跑、蓋寫語意（先舊值後新值看誰活下來），
+  再放量跑完 54 GB 取得真實 throughput（GB/hr），據此排歷史段 85 GB 的分晚計畫
+  與對舊 RDS 的讀取壓力預算。
+- 現行資料（2025-10 起這份）出境流量 ~5 GB dump＋36 GB raw 上 S3——
+  家用頻寬跑得動，分批分晚跑即可。
+- **權限模式**：遷移用 IAM user/role 以最小 scope 開（新 RDS 連線、指定 S3
+  prefix 讀寫、ECS run-task/exec、SSM 讀），設為開發機 named profile；
+  舊 RDS 另開 DB 層 read-only user。**舊 instance 停機／刪除／snapshot 清理
+  不在 policy 內，永遠人工執行**——破壞性操作做到結構上不可誤觸。
 
 ---
 
 ## 開放問題
 
-1. **Region 對齊**：✅ 已查明——現行 RDS 在 **us-west-1**、公開 zip bucket 在
-   ap-northeast-3（另有空 bucket `twrh-w1` 在 us-west-1 可作 raw offload 落點）。
-   新資源建在 us-west-1 與 RDS 同區；跨區上傳公開 zip 量小無妨。既然要開新 RDS，
-   「順勢遷往大阪/東京（離爬蟲目標與公開 bucket 近）」成為真實選項——但牽動
-   延遲量測與所有資源選區，需在 A2 動工前拍板。
+1. **Region**（2026-08-28 收斂為兩案，A3 拍板）：**大阪（ap-northeast-3）vs
+   us-west-2（Oregon）**。大阪買「離爬蟲目標／公開 bucket／操作者近」，us-west-2
+   是最低價梯隊（RDS/Fargate 約便宜兩成餘，且離舊 RDS 近、歷史段搬運快）。
+   拍板依據：(a) A2 前用 pricing API 拉現價出正式對比（目前差價為記憶中列表價）；
+   (b) **A3 風控探測在兩區各跑一次 probe**——若 591 對美日 IP 段差別待遇，
+   風控結果直接否決費用選擇。舊案「留在 us-west-1」僅在兩案皆被擋時回退。
 2. **Fargate 出口 IP 的風控風險**：每次 task 的 public IP 都不同（好事），但都落在
    AWS 已公開的 IP 段。若 A3 探測發現被擋，備案是掛 proxy（舊正式機模式，`settings.py`
    已支援 rotating proxy middleware）——屆時費用另計，且正好餵 dx-roadmap 2.5-3
@@ -346,16 +372,27 @@ Raw 的唯一用途是事後 re-parse（`tools/rerun_detail_raw.py`，修 parser
    等 workbench task（A5）從 VPC 內網查。2026-08-26 曾嘗試公網連線：
    Public=Yes＋SG 放行皆就緒仍 timeout，subnet 疑為 private（route table 無 igw
    路由，唯讀權限無法確認）——反正不開了，此線索留給未來除錯參考。
-7. **raw 保留窗口長度**：常態 offload 與 HouseTS 歸檔都建議 90 天，但 invalidate
-   與 rerun 工具實際回看深度需要確認；窗口改小隨時可以，改大要從 S3 撈，寧可先保守。
-8. **現行這份 DB 的上雲路線**：本機涵蓋 2025-10-24 起（自舊 RDS dump 接續），與舊 RDS
-   （至 2026-04 停機）重疊約半年——重疊段以哪邊為準需比對後拍板；2026-08 接手後的
-   新資料只在本機，必上傳。
+7. **raw 保留窗口長度**：✅ 90 天定案（2026-08-28 查證）——(a) `invalidate` 走
+   HouseTS 欄位穩定性、完全不讀 raw，日期範圍由操作者指定；(b) rerun 工具只能
+   re-parse **現行 template**（舊版直接 `LegacyTemplateError`），實務回看深度＝
+   parser bug 的發現延遲，遠短於 90 天；(c) 既有 archivehistory 預設 60 天已是
+   驗證過的安全線。窗口改小隨時可以，改大要從 S3 撈包。
+8. **現行這份 DB 的上雲路線**：✅ 已拍板（2026-08-28）——**重疊段以本機為準**
+   （本機這份本來就是舊 RDS dump 的較新延續）。實作：遷移順序固定「先歷史段、
+   後本機段」讓新資料自然蓋舊，並以 `ON CONFLICT … DO UPDATE … WHERE
+   excluded.updated > existing.updated` 的 upsert guard 作第二層保證——
+   正確性由資料時間戳決定，不依賴執行順序，任何批次重跑皆冪等。
 
 ---
 
 ## 編修紀錄
 
+- **2026-08-28** 實帳單比對校準費用結論（閒置資源已清理）；region 收斂為
+  大阪 vs us-west-2 兩案、A3 兩區探測兼拍板；拍板重疊段以本機為準
+  （先歷史段後本機段＋updated upsert guard，開放問題 8 結案）；annual-dump
+  降級為對帳基準＋備援（歷史段改單趟讀舊 RDS 全欄位）；維持案 A 並補
+  `raw_archived_at` 標記欄位；新增本機全套彩排計畫、遷移權限模式
+  （最小 scope profile、破壞性操作永遠人工）、watchdog 零產出斷言的雲上對應。
 - **2026-08-26（四補）** 補〈Fargate task 開多大〉（1 vCPU/2GB ARM64 起手＋量測計畫）
   與 RDS 寫入速率警語（本機數倍速塞完 vs 舊機長時攤平，gp3 IOPS 是關鍵）；
   排定 2026-08-27 00:10 全量（systemd-run 一次性 timer）附資源量測。

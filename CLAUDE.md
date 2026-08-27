@@ -61,6 +61,7 @@ poetry run python django/manage.py export -p           # periodic export (month-
 poetry run python django/manage.py export --help       # manual export: -f/-t dates, -u, -j, -b6
 poetry run python django/manage.py invalidate          # flag suspicious/unstable listing data
 poetry run python django/manage.py archivehistory      # archive old HouseTS/HouseEtc to tar
+poetry run python django/manage.py rawoffload <dir>    # pack raw HTML beyond 90d out of DB (dry-run unless --commit)
 poetry run python django/manage.py deduprequest        # drop duplicate rows in request_ts
 ```
 
@@ -215,7 +216,7 @@ date-keyed:
 midnight doesn't split across two date buckets. It is read by `rental.models` (the `current_*`
 time-series defaults), `crawler/utils.now_tuple`, `persist_queue`, `syncstateful`, and `statscheck`.
 Set it manually (or use `go.sh --date`) when re-running part of a pipeline for a past day.
-Caveat: `export` does **not** honour it — it always uses the real current date.
+`export` honours it too (fixed 2026-08-28; it used to always take the real current date).
 
 ### Django models (twrh-dataset)
 - `House` — current state of each listing, unique on (vendor, vendor_house_id).
@@ -241,8 +242,11 @@ Caveat: `export` does **not** honour it — it always uses the real current date
   local file. `detail591` disables the rotating-proxy middleware via `custom_settings`.
 
 ## Git Workflow
-- Never run `git add` automatically. Let the user decide what to stage.
-- When committing, if nothing is staged, warn the user instead of proceeding.
+- Commit per task, autonomously: when a task (e.g. a roadmap item) is done, commit it right
+  away with path-scoped `git add <files of that task>` — don't accumulate multi-task diffs
+  or wait for confirmation (standing authorization, 2026-08-28).
+- Never sweep in unrelated or user-owned untracked files (e.g. `cheatsheet.md`,
+  `twrh-dataset/tw-rental-data/`); stage explicitly, never `git add -A`.
 
 ## CI/CD
 - `.github/workflows/ui-deploy.yml` builds `ui/` with `npm run generate` and deploys `ui/dist` to
