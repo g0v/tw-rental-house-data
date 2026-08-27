@@ -76,7 +76,9 @@ abort_if_breaker_tripped ../logs/$now.list.log
 
 echo '===== DETAIL ====='
 DETAIL_BATCH=1
-DETAIL_BATCH_SIZE=2000
+# 2000 是 playwright/OCR 時代的 memory-leak 保險；兩者已移除（dx 4-5），
+# 可用環境變數放大實測（見 docs/aws-deployment-plan.md 的 sizing 量測）
+DETAIL_BATCH_SIZE=${DETAIL_BATCH_SIZE:-2000}
 while true; do
     echo "--- detail batch $DETAIL_BATCH ---"
     poetry run scrapy crawl detail591 -L INFO $APPEND_FLAG $START_EARLY_FLAG -a batch_size=$DETAIL_BATCH_SIZE

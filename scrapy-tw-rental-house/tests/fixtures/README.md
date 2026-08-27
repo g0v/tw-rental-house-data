@@ -24,6 +24,7 @@ today, past templates live in git history and released packages.
 | `20260820-detail-room-plain-balcony.html` | 雅房 / 陽台沒有標數量 / 可申請租金補貼 |
 | `20260820-detail-parking.html` | 車位，沒有房屋詳情與租住設備區塊 |
 | `20260820-detail-not-found.html` | 591 對已下架房源回的 404 頁 |
+| `20260827-list-beyond-last-page.html` | 591 的空結果列表頁（`.empty`）——爬取途中頁數縮減後，越界尾頁拿到的回應（HTTP 200） |
 
 ## How they were made
 
