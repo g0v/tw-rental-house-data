@@ -1,0 +1,20 @@
+# 白名單式：build context 只進 twrh-dataset 與 csv-aggregator
+*
+!twrh-dataset/
+!csv-aggregator/
+
+# 再剔除 twrh-dataset 內的本機產物與機密
+twrh-dataset/.venv/
+twrh-dataset/.env
+twrh-dataset/crawler/settings.py
+twrh-dataset/django/backend/settings_local.py
+twrh-dataset/datas/
+twrh-dataset/logs/
+twrh-dataset/tw-rental-data/
+twrh-dataset/**/__pycache__/
+twrh-dataset/scrapy.log
+
+# csv-aggregator 只要腳本，不要歷史資料 zip
+csv-aggregator/*.zip
+csv-aggregator/*.csv
+csv-aggregator/output/
