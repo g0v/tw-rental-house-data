@@ -184,6 +184,9 @@ class HouseEtc(BaseModel):
     list_raw = models.TextField(null=True)
     detail_raw = models.TextField(null=True)
     could_be_rooftop = models.BooleanField(null=True)
+    # raw 已由 rawoffload 剝離出 DB 的時間（S3/本機包裡找得到）；
+    # NULL＋raw 有值 = 尚未歸檔，NULL＋raw 為 NULL = 遷移期歷史列（見 aws-deployment-plan）
+    raw_archived_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'house_etc'
