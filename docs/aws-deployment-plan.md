@@ -119,14 +119,15 @@ GitHub push ──▶ GitHub Actions build ──▶ ECR image
 - Fargate 的 vCPU 是足額配給（不是 burstable），1 vCPU 持續輸出對單 spider 綽綽有餘。
 - 費用敏感度低：數小時/日之下，0.5→1→2 vCPU 每檔差距僅 ~US$2/月——**拿不準就開大一級**，
   不值得為此冒 OOM 風險。
-- **實測校正（2026-08-27 全量附帶量測）**：`logs/monitor-resources.sh` 以 60s 取樣
-  scrapy 行程 CPU%/RSS 與本機 postgres container 用量。若 scrapy RSS 峰值 <1.5 GB
-  則維持 2 GB 定案；量測結果回填本節。
-- **batch_size 同場驗證**：`batch_size=2000` 重啟是 playwright/OCR 時代的
-  memory-leak 保險，源頭已移除（dx 4-5）——本次以 **10000** 試跑
-  （go.sh 已改為可用 `DETAIL_BATCH_SIZE` 環境變數覆寫），從 RSS 時間序列
-  看批內是否仍隨筆數爬升。若平坦，未來可再放大甚至取消重啟迴圈，
-  restart 開銷與 progress 記帳都跟著簡化。
+- **實測結果（2026-08-27 全量，60s 取樣）**：scrapy RSS 峰值 ~240 MB（list 段），
+  detail 段穩定 ~165–190 MB；CPU 峰值約半顆核心。**1 vCPU / 2 GB 定案**，
+  餘裕充足（本次跑在行動網路、速率偏低，CPU 按全速放大一倍仍 <1 vCPU）。
+  本機 postgres 峰值 ~1.1 核、記憶體 ~175 MiB——支持 RDS t4g.small 起跳的判斷。
+- **batch_size 驗證結果**：以 **10000** 實跑全量（8 個 batch），批內與跨批 RSS
+  **全程平坦無爬升**——playwright/OCR 移除後 memory leak 確認消失，
+  `batch_size=2000` 的保險可正式放大；未來可考慮直接取消重啟迴圈，
+  restart 開銷與 progress 記帳跟著簡化。go.sh 已支援 `DETAIL_BATCH_SIZE`
+  環境變數覆寫。
 
 刻意避開的費用陷阱：
 - **不開 NAT Gateway**（固定 ~US$32/月＋流量）：task 放 public subnet 直接拿 public IP 出網。
