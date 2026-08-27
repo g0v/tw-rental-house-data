@@ -18,7 +18,14 @@ class RentalSpider(ABC, scrapy.Spider):
         self.parse_list = parse_list if parse_list else self.default_parse_list
         self.parse_detail = parse_detail if parse_detail else self.default_parse_detail
 
+    async def start(self):
+        # scrapy 2.13+ 以 async start() 供給起始請求，2.18 起不再 fallback 到
+        # deprecated 的 start_requests()——沒有這個方法時 spider 會零請求靜默收單
+        for item in self.start_requests():
+            yield item
+
     def start_requests(self):
+        # scrapy < 2.13 只認得這個入口，保留以維持相容
         for item in self.start_list():
             yield item
 
