@@ -1,6 +1,6 @@
 import argparse
 import shutil
-from os import path, mkdir, remove, listdir
+from os import path, mkdir, remove, listdir, environ
 from zipfile import ZipFile, ZIP_DEFLATED
 from tempfile import mkdtemp
 from datetime import datetime, date, timedelta
@@ -112,6 +112,18 @@ class Command(BaseCommand):
             help='use T/F to express boolean value in csv, instead of 1/0'
         )
 
+    def target_now(self):
+        """今天零點，吃 go.sh 的 TWRH_TARGET_DATE 日期釘選。
+
+        export 過去不吃它是既有 caveat（dx-roadmap backlog）——補跑過去日期的
+        pipeline 時，export 會落在真實當天而非目標日。補上後與
+        rental.models / persist_queue / statscheck 的日期語意一致。
+        """
+        override = environ.get('TWRH_TARGET_DATE')
+        if override:
+            return timezone.make_aware(datetime.strptime(override, '%Y-%m-%d'))
+        return timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+
     def handle_manual(self, **options):
         need_uniq = options['unique'] is not False
         print_enum = options['enum'] is not False
@@ -123,10 +135,10 @@ class Command(BaseCommand):
         all_in_one = options['both'] is not False
 
         if from_date is None:
-            from_date = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            from_date = self.target_now()
 
         if to_date is None:
-            to_date = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            to_date = self.target_now()
 
         if from_date > to_date:
             from_date, to_date = to_date, from_date
@@ -152,7 +164,7 @@ class Command(BaseCommand):
           )
 
     def is_end_of_sth(self):
-        today = timezone.localdate()
+        today = self.target_now().date()
         tomorrow = today + timedelta(days=1)
 
         is_end_of_month = today.month != tomorrow.month
@@ -228,7 +240,7 @@ class Command(BaseCommand):
         # shutil.rmtree(tmp_dir)
 
     def handle_periodic(self):
-        today = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+        today = self.target_now()
 
         end_of_sth = self.is_end_of_sth()
 
