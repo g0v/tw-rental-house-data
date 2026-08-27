@@ -221,3 +221,21 @@ class Command(BaseCommand):
                 if n_fail_total:
                     slack_msg += f"\n• 失敗（低於 {fail_ratio_threshold:.0%} 門檻）: `{n_fail_total}`"
                 self.send_slack_notification(slack_msg, is_error=False)
+
+        # 零產出斷言：整天沒有任何爬取活動時，上面的迴圈完全不會執行，
+        # 「什麼都沒發生」就這樣安靜通過——實案：scrapy 2.18 不再呼叫
+        # start_requests()，pipeline 5 秒無錯誤地跑完 FINALIZE（2026-08-28）。
+        # 這裡是 watchdog 零產出斷言的 statscheck 對應，Fargate 上也適用。
+        total_activity = sum(
+            s.n_crawled + s.n_fail + s.n_list_fail for s in self.stats.values())
+        if total_activity == 0:
+            date_str = f'{self.this_ts["year"]}/{self.this_ts["month"]}/{self.this_ts["day"]}'
+            error_msg = (f'{date_str}: no crawl activity at all '
+                         '(0 requests, 0 snapshots) — suspected silent failure')
+            print(error_msg)
+            sentry_sdk.capture_message(error_msg)
+            self.send_slack_notification(
+                '*零產出* 🚨\n今天沒有任何爬取活動（0 請求、0 快照）'
+                '——疑似靜默失敗，請查 pipeline log',
+                is_error=True)
+            raise SystemExit(1)
