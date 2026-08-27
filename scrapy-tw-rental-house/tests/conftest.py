@@ -12,7 +12,7 @@ import pytest
 from scrapy.http import HtmlResponse
 
 from scrapy_twrh.spiders.rental591 import Rental591Spider
-from scrapy_twrh.spiders.rental591.util import DetailRequestMeta
+from scrapy_twrh.spiders.rental591.util import DetailRequestMeta, ListRequestMeta
 
 FIXTURE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures')
 
@@ -46,6 +46,26 @@ def no_network(monkeypatch):
 @pytest.fixture
 def spider():
     return Rental591Spider()
+
+
+@pytest.fixture
+def list_response(spider):
+    '''the response parse_list would get for a fixture'''
+    def gen_response(fixture=None, status=200, city_id='17', city='高雄市',
+                     page=0, body=None):
+        request = spider.gen_list_request(ListRequestMeta(city_id, city, page))
+
+        if body is None:
+            body = load_fixture(fixture)
+
+        return HtmlResponse(
+            url=request.url,
+            request=request,
+            status=status,
+            body=body.encode('utf-8')
+        )
+
+    return gen_response
 
 
 @pytest.fixture

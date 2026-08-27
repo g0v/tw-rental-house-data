@@ -6,6 +6,15 @@ from scrapy_twrh.spiders.util import clean_number
 from .util import ListRequestMeta, DetailRequestMeta, css, parse_price
 from .request_generator import RequestGenerator
 
+class UnknownListLayoutError(ValueError):
+    '''A list page with no paging, no items, and no empty-result marker.
+
+    Raised instead of guessing, so the page counts as a parse failure —
+    the persist queue keeps the request as a leftover and the error rate
+    breaker sees it. Only positively recognized pages complete silently.
+    '''
+
+
 class ListMixin(RequestGenerator):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -25,12 +34,28 @@ class ListMixin(RequestGenerator):
         meta = response.meta['rental']
 
         page_items = css(response, '.paging li a::attr("href")')
-        page_string = page_items[-1]
-        page_match = re.search(r'page=(\d+)', page_string)
-        if page_match:
-            total_page = int(page_match.group(1))
+        if page_items:
+            page_match = re.search(r'page=(\d+)', page_items[-1])
+            if page_match:
+                total_page = int(page_match.group(1))
+            else:
+                total_page = 1  # Default if no page number found
+        elif response.css('.empty'):
+            # 591's empty-result page ("很抱歉，暫時沒有為您找到合適的物件").
+            # Happens when the page count shrank while the crawl was running,
+            # so a tail page generated at page 0 is now beyond the last page.
+            # Expected during any long crawl — finish normally with 0 items.
+            logging.info(
+                '[list] crawl city:%s page %d is beyond the last page, done',
+                meta.name, meta.page)
+            return
+        elif response.css('.item'):
+            # a city small enough to fit one page has no paging element
+            total_page = 1
         else:
-            total_page = 1  # Default if no page number found
+            raise UnknownListLayoutError(
+                'list page of {} page {} has no paging, no items and no '
+                'empty-result marker'.format(meta.name, meta.page))
 
         logging.info('[list] crawl city:%s of %d/%d pages', meta.name, meta.page, total_page)
 
