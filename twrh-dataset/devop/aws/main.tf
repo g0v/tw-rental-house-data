@@ -121,8 +121,11 @@ locals {
     { name = "TWRH_DB_NAME", value = var.db_name },
     { name = "TWRH_DB_USER", value = var.db_user },
     { name = "TWRH_DB_HOST", value = local.effective_db_host },
-    # 效能參數沿用 L2 實測值（.env.example）；ROBOTSTXT 維持禮貌預設
-    { name = "TWRH_AUTOTHROTTLE", value = "0" },
+    # container 預設 UTC，TWRH_TARGET_DATE 會算錯天（2026-08-29 本機實踩）
+    { name = "TZ", value = "Asia/Taipei" },
+    # 禮貌/效能參數 per-env 設定（terraform.tfvars，不入版控）；repo 內預設不變
+    { name = "TWRH_ROBOTSTXT_OBEY", value = var.robotstxt_obey },
+    { name = "TWRH_AUTOTHROTTLE", value = var.autothrottle },
     { name = "TWRH_DOWNLOAD_DELAY", value = "0" },
     { name = "TWRH_CONCURRENT_REQUESTS", value = "16" },
     { name = "DETAIL_BATCH_SIZE", value = "10000" },

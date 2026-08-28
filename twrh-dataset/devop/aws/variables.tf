@@ -70,3 +70,15 @@ variable "db_user" {
   type    = string
   default = "twrh"
 }
+
+variable "robotstxt_obey" {
+  description = "TWRH_ROBOTSTXT_OBEY（per-env 於 terraform.tfvars 設定）"
+  type        = string
+  default     = "1"
+}
+
+variable "autothrottle" {
+  description = "TWRH_AUTOTHROTTLE（per-env 於 terraform.tfvars 設定）"
+  type        = string
+  default     = "1"
+}
