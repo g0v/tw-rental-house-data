@@ -334,11 +334,12 @@ Raw 的唯一用途是事後 re-parse（`tools/rerun_detail_raw.py`，修 parser
 最後的增量補批（搬運期間新寫入的部分）選在當日 pipeline 結束後做，再切換。
 
 風險備註：
-- **本機全套彩排（零 AWS 相依，最先做）**：local PostGIS 開空 DB `twrh_new` 扮演
-  新 RDS、本機目錄扮演 S3，對真資料跑完整剝離流程——小 range（前 1 萬筆）驗
-  S3 包可解、index 可查、列數對帳、中斷續跑、蓋寫語意（先舊值後新值看誰活下來），
-  再放量跑完 54 GB 取得真實 throughput（GB/hr），據此排歷史段 85 GB 的分晚計畫
-  與對舊 RDS 的讀取壓力預算。
+- **本機全套彩排（零 AWS 相依，最先做）**：✅ 已完成（2026-08-28，`tools/migrate/`）
+  ——local PostGIS 空 DB `twrh_new` 扮新 RDS、本機目錄扮 S3，本機全量 60.6 萬列
+  跑完：全表對帳一致、抽樣比對通過、中斷續跑與 upsert guard 語意實測正確。
+  兩個關鍵實測：**zstd 打包壓縮比 ~24×**（本機 114 GB 未壓 raw → 4.85 GB 包，
+  Glacier IR 上的歷史全量會遠小於原估）；全程約 1.5 小時、滾動刪包下磁碟峰值
+  僅個位數 GB——歷史段 85 GB（TOAST）可在 workbench 一至兩個工作階段內完成。
 - 現行資料（2025-10 起這份）出境流量 ~5 GB dump＋36 GB raw 上 S3——
   家用頻寬跑得動，分批分晚跑即可。
 - **權限模式**：遷移用 IAM user/role 以最小 scope 開（新 RDS 連線、指定 S3
