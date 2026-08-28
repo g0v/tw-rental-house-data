@@ -32,6 +32,17 @@ resource "aws_iam_role_policy" "crawler_raw_upload" {
         Action   = ["s3:ListBucket"]
         Resource = [aws_s3_bucket.raw.arn]
       },
+      # M2 fallback：annual-dump 由 workbench 直載（本機跑受限家用上行頻寬）
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = ["arn:aws:s3:::twrh/misc/annual-dump/*"]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = ["arn:aws:s3:::twrh"]
+      },
     ]
   })
 }
