@@ -361,12 +361,13 @@ Raw 的唯一用途是事後 re-parse（`tools/rerun_detail_raw.py`，修 parser
 
 ## 開放問題
 
-1. **Region**（2026-08-28 收斂為兩案，A3 拍板）：**大阪（ap-northeast-3）vs
-   us-west-2（Oregon）**。大阪買「離爬蟲目標／公開 bucket／操作者近」，us-west-2
-   是最低價梯隊（RDS/Fargate 約便宜兩成餘，且離舊 RDS 近、歷史段搬運快）。
-   拍板依據：(a) ✅ pricing API 現價對比已完成（2026-08-28，見下表）；
-   (b) **A3 風控探測在兩區各跑一次 probe**——若 591 對美日 IP 段差別待遇，
-   風控結果直接否決費用選擇。舊案「留在 us-west-1」僅在兩案皆被擋時回退。
+1. **Region**：✅ **拍板 us-west-2（Oregon）**（2026-08-28，A3 完成）。
+   拍板依據：(a) pricing API 現價對比（見下表）——Oregon 全面便宜；
+   (b) A3 風控探測兩區各跑一次 `twrh probe 花蓮縣`（Fargate task、無 proxy）
+   ——**兩區全 PASS**（list 量、detail 200 率、parse 率、舊版式哨兵、填充率
+   全過），591 未對 AWS 美日 IP 段差別待遇，風控無否決 → 按費用選 Oregon。
+   樣本量小（20 筆 detail／單次），A4 與本機並行期是持續驗證；若正式期被擋，
+   備案仍是掛 proxy（見開放問題 2）。
 
    **現價對比（2026-08-28，pricing API，on-demand）**：
 
@@ -384,11 +385,13 @@ Raw 的唯一用途是事後 re-parse（`tools/rerun_detail_raw.py`，修 parser
    raw 歷史全量 ~10 GB Glacier IR）：大阪 ~US$50、Oregon ~US$34——
    **大阪貴約 47%（差 ~US$16/月）**；降到 t4g.micro 則為 ~US$31 vs ~US$22。
    記憶中的「便宜兩成餘」低估了 instance 部分（實為近四成）。
-   費用面 Oregon 明確勝出，等 A3 風控結果定案。
-2. **Fargate 出口 IP 的風控風險**：每次 task 的 public IP 都不同（好事），但都落在
-   AWS 已公開的 IP 段。若 A3 探測發現被擋，備案是掛 proxy（舊正式機模式，`settings.py`
-   已支援 rotating proxy middleware）——屆時費用另計，且正好餵 dx-roadmap 2.5-3
-   等待中的「真實被擋樣本」。
+   費用面 Oregon 明確勝出，A3 風控無否決 → 定案。
+2. **Fargate 出口 IP 的風控風險**：✅ A3 初驗通過（2026-08-28）——兩區 Fargate
+   直連（無 proxy）probe 全 PASS，前提假設成立。每次 task 的 public IP 都不同
+   （好事），但都落在 AWS 已公開的 IP 段，故風險未歸零：A4 並行期持續驗證，
+   若正式期被擋，備案是掛 proxy（舊正式機模式，`settings.py` 已支援 rotating
+   proxy middleware）——屆時費用另計，且正好餵 dx-roadmap 2.5-3 等待中的
+   「真實被擋樣本」。
 3. **Adminer 連線方式**：public IP + SG 白名單（簡單、有一瞬間暴露面）vs SSM port
    forwarding（零暴露、多裝 session-manager-plugin）。傾向 b，但用過再拍板。
 4. **image 私有即可？** ECR private 是預設也是建議——image 內雖無機密，但 Dockerfile
@@ -416,6 +419,12 @@ Raw 的唯一用途是事後 re-parse（`tools/rerun_detail_raw.py`，修 parser
 
 ## 編修紀錄
 
+- **2026-08-28（三補）** A2 兩區 apply＋A3 兩區風控探測完成：**region 拍板
+  us-west-2**（兩區 probe 全 PASS，風控無否決，按費用選；開放問題 1、2 結案）。
+  執行紀要：terraform workspace oregon/osaka 分 state、IAM role 名稱帳號全域故
+  第二區掛 `-osaka` 後綴（`name_suffix` 變數）；arm64 image 本機 qemu 跨平台
+  build 後 push 兩區 ECR；probe 以 RunTask command override 跑，結果從
+  CloudWatch logs＋exit code 收。大阪區資源待 destroy（含 ECR image 清空）。
 - **2026-08-28（二補）** scoped profile `twrh` 就緒後的偵察第二輪：pricing API
   現價對比（開放問題 1 拍板依據 (a) 完成，費用面 Oregon 勝出）、annual-dump
   完整性抽驗；`twrhro` 憑證失效，RDS 側偵察三項待補。

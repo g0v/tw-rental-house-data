@@ -1,7 +1,9 @@
 # devop/aws — ECS Fargate 部署（docs/aws-deployment-plan.md A2）
 
-> 草稿 skeleton（2026-08-28，零權限期先寫好備 apply）。region 未拍板（大阪 vs
-> us-west-2，等 A3 兩區探測），以 `var.region` 參數化。
+> region ✅ 拍板 **us-west-2**（2026-08-28，A3 兩區 probe 全 PASS 後按費用選）。
+> state 用 terraform workspace：`oregon`（正式，IAM role 正式名）；`osaka` 為
+> A3 探測遺留，destroy 後移除。IAM role 名稱帳號全域，兩區並存要 `-var
+> name_suffix=-<region>` 錯開。
 
 ## 內容
 
