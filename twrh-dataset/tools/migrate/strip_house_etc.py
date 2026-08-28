@@ -20,8 +20,8 @@ import sys
 import tarfile
 import time
 
-from common import (State, check_disk, load_django, log, source_cursor,
-                    source_end_tx, target_conn, work_dir)
+from common import (State, check_disk, load_django, log, s3_prefix, s3_upload,
+                    source_cursor, source_end_tx, target_conn, work_dir)
 
 load_django()
 
@@ -151,10 +151,20 @@ def run_month(month, n_rows, target, args, state):
     log(f'  {month}: OK — {done} rows, {n_members} members, '
         f'raw {packed/2**30:.2f} GB → pack {pack_size/2**30:.2f} GB, {secs:.0f}s')
 
+    # 驗完先上 S3 再刪本機包（M2/M3 正式路徑）；未設 S3 prefix 即 M0 彩排語意
+    s3_uri = None
+    if n_members and s3_prefix():
+        s3_uri = s3_upload(pack_path, f'{month}.tar.zst')
+        s3_upload(index_path, f'{month}.index.json', storage_class=None)
+        log(f'  {month}: uploaded {s3_uri}')
+    elif n_members and not args.keep_packs:
+        log(f'  {month}: !! no TWRH_MIGRATE_S3_PREFIX — pack will be deleted '
+            '(source DB still holds raw)')
     if not args.keep_packs:
         os.remove(pack_path)
     state.mark(month, rows=done, members=n_members, raw_bytes=packed,
-               pack_bytes=pack_size, secs=round(secs), kept=bool(args.keep_packs))
+               pack_bytes=pack_size, secs=round(secs), kept=bool(args.keep_packs),
+               s3=s3_uri)
 
 
 def main():

@@ -60,7 +60,28 @@ def target_conn():
     if not dsn:
         sys.exit('TWRH_MIGRATE_TARGET_DSN not set, e.g. '
                  'postgresql://postgres:pw@127.0.0.1:5432/twrh_new')
+    # 密碼可獨立由 TWRH_MIGRATE_TARGET_PASSWORD 注入（ECS secrets／不進 command line）
+    password = os.environ.get('TWRH_MIGRATE_TARGET_PASSWORD')
+    if password:
+        return psycopg2.connect(dsn, password=password)
     return psycopg2.connect(dsn)
+
+
+def s3_prefix():
+    """TWRH_MIGRATE_S3_PREFIX（如 s3://twrh-w2/raw/591）；未設回 None＝包留本機（M0 彩排）。"""
+    p = os.environ.get('TWRH_MIGRATE_S3_PREFIX')
+    return p.rstrip('/') if p else None
+
+
+def s3_upload(local_path, key_name, storage_class='GLACIER_IR'):
+    """上傳 <prefix>/<key_name>，回傳 s3 uri。包走 Glacier IR，index 走 Standard（要常讀）。"""
+    import boto3
+    bucket, _, key_root = s3_prefix()[len('s3://'):].partition('/')
+    key = f'{key_root}/{key_name}' if key_root else key_name
+    extra = {'StorageClass': storage_class} if storage_class else None
+    boto3.client('s3').upload_file(
+        local_path, bucket, key, ExtraArgs=extra or {})
+    return f's3://{bucket}/{key}'
 
 
 def work_dir():
