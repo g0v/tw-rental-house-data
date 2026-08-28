@@ -47,9 +47,11 @@ resource "aws_db_instance" "twrh" {
   engine_version = "15"
   instance_class = var.rds_instance_class
 
-  # M1 實測：瘦身後歷史段＋本機段穩態遠小於 50 GB；gp3 基準 3000 IOPS
+  # M1 實測：瘦身後歷史段＋本機段穩態遠小於 50 GB；gp3 基準 3000 IOPS。
+  # 遷移夜實測 detail_dict 總量逼近原估上緣，autoscaling 上限 100 當保險
+  # （未用到不計費；storage 只能長不能縮，穩態超標再議搬遷）
   allocated_storage     = 50
-  max_allocated_storage = 80
+  max_allocated_storage = 100
   storage_type          = "gp3"
   storage_encrypted     = true
 
