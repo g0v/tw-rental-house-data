@@ -428,8 +428,12 @@ Raw 的唯一用途是事後 re-parse（`tools/rerun_detail_raw.py`，修 parser
    是**爬蟲空窗**（沒有失蹤資料，本來就沒在爬），2025-10-24 起在本機 twrh2025，
    兩段**無重疊**（upsert guard 仍保留作保險，順序不再要緊）；
    (b) in-DB raw 只剩 **2024 年**（抽樣 pre-2024 的 detail_raw 全空）——
-   2018–2023 raw 在歷年 archivehistory tar 裡，**tar 下落成為 M2 前唯一
-   未結案的查證**（若找不到，pre-2024 raw 以 annual-dump 的 detail_dict 為準）。
+   2018–2023 raw 在歷年 archivehistory tar 裡——**tar 已確認佚失**（2026-08-28
+   全帳號搜索：S3 兩 bucket 含 storage class／versioning、Glacier vault 七區、
+   EBS snapshot／AMI／volume 全區皆無；本機與 twrh.0 經 ddio 確認排除；
+   推定隨閒置 EBS 清理刪除）。pre-2024 raw 列為不可回復，以 annual-dump 的
+   detail_dict＋歷年公開 zip 為準——rerun 工具本就只吃現行 template（開放
+   問題 7），實務影響僅止於「無法對 2018–2023 重跑未來的 parser」。
    route table 之謎同日破案：RDS 的兩個 /25 subnet 掛在無 igw 路由的
    route table 上（真 private），2026-08-26 公網 timeout 即此因。
 7. **raw 保留窗口長度**：✅ 90 天定案（2026-08-28 查證）——(a) `invalidate` 走
