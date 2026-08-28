@@ -31,8 +31,20 @@ variable "crawler_memory" {
   default = 2048 # 實測 RSS 峰值 ~240 MB，2 GB 餘裕充足
 }
 
+variable "enable_rds" {
+  description = "建新 RDS（rds.tf）。apply 前先人工把 /twrh/db-password 填真值"
+  type        = bool
+  default     = false
+}
+
+variable "rds_instance_class" {
+  description = "t4g.small 起跳（M1 後判斷），micro 可一試（帳單見真章再調）"
+  type        = string
+  default     = "db.t4g.small"
+}
+
 variable "db_host" {
-  description = "RDS endpoint（A2 建新 RDS 後填；RDS 本身另檔管理，尚未納入）"
+  description = "手動覆寫 DB endpoint；留空且 enable_rds=true 時自動接 rds.tf 的 endpoint"
   type        = string
   default     = ""
 }

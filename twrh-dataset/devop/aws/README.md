@@ -26,6 +26,9 @@ Apply 後仍需人工做的事：
 
 1. SSM SecureString 填值（terraform 只建佔位）：
    `/twrh/db-password`、`/twrh/slack-webhook`、`/twrh/sentry-dsn`。
+   **填完 db-password 才可開 RDS**：`terraform apply -var region=us-west-2
+   -var enable_rds=true`（rds.tf；master 密碼建立時讀該參數一次，之後輪替
+   人工、terraform 不追；deletion_protection 常開）。
 2. Push image：`docker build --target crawler -t <ecr>/twrh-crawler .`（repo 根目錄
    Dockerfile；正式由 GitHub Actions 做，A6）。
 3. 開排程：`terraform apply -var enable_schedule=true`（A4，與本機並行驗證後）。

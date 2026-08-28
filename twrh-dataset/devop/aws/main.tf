@@ -115,10 +115,11 @@ resource "aws_ecs_cluster" "twrh" {
 }
 
 locals {
+  effective_db_host = var.db_host != "" ? var.db_host : (var.enable_rds ? aws_db_instance.twrh[0].address : "")
   crawler_env = [
     { name = "TWRH_DB_NAME", value = var.db_name },
     { name = "TWRH_DB_USER", value = var.db_user },
-    { name = "TWRH_DB_HOST", value = var.db_host },
+    { name = "TWRH_DB_HOST", value = local.effective_db_host },
     # 效能參數沿用 L2 實測值（.env.example）；ROBOTSTXT 維持禮貌預設
     { name = "TWRH_AUTOTHROTTLE", value = "0" },
     { name = "TWRH_DOWNLOAD_DELAY", value = "0" },
