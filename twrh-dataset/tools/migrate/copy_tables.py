@@ -71,14 +71,23 @@ def copy_table(table, pk, guard, target, args, state):
     conflict = (f'do update set {updates} where excluded.updated > "{table}".updated'
                 if guard else 'do nothing')
 
-    offset, done = 0, 0
+    # keyset 分頁（where pk > last）——offset 分頁在百萬列級是 O(n²)，
+    # M2 歷史段（7.9M 列、t4g.micro）實測速率隨 offset 直線下滑
+    from psycopg2.extensions import adapt
+    pk_idx = cols.index(pk)
+    done = 0
+    last = None  # 來源側邊界（offset 平移前的值）
     limit = args.limit_rows if (args.limit_rows and table in LIMITABLE) else total
-    while offset < limit:
-        n = min(BATCH_ROWS, limit - offset)
+    while done < limit:
+        n = min(BATCH_ROWS, limit - done)
+        cond = f'where {pk} > {adapt(last).getquoted().decode()}' if last is not None else ''
         buf = io.StringIO()
         src.copy_expert(
-            f'copy (select {sel_list} from "{table}" order by {pk} '
-            f'limit {n} offset {offset}) to stdout', buf)
+            f'copy (select {sel_list} from "{table}" {cond} '
+            f'order by {pk} limit {n}) to stdout', buf)
+        raw = buf.getvalue()
+        if not raw:
+            break
         buf.seek(0)
         tcur.execute('truncate staging')
         tcur.copy_expert(f'copy staging ({col_list}) from stdin', buf)
@@ -90,7 +99,12 @@ def copy_table(table, pk, guard, target, args, state):
                      f'on conflict ({pk}) {conflict}')
         target.commit()
         done += staged
-        offset += n
+        # 下一批邊界＝這批最後一列的 pk（COPY 文字格式取尾行；整數 pk 扣回平移）
+        last = raw.rsplit('\n', 2)[-2].split('\t')[pk_idx]
+        if shift:
+            last = int(last) - shift
+        elif pk == 'id':
+            last = int(last)
         if total > BATCH_ROWS:
             rate = done / (time.time() - t0)
             log(f'  {table}: {done}/{limit} rows, {rate:.0f} rows/s')
