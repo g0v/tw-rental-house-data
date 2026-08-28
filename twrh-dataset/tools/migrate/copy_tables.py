@@ -27,15 +27,18 @@ load_django()
 ID_OFFSET = int(os.environ.get('TWRH_MIGRATE_ID_OFFSET', '0'))
 OFFSET_TABLES = {'house', 'house_ts', 'crawlerrequest_stats', 'region_ts'}
 
-# (table, pk, has_updated_guard)
+# (table, pk, has_updated_guard, conflict_cols)——conflict_cols None ⇒ 用 pk。
+# rental_author／house 用自然鍵：同一作者（truth）／同一刊登（vendor 內部 id）
+# 可能橫跨兩段（跨段長壽物件），合併時保留既有 pk，來源 pk 記進 migrate_*_map
+# 供後續 FK remap（house/house_ts 的 author_id、strip 的 house_id）。
 TABLES = [
-    ('vendor', 'id', False),
-    ('sub_region', 'id', False),
-    ('rental_author', 'uuid', True),
-    ('crawlerrequest_stats', 'id', False),
-    ('region_ts', 'id', True),
-    ('house', 'id', True),
-    ('house_ts', 'id', True),
+    ('vendor', 'id', False, None),
+    ('sub_region', 'id', False, None),
+    ('rental_author', 'uuid', True, 'truth'),
+    ('crawlerrequest_stats', 'id', False, None),
+    ('region_ts', 'id', True, None),
+    ('house', 'id', True, 'vendor_id, vendor_house_id'),
+    ('house_ts', 'id', True, None),
 ]
 BATCH_ROWS = 50000
 # --limit-rows 只作用在無人依賴的大表；維度表與 house 被 FK 指著，砍了會連鎖爆
@@ -50,7 +53,7 @@ def columns_of(cur, table):
     return [r[0] for r in cur.fetchall()]
 
 
-def copy_table(table, pk, guard, target, args, state):
+def copy_table(table, pk, guard, conflict_cols, target, args, state):
     t0 = time.time()
     src = source_cursor()
     cols = columns_of(src, table)
@@ -67,7 +70,9 @@ def copy_table(table, pk, guard, target, args, state):
     tcur = target.cursor()
     tcur.execute('drop table if exists staging')
     tcur.execute(f'create temp table staging (like "{table}" including defaults)')
-    updates = ', '.join(f'{c} = excluded.{c}' for c in cols if c != pk)
+    ckey = conflict_cols or pk
+    exclude = {pk} | {c.strip() for c in ckey.split(',')}
+    updates = ', '.join(f'{c} = excluded.{c}' for c in cols if c not in exclude)
     conflict = (f'do update set {updates} where excluded.updated > "{table}".updated'
                 if guard else 'do nothing')
 
@@ -94,9 +99,30 @@ def copy_table(table, pk, guard, target, args, state):
         staged = tcur.rowcount
         if staged == 0:
             break
+        if table == 'rental_author':
+            # 重跑保險：truth 為 NULL 的列不會觸發 on conflict (truth)，
+            # 先剔除 uuid 已存在者免 pk violation
+            tcur.execute('delete from staging s using rental_author ra '
+                         'where s.uuid = ra.uuid')
+        if table in ('house', 'house_ts'):
+            tcur.execute('update staging s set author_id = m.dst_uuid '
+                         'from migrate_author_map m where s.author_id = m.src_uuid')
         tcur.execute(f'insert into "{table}" ({col_list}) '
                      f'select {col_list} from staging '
-                     f'on conflict ({pk}) {conflict}')
+                     f'on conflict ({ckey}) {conflict}')
+        if table == 'rental_author':
+            tcur.execute('insert into migrate_author_map (src_uuid, dst_uuid) '
+                         'select s.uuid, ra.uuid from staging s '
+                         'join rental_author ra using (truth) '
+                         'where s.uuid <> ra.uuid '
+                         'on conflict (src_uuid) do nothing')
+        if table == 'house':
+            tcur.execute('insert into migrate_house_map (src_id, dst_id) '
+                         'select s.id, h.id from staging s '
+                         'join house h on h.vendor_id = s.vendor_id '
+                         'and h.vendor_house_id = s.vendor_house_id '
+                         'where s.id <> h.id '
+                         'on conflict (src_id) do nothing')
         target.commit()
         done += staged
         # 下一批邊界＝這批最後一列的 pk（COPY 文字格式取尾行；整數 pk 扣回平移）
@@ -131,13 +157,20 @@ def main():
 
     state = State('copy_tables' + ('.rehearsal' if args.limit_rows else ''))
     target = target_conn()
-    for table, pk, guard in TABLES:
+    # 跨段 pk remap 對照表（M4 對帳完人工 drop）
+    mcur = target.cursor()
+    mcur.execute('create table if not exists migrate_author_map '
+                 '(src_uuid uuid primary key, dst_uuid uuid not null)')
+    mcur.execute('create table if not exists migrate_house_map '
+                 '(src_id bigint primary key, dst_id bigint not null)')
+    target.commit()
+    for table, pk, guard, conflict_cols in TABLES:
         if args.tables and table not in args.tables:
             continue
         if state.done(table) and not args.redo:
             log(f'=== {table}: marker 已存在，跳過 ===')
             continue
-        copy_table(table, pk, guard, target, args, state)
+        copy_table(table, pk, guard, conflict_cols, target, args, state)
     target.close()
     log('all done. state: ' + state.path)
 

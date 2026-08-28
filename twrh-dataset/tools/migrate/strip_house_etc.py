@@ -70,7 +70,7 @@ def add_member(tar, name, text, mtime):
     return len(data)
 
 
-def verify_pack(pack_path, index):
+def verify_pack(pack_path, index, src_ids):
     """tar 總 member 數對 index，抽樣解出來 bit 比對 DB 原文。"""
     listed = subprocess.run(['tar', '-I', 'zstd', '-tf', pack_path],
                             capture_output=True, text=True, check=True)
@@ -81,7 +81,7 @@ def verify_pack(pack_path, index):
     cur = source_cursor()
     for house_id in random.sample(list(index), min(SAMPLE_SIZE, len(index))):
         cur.execute('select detail_raw, list_raw from house_etc where house_id = %s',
-                    [int(house_id) - ID_OFFSET])
+                    [src_ids[house_id]])
         detail_raw, list_raw = cur.fetchone()
         for kind, original in (('detail', detail_raw), ('list', list_raw)):
             member = f'{house_id}.{kind}.html'
@@ -93,7 +93,17 @@ def verify_pack(pack_path, index):
     return n_members
 
 
-def run_month(month, n_rows, target, args, state):
+def load_house_map(target):
+    """跨段撞鍵的 house id remap（copy_tables 產出）；無表或空＝無撞鍵。"""
+    cur = target.cursor()
+    cur.execute("select to_regclass('migrate_house_map')")
+    if cur.fetchone()[0] is None:
+        return {}
+    cur.execute('select src_id, dst_id from migrate_house_map')
+    return dict(cur.fetchall())
+
+
+def run_month(month, n_rows, target, house_map, args, state):
     free = check_disk()
     log(f'=== {month}: {n_rows} rows (free disk {free:.1f} GB) ===')
     t0 = time.time()
@@ -111,11 +121,13 @@ def run_month(month, n_rows, target, args, state):
         [month + '-01', month + '-01'])
 
     tar, proc = open_pack(pack_path)
-    index, batch, done, packed = {}, [], 0, 0
+    index, src_ids, batch, done, packed = {}, {}, [], 0, 0
     tcur = target.cursor()
     for row in src:
         created, updated, house_id, vhid, ddict, rooftop, vendor_id, draw, lraw = row
+        src_id = house_id
         house_id += ID_OFFSET
+        house_id = house_map.get(house_id, house_id)
         mtime = int(updated.timestamp())
         entry = {}
         if draw:
@@ -127,6 +139,7 @@ def run_month(month, n_rows, target, args, state):
         packed += sum(entry.values())
         if entry:
             index[str(house_id)] = entry
+            src_ids[str(house_id)] = src_id
         batch.append((created, updated, house_id, vhid,
                       Json(ddict) if ddict is not None else None, rooftop, vendor_id))
         if len(batch) >= UPSERT_BATCH:
@@ -150,7 +163,7 @@ def run_month(month, n_rows, target, args, state):
 
     with open(index_path, 'w') as f:
         json.dump(index, f)
-    n_members = verify_pack(pack_path, index)
+    n_members = verify_pack(pack_path, index, src_ids)
     pack_size = os.path.getsize(pack_path)
     secs = time.time() - t0
     log(f'  {month}: OK — {done} rows, {n_members} members, '
@@ -182,6 +195,9 @@ def main():
 
     state = State('strip_house_etc' + ('.rehearsal' if args.limit_rows else ''))
     target = target_conn()
+    house_map = load_house_map(target)
+    if house_map:
+        log(f'house id remap: {len(house_map)} 筆（跨段撞鍵）')
     months = list_months()
     for month, n_rows in months:
         if args.months and month not in args.months:
@@ -189,7 +205,7 @@ def main():
         if state.done(month) and not args.redo:
             log(f'=== {month}: marker 已存在，跳過（--redo 重跑）===')
             continue
-        run_month(month, n_rows, target, args, state)
+        run_month(month, n_rows, target, house_map, args, state)
     target.close()
     log('all done. state: ' + state.path)
 
