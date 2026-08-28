@@ -29,8 +29,7 @@ provider "aws" {
 }
 
 locals {
-  old_db_password = regex("'PASSWORD':\\s*'([^']+)'", file("${path.module}/../../master/settings_local.py"))[0]
-  crawler_image   = "846793362148.dkr.ecr.us-west-2.amazonaws.com/twrh-crawler:latest"
+  crawler_image = "846793362148.dkr.ecr.us-west-2.amazonaws.com/twrh-crawler:latest"
 }
 
 data "aws_iam_role" "execution" {
@@ -41,10 +40,15 @@ data "aws_iam_role" "crawler_task" {
   name = "twrh-crawler-task"
 }
 
+# repo 內兩組候選密碼（master/child settings_local、devop.md）2026-08-28 實測皆被拒
+# ——現行密碼已輪替且不在 repo。值由操作者人工 put-parameter --overwrite 注入。
 resource "aws_ssm_parameter" "old_db_password" {
   name  = "/twrh/old-db-password"
   type  = "SecureString"
-  value = local.old_db_password
+  value = "CHANGEME"
+  lifecycle {
+    ignore_changes = [value]
+  }
 }
 
 resource "aws_iam_role_policy" "execution_old_db_password" {
@@ -93,6 +97,7 @@ resource "aws_ecs_task_definition" "workbench" {
       { name = "PGDATABASE", value = "twrh" },
       { name = "PGUSER", value = "twrh" },
       { name = "PGCONNECT_TIMEOUT", value = "10" },
+      { name = "PGSSLMODE", value = "require" },
     ]
     secrets = [
       { name = "PGPASSWORD", valueFrom = aws_ssm_parameter.old_db_password.arn },
