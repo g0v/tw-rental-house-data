@@ -13,7 +13,7 @@ data "aws_iam_policy_document" "ecs_assume" {
 
 # ---- execution role：ECS agent 用 ----
 resource "aws_iam_role" "execution" {
-  name               = "twrh-execution"
+  name               = "twrh-execution${var.name_suffix}"
   assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
 }
 
@@ -37,7 +37,7 @@ resource "aws_iam_role_policy" "execution_ssm" {
 
 # ---- crawler task role：目前只需 ECS Exec（workbench 進 shell 用）----
 resource "aws_iam_role" "crawler_task" {
-  name               = "twrh-crawler-task"
+  name               = "twrh-crawler-task${var.name_suffix}"
   assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
 }
 
@@ -64,7 +64,7 @@ resource "aws_iam_role_policy" "crawler_exec" {
 
 # ---- EventBridge Scheduler role ----
 resource "aws_iam_role" "scheduler" {
-  name = "twrh-scheduler"
+  name = "twrh-scheduler${var.name_suffix}"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{

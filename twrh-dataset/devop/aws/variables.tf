@@ -3,6 +3,12 @@ variable "region" {
   type        = string
 }
 
+variable "name_suffix" {
+  description = "IAM role 名稱後綴（IAM 全域，A3 兩區並存期第二區要加，如 \"-osaka\"；拍板後正式區留空）"
+  type        = string
+  default     = ""
+}
+
 variable "enable_schedule" {
   description = "開啟每日爬蟲排程（A4 才轉 true；探測與遷移期間保持 false）"
   type        = bool
