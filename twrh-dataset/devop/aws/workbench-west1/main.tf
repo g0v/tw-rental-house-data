@@ -22,10 +22,34 @@ terraform {
 }
 
 provider "aws" {
-  region = "us-west-1"
+  region  = "us-west-1"
+  profile = "twrh"
   default_tags {
     tags = { project = "twrh" }
   }
+}
+
+# 正式區（新 RDS 的家）——只用來讀 /twrh/db-password 鏡射到本區給 task secrets 用
+# （ECS secrets 的 SSM 參數必須與 task 同區）
+provider "aws" {
+  alias   = "oregon"
+  region  = "us-west-2"
+  profile = "twrh"
+  default_tags {
+    tags = { project = "twrh" }
+  }
+}
+
+data "aws_ssm_parameter" "new_db_password" {
+  provider        = aws.oregon
+  name            = "/twrh/db-password"
+  with_decryption = true
+}
+
+resource "aws_ssm_parameter" "new_db_password_mirror" {
+  name  = "/twrh/new-db-password"
+  type  = "SecureString"
+  value = data.aws_ssm_parameter.new_db_password.value
 }
 
 locals {
@@ -59,7 +83,10 @@ resource "aws_iam_role_policy" "execution_old_db_password" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["ssm:GetParameters"]
-      Resource = [aws_ssm_parameter.old_db_password.arn]
+      Resource = [
+        aws_ssm_parameter.old_db_password.arn,
+        aws_ssm_parameter.new_db_password_mirror.arn,
+      ]
     }]
   })
 }
@@ -98,9 +125,17 @@ resource "aws_ecs_task_definition" "workbench" {
       { name = "PGUSER", value = "twrh" },
       { name = "PGCONNECT_TIMEOUT", value = "10" },
       { name = "PGSSLMODE", value = "require" },
+      # M2 遷移腳本：Django default（來源）＝舊 RDS；目標 DSN／S3 prefix 由
+      # RunTask env override 給（新 RDS endpoint apply 後才知道）
+      { name = "TWRH_DB_NAME", value = "twrh" },
+      { name = "TWRH_DB_USER", value = "twrh" },
+      { name = "TWRH_DB_HOST", value = "twrh.cfes86a82zjg.us-west-1.rds.amazonaws.com" },
+      { name = "TWRH_MIGRATE_WORK_DIR", value = "/tmp/migrate" },
     ]
     secrets = [
       { name = "PGPASSWORD", valueFrom = aws_ssm_parameter.old_db_password.arn },
+      { name = "TWRH_DB_PASSWORD", valueFrom = aws_ssm_parameter.old_db_password.arn },
+      { name = "TWRH_MIGRATE_TARGET_PASSWORD", valueFrom = aws_ssm_parameter.new_db_password_mirror.arn },
     ]
     logConfiguration = {
       logDriver = "awslogs"

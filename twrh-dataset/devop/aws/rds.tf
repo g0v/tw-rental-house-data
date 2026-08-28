@@ -25,6 +25,18 @@ resource "aws_security_group" "rds" {
     protocol        = "tcp"
     security_groups = [aws_security_group.task.id]
   }
+  # M2/M3 跨區（workbench task）與開發機直連：public endpoint＋逐 IP 白名單
+  # （2026-08-28 拍板公網案，捨 VPC peering）。IP 都是動態的，apply 時帶
+  # -var 'rds_client_cidrs=["x.x.x.x/32", …]'，遷移結束清空。
+  dynamic "ingress" {
+    for_each = toset(var.rds_client_cidrs)
+    content {
+      from_port   = 5432
+      to_port     = 5432
+      protocol    = "tcp"
+      cidr_blocks = [ingress.value]
+    }
+  }
 }
 
 resource "aws_db_instance" "twrh" {
@@ -47,7 +59,8 @@ resource "aws_db_instance" "twrh" {
 
   db_subnet_group_name   = aws_db_subnet_group.twrh[0].name
   vpc_security_group_ids = [aws_security_group.rds[0].id]
-  publicly_accessible    = false
+  # 遷移期公網直連（SG 白名單守門）；M4 切換後可收回 private（SG 清空即無暴露面）
+  publicly_accessible    = true
   multi_az               = false
 
   backup_retention_period = 7

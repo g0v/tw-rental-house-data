@@ -1,3 +1,9 @@
+variable "aws_profile" {
+  description = "本機 AWS named profile（scoped 遷移用 user；CI 等無 profile 環境傳空字串）"
+  type        = string
+  default     = "twrh"
+}
+
 variable "region" {
   description = "部署 region（開放問題 1：ap-northeast-3 vs us-west-2，A3 拍板）"
   type        = string
@@ -35,6 +41,12 @@ variable "enable_rds" {
   description = "建新 RDS（rds.tf）。apply 前先人工把 /twrh/db-password 填真值"
   type        = bool
   default     = false
+}
+
+variable "rds_client_cidrs" {
+  description = "允許直連 RDS 5432 的 CIDR（M2 workbench task／M3 開發機的當下 IP，遷移結束清空）"
+  type        = list(string)
+  default     = []
 }
 
 variable "rds_instance_class" {

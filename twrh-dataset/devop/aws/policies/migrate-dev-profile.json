@@ -12,6 +12,21 @@
       ]
     },
     {
+      "Sid": "RdsProvision",
+      "_comment": "建/調新 RDS（rds.tf）；刻意不含 Delete/Stop/Reboot 與 snapshot 刪除",
+      "Effect": "Allow",
+      "Action": [
+        "rds:CreateDBSubnetGroup",
+        "rds:CreateDBInstance",
+        "rds:ModifyDBInstance",
+        "rds:AddTagsToResource",
+        "rds:DescribeDBSubnetGroups",
+        "rds:DescribeDBInstances",
+        "rds:ListTagsForResource"
+      ],
+      "Resource": "arn:aws:rds:<REGION>:<ACCOUNT>:*"
+    },
+    {
       "Sid": "AnnualDumpRead",
       "Effect": "Allow",
       "Action": ["s3:GetObject", "s3:ListBucket"],
