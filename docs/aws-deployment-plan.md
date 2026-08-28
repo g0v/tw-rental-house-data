@@ -229,6 +229,16 @@ GitHub push ──▶ GitHub Actions build ──▶ ECR image
   結論校準：新方案（t4g.small、無 RI）名目費用與清理後現況相近，
   內容從「養一台快滿的 DB」變成「每日例行爬蟲＋瘦身後有成長空間」；
   RI 或 micro 撐得住則再省二至四成。
+- **偵察第二輪（2026-08-28，scoped profile `twrh` 就緒後）**：
+  - scoped IAM profile ✅ 已建（user `twrh-agent`，照
+    `devop/aws/policies/migrate-dev-profile.json`，實測確實無 RDS 權限——
+    scope 生效的反面驗證）。
+  - annual-dump 完整性抽驗 ✅：gzip 完整、JSONL 可解析、欄位如前述 6 欄
+    （以 2021_007 抽測；47 檔 11.48 GB 與 4/29 盤點一致）。
+  - pricing API 現價對比 ✅：見開放問題 1 的表。
+  - **未竟**：RDS snapshot 清單、舊 RDS CloudWatch 指標、route table 再試——
+    這三項要 `twrhro`（唯讀 profile），其憑證已失效（InvalidClientTokenId），
+    待輪替後補跑；或延後到 A5 workbench 從 VPC 內查。
 
 ### 三個節省槓桿（依大小排序）
 
@@ -354,9 +364,27 @@ Raw 的唯一用途是事後 re-parse（`tools/rerun_detail_raw.py`，修 parser
 1. **Region**（2026-08-28 收斂為兩案，A3 拍板）：**大阪（ap-northeast-3）vs
    us-west-2（Oregon）**。大阪買「離爬蟲目標／公開 bucket／操作者近」，us-west-2
    是最低價梯隊（RDS/Fargate 約便宜兩成餘，且離舊 RDS 近、歷史段搬運快）。
-   拍板依據：(a) A2 前用 pricing API 拉現價出正式對比（目前差價為記憶中列表價）；
+   拍板依據：(a) ✅ pricing API 現價對比已完成（2026-08-28，見下表）；
    (b) **A3 風控探測在兩區各跑一次 probe**——若 591 對美日 IP 段差別待遇，
    風控結果直接否決費用選擇。舊案「留在 us-west-1」僅在兩案皆被擋時回退。
+
+   **現價對比（2026-08-28，pricing API，on-demand）**：
+
+   | 項目 | 大阪 ap-northeast-3 | Oregon us-west-2 | 大阪貴 |
+   |---|---|---|---|
+   | RDS db.t4g.micro | $0.025/hr（$18.25/月） | $0.016/hr（$11.68/月） | +56% |
+   | RDS db.t4g.small | $0.051/hr（$37.23/月） | $0.032/hr（$23.36/月） | +59% |
+   | RDS gp3 storage | $0.138/GB-月 | $0.115/GB-月 | +20% |
+   | Fargate ARM vCPU | $0.04045/hr | $0.03238/hr | +25% |
+   | Fargate ARM 記憶體 | $0.00442/GB-hr | $0.00356/GB-hr | +24% |
+   | S3 Standard | $0.025/GB-月 | $0.023/GB-月 | +9% |
+   | S3 Glacier IR | $0.005/GB-月 | $0.004/GB-月 | +25% |
+
+   穩態月費試算（t4g.small＋50 GB gp3＋Fargate 1 vCPU/2 GB ARM 每日 4 小時＋
+   raw 歷史全量 ~10 GB Glacier IR）：大阪 ~US$50、Oregon ~US$34——
+   **大阪貴約 47%（差 ~US$16/月）**；降到 t4g.micro 則為 ~US$31 vs ~US$22。
+   記憶中的「便宜兩成餘」低估了 instance 部分（實為近四成）。
+   費用面 Oregon 明確勝出，等 A3 風控結果定案。
 2. **Fargate 出口 IP 的風控風險**：每次 task 的 public IP 都不同（好事），但都落在
    AWS 已公開的 IP 段。若 A3 探測發現被擋，備案是掛 proxy（舊正式機模式，`settings.py`
    已支援 rotating proxy middleware）——屆時費用另計，且正好餵 dx-roadmap 2.5-3
@@ -388,6 +416,9 @@ Raw 的唯一用途是事後 re-parse（`tools/rerun_detail_raw.py`，修 parser
 
 ## 編修紀錄
 
+- **2026-08-28（二補）** scoped profile `twrh` 就緒後的偵察第二輪：pricing API
+  現價對比（開放問題 1 拍板依據 (a) 完成，費用面 Oregon 勝出）、annual-dump
+  完整性抽驗；`twrhro` 憑證失效，RDS 側偵察三項待補。
 - **2026-08-28** 實帳單比對校準費用結論（閒置資源已清理）；region 收斂為
   大阪 vs us-west-2 兩案、A3 兩區探測兼拍板；拍板重疊段以本機為準
   （先歷史段後本機段＋updated upsert guard，開放問題 8 結案）；annual-dump
