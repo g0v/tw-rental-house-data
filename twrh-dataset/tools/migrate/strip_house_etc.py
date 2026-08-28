@@ -27,6 +27,10 @@ load_django()
 
 from psycopg2.extras import Json, execute_values  # noqa: E402  (psycopg2 由 django backend 保證存在)
 
+# 本機段 id 平移（與 copy_tables 的 house 同值）；包的 member 名與 index key
+# 也用平移後 id——之後 rerun 工具照新 DB 的 house_id 找包才對得上
+ID_OFFSET = int(os.environ.get('TWRH_MIGRATE_ID_OFFSET', '0'))
+
 COLS = ['created', 'updated', 'house_id', 'vendor_house_id',
         'detail_dict', 'could_be_rooftop', 'vendor_id']
 UPSERT_SQL = f"""
@@ -77,7 +81,7 @@ def verify_pack(pack_path, index):
     cur = source_cursor()
     for house_id in random.sample(list(index), min(SAMPLE_SIZE, len(index))):
         cur.execute('select detail_raw, list_raw from house_etc where house_id = %s',
-                    [int(house_id)])
+                    [int(house_id) - ID_OFFSET])
         detail_raw, list_raw = cur.fetchone()
         for kind, original in (('detail', detail_raw), ('list', list_raw)):
             member = f'{house_id}.{kind}.html'
@@ -111,6 +115,7 @@ def run_month(month, n_rows, target, args, state):
     tcur = target.cursor()
     for row in src:
         created, updated, house_id, vhid, ddict, rooftop, vendor_id, draw, lraw = row
+        house_id += ID_OFFSET
         mtime = int(updated.timestamp())
         entry = {}
         if draw:

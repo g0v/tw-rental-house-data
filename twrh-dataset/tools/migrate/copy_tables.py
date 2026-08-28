@@ -12,12 +12,20 @@ region_ts → house → house_ts。
 """
 import argparse
 import io
+import os
 import time
 
 from common import State, check_disk, load_django, log, source_cursor, \
     source_end_tx, target_conn
 
 load_django()
+
+# 兩段 id 空間重疊（歷史段 1→~8M、本機段 3.5k→611k 各自從頭長）——歷史段原樣
+# 過境、本機段整段平移，pk 才不互蓋。M3 設 100000000；house_ts 無 house FK，
+# 只有 house_etc.house_id 要跟著平移（strip_house_etc 同值）。
+# vendor / sub_region 是兩段共用的維度表（id 同值同義），不平移。
+ID_OFFSET = int(os.environ.get('TWRH_MIGRATE_ID_OFFSET', '0'))
+OFFSET_TABLES = {'house', 'house_ts', 'crawlerrequest_stats', 'region_ts'}
 
 # (table, pk, has_updated_guard)
 TABLES = [
@@ -47,6 +55,11 @@ def copy_table(table, pk, guard, target, args, state):
     src = source_cursor()
     cols = columns_of(src, table)
     col_list = ', '.join(cols)
+    # 來源側套 offset（僅整數序號 pk；uuid pk 與維度表不平移）
+    shift = ID_OFFSET if (ID_OFFSET and table in OFFSET_TABLES) else 0
+    sel_list = ', '.join(
+        f'{c} + {shift} as {c}' if (shift and c == pk == 'id') else c
+        for c in cols)
     src.execute(f'select count(*), coalesce(min({pk}::text), \'\') from "{table}"')
     total = src.fetchone()[0]
     log(f'=== {table}: {total} rows ===')
@@ -64,7 +77,7 @@ def copy_table(table, pk, guard, target, args, state):
         n = min(BATCH_ROWS, limit - offset)
         buf = io.StringIO()
         src.copy_expert(
-            f'copy (select {col_list} from "{table}" order by {pk} '
+            f'copy (select {sel_list} from "{table}" order by {pk} '
             f'limit {n} offset {offset}) to stdout', buf)
         buf.seek(0)
         tcur.execute('truncate staging')
