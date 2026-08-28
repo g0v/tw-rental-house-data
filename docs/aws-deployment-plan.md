@@ -236,9 +236,32 @@ GitHub push ──▶ GitHub Actions build ──▶ ECR image
   - annual-dump 完整性抽驗 ✅：gzip 完整、JSONL 可解析、欄位如前述 6 欄
     （以 2021_007 抽測；47 檔 11.48 GB 與 4/29 盤點一致）。
   - pricing API 現價對比 ✅：見開放問題 1 的表。
-  - **未竟**：RDS snapshot 清單、舊 RDS CloudWatch 指標、route table 再試——
-    這三項要 `twrhro`（唯讀 profile），其憑證已失效（InvalidClientTokenId），
-    待輪替後補跑；或延後到 A5 workbench 從 VPC 內查。
+  - RDS 側三項後續以 `twrh` 補掛唯讀 inline policy（`recon-readonly`）補齊：
+    snapshot 清單（7 天自動 ＋**一顆 2024-11-06 的 100 GB 手動 snapshot
+    `a2024-10-30`**，超額備份費來源，刪否人工決定）；CloudWatch（已用 84.6 GB
+    且四月後零成長、連線數 0、BurstBalance 滿格）；route table（見開放問題 6）。
+
+### M1 盤查結果（2026-08-28，workbench task 從 VPC 內查）
+
+工具：`devop/aws/workbench-west1/`（臨時 terraform，M4 後 destroy）——us-west-1
+一次性 Fargate task 掛現成 `ec2-rds-1`＋`default` SG 直連舊 RDS，psql 腳本
+RunTask override 執行、輸出走 CloudWatch logs。舊 DB 密碼已輪替、repo 內兩組
+皆失效，現行值由操作者人工放 SSM `/twrh/old-db-password`。
+
+| 項目 | 值 |
+|---|---|
+| `twrh` database | 81 GB（instance 上無其他資料 DB，另有 29 MB metabase） |
+| house_etc | 55 GB（heap 5.5 GB，其餘 TOAST）、est 782 萬列 |
+| house_ts | 13 GB、est 936 萬列，**僅 2024 年**（2、3、4、5 殘、9、10 月） |
+| house | 12 GB、est 787 萬列 |
+| 資料邊界 | 2018-04-23 → **2024-10-31**（house 與 house_etc 一致） |
+| detail_raw 留存 | 抽樣 1%：**只有 2024 的列有 raw**（8502/8601），pre-2024 全空 |
+| raw 均長 | detail_raw ~38 KB、list_raw ~2.6 KB、detail_dict ~9.3 KB |
+
+推論（詳見開放問題 6）：歷史段實際要過境的 raw 只有 2024 年（~85 萬列 ×38 KB
+≈ 32 GB 未壓，zstd 24× 下約 1.5 GB 包）——比「85 GB 全是歷史」的原估小一個
+量級；house_ts 早年份與 2018–2023 raw 都在 archivehistory tar，下落待查。
+本機 twrh2025：2025-10-24 → 今、60.6 萬列 house_etc，與舊 RDS 無重疊。
 
 ### 三個節省槓桿（依大小排序）
 
@@ -398,27 +421,38 @@ Raw 的唯一用途是事後 re-parse（`tools/rerun_detail_raw.py`，修 parser
    與依賴版本沒必要多一個公開面；公開的東西已經在 GitHub repo。
 5. **舊 `devop/` 素材處置**：`devop.md` 內含歷史 DB 密碼與主機名，AWS 化落地後應清理
    （密碼輪替 + 檔案改寫），並把 `devop/aws/` 立為新的單一來源。
-6. **舊 RDS 現況查證**：外部資訊已查明（t4g.micro／100 GB gp2／已用 85 GB，
-   見〈AWS 實測補記〉）；raw 全在其中亦經 ddio 確認。**剩 in-DB 部分**（表級組成、
-   raw 實際占比、與本機重疊段比對）**拍板延後**：不開 Publicly accessible，
-   等 workbench task（A5）從 VPC 內網查。2026-08-26 曾嘗試公網連線：
-   Public=Yes＋SG 放行皆就緒仍 timeout，subnet 疑為 private（route table 無 igw
-   路由，唯讀權限無法確認）——反正不開了，此線索留給未來除錯參考。
+6. **舊 RDS 現況查證**：✅ M1 完成（2026-08-28，workbench task 從 VPC 內查，
+   詳見〈M1 盤查結果〉）。**兩個修正原先認知的大發現**：
+   (a) 舊 RDS **不是** 2018 起全部歷史——資料停在 **2024-10-31**（house/house_etc
+   邊界；手動 snapshot `a2024-10-30` 即停機檢查點），2024-11→2025-10-23
+   是**爬蟲空窗**（沒有失蹤資料，本來就沒在爬），2025-10-24 起在本機 twrh2025，
+   兩段**無重疊**（upsert guard 仍保留作保險，順序不再要緊）；
+   (b) in-DB raw 只剩 **2024 年**（抽樣 pre-2024 的 detail_raw 全空）——
+   2018–2023 raw 在歷年 archivehistory tar 裡，**tar 下落成為 M2 前唯一
+   未結案的查證**（若找不到，pre-2024 raw 以 annual-dump 的 detail_dict 為準）。
+   route table 之謎同日破案：RDS 的兩個 /25 subnet 掛在無 igw 路由的
+   route table 上（真 private），2026-08-26 公網 timeout 即此因。
 7. **raw 保留窗口長度**：✅ 90 天定案（2026-08-28 查證）——(a) `invalidate` 走
    HouseTS 欄位穩定性、完全不讀 raw，日期範圍由操作者指定；(b) rerun 工具只能
    re-parse **現行 template**（舊版直接 `LegacyTemplateError`），實務回看深度＝
    parser bug 的發現延遲，遠短於 90 天；(c) 既有 archivehistory 預設 60 天已是
    驗證過的安全線。窗口改小隨時可以，改大要從 S3 撈包。
-8. **現行這份 DB 的上雲路線**：✅ 已拍板（2026-08-28）——**重疊段以本機為準**
-   （本機這份本來就是舊 RDS dump 的較新延續）。實作：遷移順序固定「先歷史段、
-   後本機段」讓新資料自然蓋舊，並以 `ON CONFLICT … DO UPDATE … WHERE
-   excluded.updated > existing.updated` 的 upsert guard 作第二層保證——
-   正確性由資料時間戳決定，不依賴執行順序，任何批次重跑皆冪等。
+8. **現行這份 DB 的上雲路線**：✅ 已拍板（2026-08-28）——**重疊段以本機為準**。
+   M1 後修正：兩段實際**無重疊**（舊 RDS 停 2024-10-31、本機起 2025-10-24），
+   「先歷史段、後本機段」與 `ON CONFLICT … DO UPDATE … WHERE excluded.updated
+   > existing.updated` 的 upsert guard 從必要保證降為保險——正確性由資料
+   時間戳決定，任何批次重跑皆冪等，此設計不變。
 
 ---
 
 ## 編修紀錄
 
+- **2026-08-28（四補）** M1 舊 RDS 盤查完成（workbench-west1 臨時 terraform＋
+  RunTask psql）：舊 RDS 實為 2018→2024-10 段、in-DB raw 僅 2024、與本機
+  （2025-10 起）無重疊——開放問題 6 結案、8 修正；歷史段 raw 過境量下修一個
+  量級。發現手動 snapshot `a2024-10-30`（100 GB，超額備份費）。舊 DB 密碼
+  已輪替，repo 內兩組皆失效，改由 SSM 人工注入。M2 前唯一待查：
+  archivehistory tar 下落。
 - **2026-08-28（三補）** A2 兩區 apply＋A3 兩區風控探測完成：**region 拍板
   us-west-2**（兩區 probe 全 PASS，風控無否決，按費用選；開放問題 1、2 結案）。
   執行紀要：terraform workspace oregon/osaka 分 state、IAM role 名稱帳號全域故
