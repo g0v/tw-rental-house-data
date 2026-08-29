@@ -16,15 +16,15 @@ variable "name_suffix" {
 }
 
 variable "enable_schedule" {
-  description = "開啟每日爬蟲排程（A4 才轉 true；探測與遷移期間保持 false）"
+  description = "開啟每日爬蟲排程（A4 上線 2026-08-29；default true 讓日常 apply——如 rds-door.sh——不會不帶 var 就把排程砍掉）"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "crawl_schedule" {
-  description = "每日全量的 cron（Asia/Taipei）"
+  description = "每日全量的 cron（Asia/Taipei，當日凌晨爬、TWRH_TARGET_DATE=當天）；實際時間 per-env 於 terraform.tfvars 設定"
   type        = string
-  default     = "cron(3 20 * * ? *)"
+  default     = "cron(0 4 * * ? *)"
 }
 
 variable "crawler_cpu" {

@@ -31,7 +31,8 @@ Apply 後仍需人工做的事：
    人工、terraform 不追；deletion_protection 常開）。
 2. Push image：`docker build --target crawler -t <ecr>/twrh-crawler .`（repo 根目錄
    Dockerfile；正式由 GitHub Actions 做，A6）。
-3. 開排程：`terraform apply -var enable_schedule=true`（A4，與本機並行驗證後）。
+3. 排程已預設開啟（A4 上線 2026-08-29；時間等 per-env 參數見 terraform.tfvars，
+   不入版控）；要暫停用 `terraform apply -var enable_schedule=false`。
 
 ## 刻意不做（見 aws-deployment-plan「刻意避開的費用陷阱」）
 
