@@ -12,6 +12,19 @@ from .request_generator import RequestGenerator
 from .util import parse_price, css, from_zh_number
 from .detail_raw_parser import get_detail_raw_attrs
 
+
+class ShortBreadcrumbError(ValueError):
+    '''
+    The served page has fewer than two breadcrumb levels, so top/sub region
+    cannot be told. Observed as a transient 591 server-side variant
+    (2026-08-30, six pages, all normal on retry).
+
+    Raised instead of storing a house without regions, so that the persist
+    queue keeps the request and a later batch retries it. A page that stays
+    short across retries surfaces as a lasting failure instead of quietly
+    losing fields.
+    '''
+
 # copy from stackoverflow XD
 # https://stackoverflow.com/questions/25833613/safe-method-to-get-value-of-nested-dictionary
 def get(dictionary, keys, default=None):
@@ -212,6 +225,15 @@ class DetailMixin(RequestGenerator):
         # region xx市/xx區/物件類型
         breadcrumb = get(detail_dict, 'breadcrumb', default=[])
 
+        if len(breadcrumb) < 2:
+            raise ShortBreadcrumbError(
+                'house {} served with breadcrumb {}, cannot tell regions — '
+                'leave the request in queue for a later batch to retry'.format(
+                    detail_dict['house_id'],
+                    breadcrumb
+                )
+            )
+
         top_region = breadcrumb[0]
         sub_region = breadcrumb[1]
 
@@ -245,8 +267,9 @@ class DetailMixin(RequestGenerator):
             # Issue #14, always update deal status since item may be reopened
             ret['deal_status'] = enums.DealStatusType.OPENED
 
-        # property type
-        property_type = breadcrumb[2]
+        # property type; a 2-level breadcrumb still tells regions but not the
+        # type — fall back to the one from .pattern like the legacy sentinel
+        property_type = breadcrumb[2] if len(breadcrumb) >= 3 else '__UNKNOWN__'
         if property_type != '__UNKNOWN__':
             ret['property_type'] = self.get_enum(
                 enums.PropertyType,
@@ -260,7 +283,7 @@ class DetailMixin(RequestGenerator):
                 detail_dict['property_type']
             )
 
-        if ret['property_type'] == enums.PropertyType.車位:
+        if ret.get('property_type') == enums.PropertyType.車位:
             return ret
 
         # building_type, 公寓 / 電梯大樓 / 透天
@@ -317,7 +340,7 @@ class DetailMixin(RequestGenerator):
                 n_balcony = clean_number(name) or 1
         ret['n_balcony'] = n_balcony
 
-        if ret['property_type'] == enums.PropertyType.整層住家:
+        if ret.get('property_type') == enums.PropertyType.整層住家:
             # 2房1廳1衛
             ret['n_bed_room'] = 0
             ret['n_living_room'] = 0

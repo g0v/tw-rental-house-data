@@ -250,3 +250,35 @@ def test_keep_the_raw_html_and_dict(spider, detail_response):
     assert raw_dict['price'] == '33,999'
     assert raw_dict['floor'] == '11F/14F'
     assert raw_dict['floor_ping'] == '15.19坪'
+
+
+def test_short_breadcrumb_raises_for_retry(spider):
+    '''
+    2026-08-30: 591 transiently served six pages whose breadcrumb missed the
+    region levels; the same pages were normal on the next batch. Raising keeps
+    the request in the persist queue so a later batch retries, instead of
+    storing a house without regions.
+    '''
+    from scrapy_twrh.spiders.rental591.detail_mixin import ShortBreadcrumbError
+
+    with pytest.raises(ShortBreadcrumbError):
+        spider.get_shared_basic({
+            'house_id': 12345678,
+            'breadcrumb': ['台北市'],
+            'deal_time': None,
+        })
+
+
+def test_two_level_breadcrumb_falls_back_to_pattern_property_type(spider):
+    '''regions readable, type missing -> take the one parsed from .pattern'''
+    basic = spider.get_shared_basic({
+        'house_id': 12345678,
+        'breadcrumb': ['台北市', '中山區'],
+        'property_type': '獨立套房',
+        'deal_time': None,
+        'supported_facility': [],
+    })
+
+    assert basic['top_region'] == enums.TopRegionType.台北市
+    assert basic['sub_region'] == enums.SubRegionType.台北市中山區
+    assert basic['property_type'] == enums.PropertyType.獨立套房
