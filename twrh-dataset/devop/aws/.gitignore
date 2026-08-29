@@ -3,3 +3,5 @@
 *.tfstate.*
 terraform.tfstate.d/
 *.tfplan
+# per-env 參數
+*.tfvars
