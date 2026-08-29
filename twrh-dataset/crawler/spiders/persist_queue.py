@@ -169,6 +169,28 @@ class PersistQueue(object):
 
         return today_houses.count() > 0
 
+    def release_claims(self):
+        """行程收工時，把自己認領但未完成的列放回 queue（owner 歸零）。
+
+        errback（403、網路錯誤）的列不會 delete；不釋放就掛在死掉的 owner 上，
+        誰也爬不到。多 task 並跑（2.5-3）下尤其關鍵：被擋而亡的 worker 放手後，
+        換新 IP 的替補 task 才接得走。單機 go.sh 下等於讓下一個 batch 多一輪重試，
+        永久性失敗仍會在批尾自然沉澱、由 statscheck 計為失敗。
+        """
+        released = RequestTS.objects.filter(
+            year=self.ts['y'],
+            month=self.ts['m'],
+            day=self.ts['d'],
+            hour=self.ts['h'],
+            vendor=self.vendor,
+            request_type=self.request_type,
+            owner=self.spider_id,
+        ).update(owner=None, is_pending=False)
+        if released:
+            self.logger.info(
+                'released {} unfinished claimed request(s)'.format(released))
+        return released
+
     def gen_persist_request(self, seed):
         RequestTS.objects.create(
             year=self.ts['y'],

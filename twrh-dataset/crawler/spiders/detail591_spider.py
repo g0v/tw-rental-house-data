@@ -16,7 +16,8 @@ class Detail591Spider(Rental591Spider):
         },
     }
 
-    def __init__(self, append=False, start_early=False, batch_size=0, **kwargs):
+    def __init__(self, append=False, start_early=False, batch_size=0,
+                 consume_only=False, **kwargs):
         super().__init__(
             start_list=self.start_detail_requests,
             **kwargs
@@ -25,6 +26,9 @@ class Detail591Spider(Rental591Spider):
         self.append = append == 'True' or append == True
         self.start_early = start_early == 'True' or start_early == True
         self.batch_size = int(batch_size)
+        # 2.5-3 多 task worker：只消化 queue、絕不生種子——種子由單一 primary 生，
+        # N 個 worker 同日並發走到重生成分支會 race 出整批重複列（create 非 upsert）
+        self.consume_only = consume_only == 'True' or consume_only == True
 
         self.persist_queue = PersistQueue(
             vendor='591 租屋網',
@@ -45,6 +49,7 @@ class Detail591Spider(Rental591Spider):
         return spider
     
     def spider_closed(self, spider=None):
+        self.persist_queue.release_claims()
         self.persist_queue.progress_tracker.log_final()
 
     def parse_seed(self, seed):
@@ -58,7 +63,9 @@ class Detail591Spider(Rental591Spider):
 
     def start_detail_requests(self):
 
-        if not self.persist_queue.has_request() and self.persist_queue.has_run_today():
+        if self.consume_only:
+            self.logger.info('consume-only mode: skip seed generation')
+        elif not self.persist_queue.has_request() and self.persist_queue.has_run_today():
             # queue 耗盡 + 今天已跑過 = go.sh batch 重啟時的正常收尾，不是新的一天。
             # 少了這個判斷，恰好在 batch 邊界耗盡 queue 會觸發下面的全量重生成，
             # 把全台 open 房源再排一輪（2026-08-26 實測 55,943 筆）。

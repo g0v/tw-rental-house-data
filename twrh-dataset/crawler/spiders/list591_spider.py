@@ -37,6 +37,7 @@ class List591Spider(Rental591Spider):
         return spider
     
     def spider_closed(self, spider=None):
+        self.persist_queue.release_claims()
         self.persist_queue.progress_tracker.log_final()
 
     def parse_seed (self, seed):
