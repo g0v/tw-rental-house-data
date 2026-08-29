@@ -451,6 +451,23 @@ Raw 的唯一用途是事後 re-parse（`tools/rerun_detail_raw.py`，修 parser
 
 ## 編修紀錄
 
+- **2026-08-29（二補）** **A1 未竟＋A4 落地，驗擋發現雲上 IP 條件與本機不同**：
+  - A1 未竟：`devop/entrypoint.sh` 把 EFS `/data` 接到 `../logs` 與 `datas/`；
+    新 image 已推 us-west-2 ECR。SSM slack-webhook／sentry-dsn 原為 CHANGEME
+    佔位——首個 crawler task 在 Django settings import 即死（BadDsn），已填真值
+    （零產出斷言已於 08-28 在 statscheck 落地，A4 前置具足）。
+  - **驗擋實測（run-task 覆寫 command）**：2.5-3 等待的真實被擋樣本到手
+    （fallback 形狀歸 dx 2.5-3）。連帶暴露：
+    403 errback 不會續餵 persist queue，併發鏈逐一死光後 spider 以
+    `finished` 靜默收場（熔斷樣本未達窗口門檻、未觸發）——go.sh 看不出異常，
+    只有 statscheck 失敗率會叫。
+  - 順帶發現並修：detail 的種子生成是「全部 OPENED 房源」（不分城市），而遷移
+    帶進 69,294 筆歷史段殭屍 OPENED（updated ≤2024-10-31）——已依拍板以 SQL
+    關閉（deal_status→NOT_FOUND，「超過半年沒更新」準則），剩 66,739 ≈ 現役量。
+  - **A4 並行驗證起跑**：雲上每日排程 `twrh-daily-crawl` 與本機錯開（各寫各的
+    DB；排程時間等 per-env 參數於 terraform.tfvars，不入版控），觀察雲上場次
+    能跑多遠、403 是否復現；本機維持 primary。variables.tf 預設
+    enable_schedule=true（日常 apply 不砍排程）。
 - **2026-08-29** **M4 對帳完成，全數通過**（工具 `tools/migrate/recon_m4.py`；遷移步驟 5 結案）：
   - 跨段 count 核算精確吻合：house＝舊段＋本機段−跨段自然鍵合併（舊段內部重複實為 0）、
     author 同式、house_ts 與本機段一致且歷史段 trim 淨空、raw 欄位全表 NULL。

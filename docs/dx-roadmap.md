@@ -394,6 +394,10 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
   - **1-5 完成**：花蓮縣全量 survey（375/375 raw 與 generic 全數解析成功）產出正式
     baseline，committed 於 `scrapy-tw-rental-house/baselines/hualien-fill-rate.json`；
     parser 改版後以 `twrh survey 花蓮縣` 重新產出。
+  - （後記 2026-08-29）**2.5-3 等待的「真實被擋樣本」到手**（雲上環境）。
+    同場暴露：403 errback 不續餵 persist queue，
+    spider 靜默 `finished`、熔斷樣本未達門檻不觸發——fallback 設計素材齊了，
+    見 aws-deployment-plan 2026-08-29（二補）。
   - **3-2 完成**：
     - **L1 公開 CI**：`.github/workflows/python-tests.yml`——repo 第一個 Python CI，
       只跑離線 pytest（conftest 擋 socket），live 不進公開 CI。
