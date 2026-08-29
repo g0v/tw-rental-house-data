@@ -20,8 +20,13 @@ elif [ "$MODE" != close ]; then
 fi
 CIDRS+=("${EXTRA[@]+"${EXTRA[@]}"}")
 
-LIST=$(printf '"%s",' "${CIDRS[@]+"${CIDRS[@]}"}")
-LIST="[${LIST%,}]"
+# close 模式下陣列為空：printf 零參數仍會印一輪空字串（[""]），要顯性給 []
+if [ ${#CIDRS[@]} -eq 0 ]; then
+  LIST="[]"
+else
+  LIST=$(printf '"%s",' "${CIDRS[@]}")
+  LIST="[${LIST%,}]"
+fi
 terraform apply -auto-approve \
   -var region=us-west-2 -var enable_rds=true \
   -var "rds_client_cidrs=$LIST" | grep -E 'Apply complete|Error'

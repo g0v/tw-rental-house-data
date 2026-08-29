@@ -451,6 +451,19 @@ Raw 的唯一用途是事後 re-parse（`tools/rerun_detail_raw.py`，修 parser
 
 ## 編修紀錄
 
+- **2026-08-29** **M4 對帳完成，全數通過**（工具 `tools/migrate/recon_m4.py`；遷移步驟 5 結案）：
+  - 跨段 count 核算精確吻合：house＝舊段＋本機段−跨段自然鍵合併（舊段內部重複實為 0）、
+    author 同式、house_ts 與本機段一致且歷史段 trim 淨空、raw 欄位全表 NULL。
+  - 本機段抽樣 150/150 通過；houses_without_etc 25,170 列集中 created=2023，
+    屬「跳過 2025/2026 dump 檔不回補」的既定結果（2023 建立、空窗期被更新的列落在被跳過的檔）。
+  - export dry-run（202603）：新 RDS 與本機 DB 同日匯出**逐列等價**——唯一差異為跨段合併
+    author 的刊登者編碼，且與 migrate_author_map 精確對應、零例外。與公開 zip 的筆數差
+    全數歸因於 export 讀 house 現況表的語意（`created ≤ 月底 AND crawled_at ≥ 月初 AND
+    additional_fee 非 NULL`——後續爬行把 crawled_at 前移會讓舊物件回到窗口、個別列後續被
+    重置成種子列會被濾掉），非資料缺損；公開 zip 自身 json 與 csv 亦為不同日期產物。
+  - 白名單已關（`rds-door.sh close`，順修 close 模式空陣列產生 `[""]` 的 bug）。
+  - 剩人工收尾：drop `migrate_author_map`／`migrate_house_map`、workbench-west1 destroy、
+    本機 `twrh_new` drop、舊 RDS 停機→snapshot→刪。
 - **2026-08-28（四補）** M1 舊 RDS 盤查完成（workbench-west1 臨時 terraform＋
   RunTask psql）：舊 RDS 實為 2018→2024-10 段、in-DB raw 僅 2024、與本機
   （2025-10 起）無重疊——開放問題 6 結案、8 修正；歷史段 raw 過境量下修一個
