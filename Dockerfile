@@ -29,6 +29,8 @@ COPY twrh-dataset/ ./
 # 容器內沒有 gitignored 的個人設定檔，一律用 env-driven 的 sample
 RUN cp crawler/settings.sample.py crawler/settings.py
 
+# EFS（/data）→ ../logs 與 datas/ 的接線，見 devop/entrypoint.sh
+ENTRYPOINT ["/app/twrh-dataset/devop/entrypoint.sh"]
 CMD ["./go.sh"]
 
 
