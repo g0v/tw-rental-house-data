@@ -35,7 +35,7 @@ resource "aws_iam_role_policy" "execution_ssm" {
   })
 }
 
-# ---- crawler task role：目前只需 ECS Exec（workbench 進 shell 用）----
+# ---- crawler task role：ECS Exec（workbench 進 shell）＋編排器開/查 worker ----
 resource "aws_iam_role" "crawler_task" {
   name               = "twrh-crawler-task${var.name_suffix}"
   assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
@@ -56,6 +56,37 @@ resource "aws_iam_role_policy" "crawler_exec" {
       ]
       Resource = "*"
     }]
+  })
+}
+
+# orchestrate.sh（模型 A）：開 N 個 detail worker 並輪詢其收尾狀態。
+# RunTask 限本 task def 家族；DescribeTasks 讀狀態；PassRole 傳兩個 task role
+# 給 worker（與 scheduler role 同對象）。
+resource "aws_iam_role_policy" "crawler_orchestrate" {
+  name = "orchestrate-workers"
+  role = aws_iam_role.crawler_task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["ecs:RunTask"]
+        Resource = ["${aws_ecs_task_definition.crawler.arn_without_revision}:*"]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["ecs:DescribeTasks"]
+        Resource = "*"
+        Condition = {
+          ArnEquals = { "ecs:cluster" = aws_ecs_cluster.twrh.arn }
+        }
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
+        Resource = [aws_iam_role.execution.arn, aws_iam_role.crawler_task.arn]
+      },
+    ]
   })
 }
 

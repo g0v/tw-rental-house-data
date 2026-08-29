@@ -27,28 +27,48 @@ variable "crawl_schedule" {
   default     = "cron(0 4 * * ? *)"
 }
 
+# ---- primary（orchestrate.sh）的 list 階段速率 ----
 variable "crawl_concurrency" {
-  description = "爬蟲 CONCURRENT_REQUESTS（per-env 於 terraform.tfvars 設定）"
+  description = "primary list 階段 CONCURRENT_REQUESTS（per-env 於 terraform.tfvars 設定）"
   type        = string
   default     = "1"
 }
 
 variable "crawl_download_delay" {
-  description = "爬蟲 DOWNLOAD_DELAY 秒數（字串；per-env 於 terraform.tfvars 設定）"
+  description = "primary list 階段 DOWNLOAD_DELAY 秒數（per-env 於 terraform.tfvars 設定）"
   type        = string
   default     = "1"
 }
 
+# ---- 2.5-3 detail worker 群：orchestrate.sh 用 run-task 開 N 個（各自新 IP）----
 variable "detail_workers" {
-  description = "2.5-3 多 task 並跑：consume-only detail worker 數（0=關）。每個 worker 是獨立 Fargate task＝獨立公網 IP，只消化 queue 不生種子；per-env 於 terraform.tfvars 設定"
+  description = "consume-only detail worker 數（run-task --count）。0=orchestrate 只跑 list＋收尾不開 worker；per-env 於 terraform.tfvars 設定"
   type        = number
   default     = 0
 }
 
-variable "detail_worker_schedule" {
-  description = "detail worker 群的 cron（Asia/Taipei）；應晚於主排程的 list 階段完成時間，per-env 於 terraform.tfvars 設定"
+variable "worker_concurrency" {
+  description = "每個 worker 的 CONCURRENT_REQUESTS（1=純序列；per-env 於 terraform.tfvars 設定）"
   type        = string
-  default     = "cron(30 4 * * ? *)"
+  default     = "1"
+}
+
+variable "worker_download_delay" {
+  description = "每個 worker 的 DOWNLOAD_DELAY 秒數（per-env 於 terraform.tfvars 設定）"
+  type        = string
+  default     = "1"
+}
+
+variable "worker_cpu" {
+  description = "worker task cpu（run-task override，consume-only 較 primary 小）"
+  type        = number
+  default     = 256
+}
+
+variable "worker_memory" {
+  description = "worker task memory（run-task override）"
+  type        = number
+  default     = 1024
 }
 
 variable "crawler_cpu" {

@@ -129,6 +129,17 @@ locals {
     { name = "TWRH_DOWNLOAD_DELAY", value = var.crawl_download_delay },
     { name = "TWRH_CONCURRENT_REQUESTS", value = var.crawl_concurrency },
     { name = "DETAIL_BATCH_SIZE", value = "10000" },
+    # orchestrate.sh（模型 A）開/查 detail worker 所需
+    { name = "AWS_DEFAULT_REGION", value = var.region },
+    { name = "TWRH_CLUSTER", value = aws_ecs_cluster.twrh.name },
+    { name = "TWRH_TASK_DEF", value = "twrh-crawler" },
+    { name = "TWRH_SUBNETS", value = join(",", data.aws_subnets.default.ids) },
+    { name = "TWRH_TASK_SG", value = aws_security_group.task.id },
+    { name = "TWRH_DETAIL_WORKERS", value = tostring(var.detail_workers) },
+    { name = "TWRH_WORKER_CPU", value = tostring(var.worker_cpu) },
+    { name = "TWRH_WORKER_MEMORY", value = tostring(var.worker_memory) },
+    { name = "TWRH_WORKER_CONCURRENCY", value = var.worker_concurrency },
+    { name = "TWRH_WORKER_DELAY", value = var.worker_download_delay },
   ]
   crawler_secrets = [
     { name = "TWRH_DB_PASSWORD", valueFrom = aws_ssm_parameter.secrets["db-password"].arn },
@@ -167,7 +178,7 @@ resource "aws_ecs_task_definition" "crawler" {
     name        = "crawler"
     image       = "${aws_ecr_repository.crawler.repository_url}:latest"
     essential   = true
-    command     = ["./go.sh"]
+    command     = ["./devop/orchestrate.sh"]
     environment = local.crawler_env
     secrets     = local.crawler_secrets
     mountPoints = local.mount_points
@@ -203,40 +214,6 @@ resource "aws_scheduler_schedule" "daily_crawl" {
         assign_public_ip = true
       }
     }
-  }
-}
-
-# ---- 2.5-3 detail worker 群（count 由 detail_workers 控，0=關）----
-# 每個 worker 是獨立 task＝獨立公網 IP；consume-only（不生種子），
-# batch 迴圈直到 queue 空。log 以 hostname 區分、留 EFS。
-resource "aws_scheduler_schedule" "detail_worker" {
-  count                        = var.detail_workers
-  name                         = "twrh-detail-worker-${count.index}"
-  schedule_expression          = var.detail_worker_schedule
-  schedule_expression_timezone = "Asia/Taipei"
-  flexible_time_window {
-    mode = "OFF"
-  }
-  target {
-    arn      = aws_ecs_cluster.twrh.arn
-    role_arn = aws_iam_role.scheduler.arn
-    ecs_parameters {
-      task_definition_arn = aws_ecs_task_definition.crawler.arn
-      launch_type         = "FARGATE"
-      network_configuration {
-        subnets          = data.aws_subnets.default.ids
-        security_groups  = [aws_security_group.task.id]
-        assign_public_ip = true
-      }
-    }
-    input = jsonencode({
-      containerOverrides = [{
-        name = "crawler"
-        command = ["bash", "-c",
-          "n=1; while :; do poetry run scrapy crawl detail591 -L INFO -a consume_only=True -a batch_size=$${DETAIL_BATCH_SIZE:-10000}; L=/data/logs/$$(date +%Y.%m.%d).worker-$$(hostname).$$n.log; mv scrapy.log $$L; grep -q 'Batch limit reached' $$L || break; n=$$((n+1)); done"
-        ]
-      }]
-    })
   }
 }
 

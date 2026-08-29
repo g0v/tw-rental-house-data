@@ -7,6 +7,7 @@ rental_house.json
 devop/*
 !devop/aws/
 !devop/entrypoint.sh
+!devop/orchestrate.sh
 datas/*.zip
 js_cache
 ocr_cache
