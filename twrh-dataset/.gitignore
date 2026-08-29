@@ -8,6 +8,7 @@ devop/*
 !devop/aws/
 !devop/entrypoint.sh
 !devop/orchestrate.sh
+!devop/workers.py
 datas/*.zip
 js_cache
 ocr_cache
