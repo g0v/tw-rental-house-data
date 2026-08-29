@@ -97,6 +97,11 @@ poetry run python ./django/manage.py syncstateful -ts
 echo '===== GENERATE STATISTICS ====='
 poetry run python ./django/manage.py statscheck
 
+# 「值對不對」防線：當日分佈不變量 vs baselines/national.json（591 資料混淆哨兵）。
+# 只告警不擋 export——資料已入庫，出不出貨是月度 gate 的事
+echo '===== DISTRIBUTION CHECK ====='
+poetry run python ./django/manage.py distcheck
+
 # do this in last step, as it may run for a long time
 echo '===== CHECK EXPORT ====='
 poetry run python ./django/manage.py export -p

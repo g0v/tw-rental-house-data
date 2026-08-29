@@ -57,6 +57,7 @@ poetry run scrapy crawl detail591 -L INFO -a batch_size=2000
 # Django management commands (all under django/, not backend/ as the README says)
 poetry run python django/manage.py syncstateful -ts    # sync deal status into time-series
 poetry run python django/manage.py statscheck          # generate stats, notify Slack
+poetry run python django/manage.py distcheck           # 當日分佈不變量 vs twrh-dataset/baselines/national.json（591 混淆哨兵）
 poetry run python django/manage.py export -p           # periodic export (month-end only)
 poetry run python django/manage.py export --help       # manual export: -f/-t dates, -u, -j, -b6
 poetry run python django/manage.py invalidate          # flag suspicious/unstable listing data
