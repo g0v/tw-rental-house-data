@@ -187,14 +187,17 @@ class PersistQueue(object):
             # At most self.queue_length in memory
             return None
 
-        # #21, temp workaround to get next_request ASAP
-        # this operation is still not atomic, different session may get the same request
+        # #21：FOR UPDATE SKIP LOCKED 讓認領原子化——並發 session 的子查詢會
+        # 各自跳過已被鎖定的列，不再搶到同一筆（2.5-3 多 task 並跑的前提）。
+        # 外層再補 owner is null 當保險：即使子查詢在鎖釋放後重讀，也不會蓋掉
+        # 別人已寫入的 owner。
         with connection.cursor() as cursor:
             sql = (
                 'update request_ts set owner = %s where id = ('
                 'select id from request_ts where year = %s and month = %s '
                 'and day = %s and hour = %s and vendor_id = %s and request_type = %s '
-                'and is_pending = %s and owner is null order by id limit 1)'
+                'and is_pending = %s and owner is null order by id limit 1 '
+                'for update skip locked) and owner is null'
             )
             a = cursor.execute(sql, [
                 self.spider_id,
