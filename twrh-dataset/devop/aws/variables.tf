@@ -27,6 +27,30 @@ variable "crawl_schedule" {
   default     = "cron(0 4 * * ? *)"
 }
 
+variable "crawl_concurrency" {
+  description = "爬蟲 CONCURRENT_REQUESTS（per-env 於 terraform.tfvars 設定）"
+  type        = string
+  default     = "1"
+}
+
+variable "crawl_download_delay" {
+  description = "爬蟲 DOWNLOAD_DELAY 秒數（字串；per-env 於 terraform.tfvars 設定）"
+  type        = string
+  default     = "1"
+}
+
+variable "detail_workers" {
+  description = "2.5-3 多 task 並跑：consume-only detail worker 數（0=關）。每個 worker 是獨立 Fargate task＝獨立公網 IP，只消化 queue 不生種子；per-env 於 terraform.tfvars 設定"
+  type        = number
+  default     = 0
+}
+
+variable "detail_worker_schedule" {
+  description = "detail worker 群的 cron（Asia/Taipei）；應晚於主排程的 list 階段完成時間，per-env 於 terraform.tfvars 設定"
+  type        = string
+  default     = "cron(30 4 * * ? *)"
+}
+
 variable "crawler_cpu" {
   type    = number
   default = 1024 # 1 vCPU——scrapy 單行程單執行緒，實測峰值約半顆核心

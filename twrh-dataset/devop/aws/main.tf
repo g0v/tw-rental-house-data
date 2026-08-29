@@ -126,8 +126,8 @@ locals {
     # 禮貌/效能參數 per-env 設定（terraform.tfvars，不入版控）；repo 內預設不變
     { name = "TWRH_ROBOTSTXT_OBEY", value = var.robotstxt_obey },
     { name = "TWRH_AUTOTHROTTLE", value = var.autothrottle },
-    { name = "TWRH_DOWNLOAD_DELAY", value = "0" },
-    { name = "TWRH_CONCURRENT_REQUESTS", value = "16" },
+    { name = "TWRH_DOWNLOAD_DELAY", value = var.crawl_download_delay },
+    { name = "TWRH_CONCURRENT_REQUESTS", value = var.crawl_concurrency },
     { name = "DETAIL_BATCH_SIZE", value = "10000" },
   ]
   crawler_secrets = [
@@ -203,6 +203,40 @@ resource "aws_scheduler_schedule" "daily_crawl" {
         assign_public_ip = true
       }
     }
+  }
+}
+
+# ---- 2.5-3 detail worker 群（count 由 detail_workers 控，0=關）----
+# 每個 worker 是獨立 task＝獨立公網 IP；consume-only（不生種子），
+# batch 迴圈直到 queue 空。log 以 hostname 區分、留 EFS。
+resource "aws_scheduler_schedule" "detail_worker" {
+  count                        = var.detail_workers
+  name                         = "twrh-detail-worker-${count.index}"
+  schedule_expression          = var.detail_worker_schedule
+  schedule_expression_timezone = "Asia/Taipei"
+  flexible_time_window {
+    mode = "OFF"
+  }
+  target {
+    arn      = aws_ecs_cluster.twrh.arn
+    role_arn = aws_iam_role.scheduler.arn
+    ecs_parameters {
+      task_definition_arn = aws_ecs_task_definition.crawler.arn
+      launch_type         = "FARGATE"
+      network_configuration {
+        subnets          = data.aws_subnets.default.ids
+        security_groups  = [aws_security_group.task.id]
+        assign_public_ip = true
+      }
+    }
+    input = jsonencode({
+      containerOverrides = [{
+        name = "crawler"
+        command = ["bash", "-c",
+          "n=1; while :; do poetry run scrapy crawl detail591 -L INFO -a consume_only=True -a batch_size=$${DETAIL_BATCH_SIZE:-10000}; L=/data/logs/$$(date +%Y.%m.%d).worker-$$(hostname).$$n.log; mv scrapy.log $$L; grep -q 'Batch limit reached' $$L || break; n=$$((n+1)); done"
+        ]
+      }]
+    })
   }
 }
 
