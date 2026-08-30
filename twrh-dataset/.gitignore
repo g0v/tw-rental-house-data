@@ -9,6 +9,7 @@ devop/*
 !devop/entrypoint.sh
 !devop/orchestrate.sh
 !devop/workers.py
+!devop/housekeep.sh
 datas/*.zip
 js_cache
 ocr_cache

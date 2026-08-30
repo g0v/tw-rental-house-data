@@ -25,7 +25,11 @@ resource "aws_iam_role_policy" "crawler_raw_upload" {
       {
         Effect   = "Allow"
         Action   = ["s3:PutObject", "s3:GetObject"]
-        Resource = ["${aws_s3_bucket.raw.arn}/raw/*"]
+        Resource = [
+          "${aws_s3_bucket.raw.arn}/raw/*",
+          # housekeep.sh 的 HouseTS 歸檔（archivehistory tgz）
+          "${aws_s3_bucket.raw.arn}/archive/*",
+        ]
       },
       {
         Effect   = "Allow"

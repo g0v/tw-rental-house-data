@@ -115,6 +115,12 @@ variable "db_user" {
   default = "twrh"
 }
 
+variable "housekeep_schedule" {
+  description = "月度 housekeep（raw offload＋HouseTS 歸檔）的 cron（Asia/Taipei）；避開爬蟲時段"
+  type        = string
+  default     = "cron(0 12 3 * ? *)"
+}
+
 variable "robotstxt_obey" {
   description = "TWRH_ROBOTSTXT_OBEY（per-env 於 terraform.tfvars 設定）"
   type        = string

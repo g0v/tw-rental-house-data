@@ -129,6 +129,8 @@ locals {
     { name = "TWRH_DOWNLOAD_DELAY", value = var.crawl_download_delay },
     { name = "TWRH_CONCURRENT_REQUESTS", value = var.crawl_concurrency },
     { name = "DETAIL_BATCH_SIZE", value = "10000" },
+    # housekeep.sh（raw offload / HouseTS 歸檔）上傳目標
+    { name = "TWRH_RAW_BUCKET", value = aws_s3_bucket.raw.bucket },
     # orchestrate.sh（模型 A）開/查 detail worker 所需
     { name = "AWS_DEFAULT_REGION", value = var.region },
     { name = "TWRH_CLUSTER", value = aws_ecs_cluster.twrh.name },
@@ -214,6 +216,37 @@ resource "aws_scheduler_schedule" "daily_crawl" {
         assign_public_ip = true
       }
     }
+  }
+}
+
+# ---- 月度 housekeep（raw offload ＋ HouseTS 歸檔，節省槓桿 1＋2）----
+# 同一顆 image、command override；時間須避開爬蟲時段（rawoffload 無鎖）
+resource "aws_scheduler_schedule" "monthly_housekeep" {
+  count                        = var.enable_schedule ? 1 : 0
+  name                         = "twrh-monthly-housekeep"
+  schedule_expression          = var.housekeep_schedule
+  schedule_expression_timezone = "Asia/Taipei"
+  flexible_time_window {
+    mode = "OFF"
+  }
+  target {
+    arn      = aws_ecs_cluster.twrh.arn
+    role_arn = aws_iam_role.scheduler.arn
+    ecs_parameters {
+      task_definition_arn = aws_ecs_task_definition.crawler.arn
+      launch_type         = "FARGATE"
+      network_configuration {
+        subnets          = data.aws_subnets.default.ids
+        security_groups  = [aws_security_group.task.id]
+        assign_public_ip = true
+      }
+    }
+    input = jsonencode({
+      containerOverrides = [{
+        name    = "crawler"
+        command = ["./devop/housekeep.sh"]
+      }]
+    })
   }
 }
 
