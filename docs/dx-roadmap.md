@@ -248,8 +248,12 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
   過擬合當天（distcheck 已每日 append history jsonl 當原料，2026-08-25 起）；
   (b) invariants 補「對市場漂移免疫、對錯亂敏感」的值檢查——現況座標/坪數/價格
   只驗 fill 不驗值，591 若換一種數字打亂法（價格有前例）十項全綠照樣入庫：
-  `share_coord_in_taiwan`（bbox 內比率 ≈1.0）、`median_monthly_price`（寬容許差
-  ±30%，市場漲不動它、數字錯位會打飛它）、價格/坪數合理區間比率。
+  `share_coord_in_taiwan`（bbox 內比率 ≥0.99；bbox 約 lat 21.5–26.5、
+  lng 118–122.5）、`median_monthly_price`（寬容許差 ±30%，市場漲不動它、
+  數字錯位會打飛它）、`share_price_ping_sane`（價格 ∈[1k,500k] 且坪數 ∈[1,200]
+  比率 ≥0.99）。門檻數字以累積 history 實據校準後定案；設計原則＝每項都是
+  「量測系統壞掉才會動、市場變化動不了」的統計量。機制不變：min_samples 護欄、
+  日檢硬斷言＋Slack、月報永遠 advisory（history 滿一年後月報升級同期月基準）。
 - **list-driven 成交偵測（省爬取成本的正解，2026-08-30 提出）**：成交狀態（N/D）
   目前完全靠每日全量 detail 產生——`detail_mixin.py` 對 404／`.error-info` 標
   `NOT_FOUND`、`deal_time` 標 `DEAL`，list 完全不碰 `deal_status`。這使得「其他天
