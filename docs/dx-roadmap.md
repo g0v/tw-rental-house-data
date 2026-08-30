@@ -242,6 +242,14 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
 - `export` 指令**不讀** `TWRH_TARGET_DATE`，永遠用真實當下日期 —— 用 `go.sh --date` 重跑舊日期時，
   匯出的檔名／範圍會對不上。
 - `ui` 的 Node 版本不一致：`.nvmrc` 是 16，CI matrix 是 14。
+- **baseline 重製＋數值欄位哨兵（2026-08-30 拍板，9/5 後做）**：
+  (a) national.json 以 **HouseTS（DB 層）多日中位數**重製——現值 0.993 系
+  survey（parse 層）產出，與 distcheck 的 DB 層量測天生差 ~2pp，且單日快照
+  過擬合當天（distcheck 已每日 append history jsonl 當原料，2026-08-25 起）；
+  (b) invariants 補「對市場漂移免疫、對錯亂敏感」的值檢查——現況座標/坪數/價格
+  只驗 fill 不驗值，591 若換一種數字打亂法（價格有前例）十項全綠照樣入庫：
+  `share_coord_in_taiwan`（bbox 內比率 ≈1.0）、`median_monthly_price`（寬容許差
+  ±30%，市場漲不動它、數字錯位會打飛它）、價格/坪數合理區間比率。
 - **list-driven 成交偵測（省爬取成本的正解，2026-08-30 提出）**：成交狀態（N/D）
   目前完全靠每日全量 detail 產生——`detail_mixin.py` 對 404／`.error-info` 標
   `NOT_FOUND`、`deal_time` 標 `DEAL`，list 完全不碰 `deal_status`。這使得「其他天
