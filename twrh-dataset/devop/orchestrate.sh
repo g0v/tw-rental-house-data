@@ -1,7 +1,8 @@
 #!/bin/bash
 # 雲上每日全量的編排器（docs/aws-deployment-plan 2.5-3 模型 A）。
 # 取代 go.sh 在 Fargate 的角色（go.sh 留給本機單機跑）：
-#   1. list591 inline 生種子（短、低併發）
+#   1. list591 inline（短、低併發）
+#   1.5 detail591 seed_only 生 detail 種子（worker 都 consume_only，不會生）
 #   2. run-task 開 N 個 consume-only detail worker（各自新公網 IP），握住 ARN
 #   3. 輪詢這批 ARN 直到全 STOPPED 或逾 MAX_WAIT——「worker 全停」是唯一可靠的
 #      收尾閘門（queue 空會有啟動瞬間假象＋硬殺孤兒認領，不可當閘門）
@@ -26,6 +27,16 @@ poetry run scrapy crawl list591 -L INFO
 mv scrapy.log "../logs/$now.list.log"
 if breaker_tripped "../logs/$now.list.log"; then
   echo '!!! list breaker tripped — abort, no workers launched'
+  exit 1
+fi
+
+# --- phase 1.5: 生 detail 種子——consume-only worker 不生種子，種子由 primary
+# 在這裡生（首航 2026-08-30 實測：漏了這步，worker 全數 0 items 秒退）---
+echo '===== SEED ====='
+poetry run scrapy crawl detail591 -L INFO -a seed_only=True
+mv scrapy.log "../logs/$now.seed.log"
+if ! grep -q 'seed-only mode' "../logs/$now.seed.log"; then
+  echo '!!! seed generation failed — abort, no workers launched'
   exit 1
 fi
 

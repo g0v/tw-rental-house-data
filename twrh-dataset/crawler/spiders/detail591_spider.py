@@ -17,7 +17,7 @@ class Detail591Spider(Rental591Spider):
     }
 
     def __init__(self, append=False, start_early=False, batch_size=0,
-                 consume_only=False, **kwargs):
+                 consume_only=False, seed_only=False, **kwargs):
         super().__init__(
             start_list=self.start_detail_requests,
             **kwargs
@@ -29,6 +29,9 @@ class Detail591Spider(Rental591Spider):
         # 2.5-3 多 task worker：只消化 queue、絕不生種子——種子由單一 primary 生，
         # N 個 worker 同日並發走到重生成分支會 race 出整批重複列（create 非 upsert）
         self.consume_only = consume_only == 'True' or consume_only == True
+        # 2.5-3 primary：只生種子、不爬——orchestrate 在 list 後、開 worker 前跑，
+        # 與 consume_only 成對（首航實測：全 worker 都 consume_only 時沒人生種子）
+        self.seed_only = seed_only == 'True' or seed_only == True
 
         self.persist_queue = PersistQueue(
             vendor='591 租屋網',
@@ -65,7 +68,11 @@ class Detail591Spider(Rental591Spider):
 
         if self.consume_only:
             self.logger.info('consume-only mode: skip seed generation')
-        elif not self.persist_queue.has_request() and self.persist_queue.has_run_today():
+        elif self.seed_only and self.persist_queue.has_request():
+            # 同日重跑：種子已在，不重生成（gen_persist_request 是 create 非 upsert）
+            self.logger.info('seed-only mode: queue not empty, nothing to generate')
+        elif not self.persist_queue.has_request() and not self.seed_only \
+                and self.persist_queue.has_run_today():
             # queue 耗盡 + 今天已跑過 = go.sh batch 重啟時的正常收尾，不是新的一天。
             # 少了這個判斷，恰好在 batch 邊界耗盡 queue 會觸發下面的全量重生成，
             # 把全台 open 房源再排一輪（2026-08-26 實測 55,943 筆）。
@@ -97,7 +104,13 @@ class Detail591Spider(Rental591Spider):
                     traceback.print_exc()
         
         # Initialize progress tracking
-        self.persist_queue.init_progress_tracking()
+        total = self.persist_queue.init_progress_tracking()
+
+        if self.seed_only:
+            # 種子已就緒，爬取交給 consume_only worker 群
+            self.logger.info(
+                'seed-only mode: {} requests in queue, exit without crawling'.format(total))
+            return
 
         # quick fix for concurrency issue
         mercy = 10
