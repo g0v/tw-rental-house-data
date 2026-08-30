@@ -119,6 +119,14 @@ publish.sh [YYYYMM]（預設上個月；冪等，可 --resume 從斷點續跑）
 
 - **2026-08-26** 建立。盤點 export -p／csv-aggregator／ui-next stats 資料流，
   定義 publish.sh 五步流程與紅綠分岔，列五個開放問題。
+- **2026-08-30（二補）** **P2–P5 完成**：`twrh-dataset/publish.sh`（五步編排，
+  紅綠分岔、state marker 冪等、--resume/--dry-run/--quality-issue）＋
+  `tools/publish_ui_stats.py`（UI 資料列 upsert；size_byte＝解壓後資料檔，
+  以 202510 歷史列驗證 diff 為零）。P5 演練以 202510 zip 走完 dry-run 全程
+  （紅停敘事關卡→resume→S3 dryrun→UI→would-open-PR）。兩個機械修正：
+  (a) check.sh 需先於 dedup-single 跑（注入編碼表），順序改為「驗 raw→聚合→
+  驗 dedup」；(b) check.sh 必須在 csv-aggregator 自己的目錄執行（其清理是
+  cwd 相對的 rm -rf）。distcheck 另落每日不變量 history（baseline 重製原料）。
 - **2026-08-30** 開放問題 1、2、4 拍板（見各條 ✅）；**P1 完成**：
   `django/manage.py monthreport`（crawlerrequest app）——逐日 Stats 彙整、
   缺爬日/fail 日判定、RequestTS 殘留、breaker log 掃描（best effort）、
