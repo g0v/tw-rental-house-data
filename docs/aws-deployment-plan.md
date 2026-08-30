@@ -455,6 +455,15 @@ Raw 的唯一用途是事後 re-parse（`tools/rerun_detail_raw.py`，修 parser
 
 ---
 
+## 待辦優先序（2026-08-30 拍板）
+
+1. **RDS 降 db.t4g.micro ＋ primary-as-consumer 落地**（已拍板的兩項，等當日爬取
+   寫完即動；見編修紀錄 2026-08-30）。
+2. **raw offload ＋ HouseTS 歸檔排程化**（省錢＋防 RDS 長大的關鍵；工具已有，
+   缺 EventBridge 排程）。
+3. 其餘 QoL 與結構性（A5、A6、Adminer 連線拍板、devop.md 清理、dx Phase 4）
+   慢慢來；人工收尾（破壞性）由操作者擇時。
+
 ## 編修紀錄
 
 - **2026-08-30** **orchestrate 模型 A 首航修正＋RDS 降規與 primary-as-consumer 拍板**：

@@ -4,7 +4,8 @@
 #   1. list591 inline（短、低併發）
 #   1.5 detail591 seed_only 生 detail 種子（worker 都 consume_only，不會生）
 #   2. run-task 開 N 個 consume-only detail worker（各自新公網 IP），握住 ARN
-#   3. 輪詢這批 ARN 直到全 STOPPED 或逾 MAX_WAIT——「worker 全停」是唯一可靠的
+#   3a. primary 也跑 consume_only batch 迴圈到 queue 排空（等待期不閒置）
+#   3b. 輪詢 worker ARN 直到全 STOPPED 或逾 MAX_WAIT——「worker 全停」是唯一可靠的
 #      收尾閘門（queue 空會有啟動瞬間假象＋硬殺孤兒認領，不可當閘門）
 #   4. 收尾：syncstateful / statscheck / distcheck /（月底）export
 # 逾時仍照常收尾但告警；list 熔斷則中止不開 worker。
@@ -49,7 +50,21 @@ if [ -z "$ARNS" ]; then
 fi
 echo "workers: $ARNS"
 
-# --- phase 3: 輪詢 worker ARN 直到全 STOPPED 或逾時（exit 2）---
+# --- phase 3a: primary 也當 consumer——等待期純 poll 是浪費（1 vCPU 閒數小時），
+# 改跑與 worker 相同的 consume_only batch 迴圈直到 queue 排空。多的這個出口 IP
+# 併入 worker 群的聚合速率觀察。---
+echo '===== PRIMARY CONSUME ====='
+BATCH="${DETAIL_BATCH_SIZE:-10000}"
+n=1
+while :; do
+  poetry run scrapy crawl detail591 -L INFO -a consume_only=True -a batch_size="$BATCH"
+  mv scrapy.log "../logs/$now.primary-detail.$n.log" 2>/dev/null || true
+  grep -q 'Batch limit reached' "../logs/$now.primary-detail.$n.log" 2>/dev/null || break
+  n=$((n+1))
+done
+
+# --- phase 3b: 輪詢 worker ARN 直到全 STOPPED 或逾時（exit 2）——queue 空後
+# worker 隨即自然收工，這裡只是等尾巴；「worker 全停」仍是唯一可靠收尾閘門 ---
 echo '===== WAIT FOR WORKERS ====='
 timed_out=0
 poetry run python devop/workers.py wait $ARNS || timed_out=1
