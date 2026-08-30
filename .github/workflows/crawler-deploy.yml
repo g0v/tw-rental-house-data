@@ -1,0 +1,45 @@
+# A6（docs/aws-deployment-plan）：push 即 deploy——master 上動到 crawler 相關
+# 檔案就 build ARM64 image 推 ECR :latest；每日排程拉 :latest，下一場即生效。
+# 憑證走 OIDC（devop/aws/ci.tf 的 twrh-ci-ecr-push 角色），無長期金鑰。
+# public repo 的 ARM runner 免費，原生 build 免 qemu。
+name: crawler-deploy
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'twrh-dataset/**'
+      - 'Dockerfile'
+      - '.github/workflows/crawler-deploy.yml'
+
+permissions:
+  id-token: write   # OIDC
+  contents: read
+
+concurrency:
+  group: crawler-deploy
+  cancel-in-progress: true
+
+jobs:
+  build-push:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::846793362148:role/twrh-ci-ecr-push
+          aws-region: us-west-2
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      - name: Build and push crawler image
+        env:
+          ECR: ${{ steps.ecr.outputs.registry }}
+        run: |
+          docker build --target crawler \
+            -t "$ECR/twrh-crawler:latest" \
+            -t "$ECR/twrh-crawler:${GITHUB_SHA::12}" .
+          docker push "$ECR/twrh-crawler:latest"
+          docker push "$ECR/twrh-crawler:${GITHUB_SHA::12}"
