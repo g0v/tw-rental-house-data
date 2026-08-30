@@ -57,11 +57,16 @@ echo "workers: $ARNS"
 
 # --- phase 3a: primary 也當 consumer——等待期純 poll 是浪費（1 vCPU 閒數小時），
 # 改跑與 worker 相同的 consume_only batch 迴圈直到 queue 排空。多的這個出口 IP
-# 併入 worker 群的聚合速率觀察。---
+# 併入 worker 群的聚合速率觀察。
+# 必須套 worker 的節流參數：primary 本身的 env 是 list 用的全速設定，直接拿來
+# consume 會在幾分鐘內 403＋errback 斷餵、spider 靜默 finished（08-31 首航實踩，
+# 423 resp/min 撐了 3.6 分鐘就陣亡）。---
 echo '===== PRIMARY CONSUME ====='
 BATCH="${DETAIL_BATCH_SIZE:-10000}"
 n=1
 while :; do
+  TWRH_CONCURRENT_REQUESTS="${TWRH_WORKER_CONCURRENCY:-1}" \
+  TWRH_DOWNLOAD_DELAY="${TWRH_WORKER_DELAY:-1}" \
   poetry run scrapy crawl detail591 -L INFO -a consume_only=True -a batch_size="$BATCH"
   mv scrapy.log "../logs/$now.primary-detail.$n.log" 2>/dev/null || true
   grep -q 'Batch limit reached' "../logs/$now.primary-detail.$n.log" 2>/dev/null || break
