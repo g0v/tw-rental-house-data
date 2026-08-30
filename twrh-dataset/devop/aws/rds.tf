@@ -46,6 +46,9 @@ resource "aws_db_instance" "twrh" {
   engine         = "postgres"
   engine_version = "15"
   instance_class = var.rds_instance_class
+  # 無 live reader（UI 讀 S3），規格變更立即生效比等維護窗（不可預期的 reboot
+  # 時點）安全；操作紀律＝爬取時段不 apply 規格變更
+  apply_immediately = true
 
   # M1 實測：瘦身後歷史段＋本機段穩態遠小於 50 GB；gp3 基準 3000 IOPS。
   # 遷移夜實測 detail_dict 總量逼近原估上緣，autoscaling 上限 100 當保險
