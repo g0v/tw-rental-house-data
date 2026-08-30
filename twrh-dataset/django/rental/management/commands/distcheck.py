@@ -89,6 +89,26 @@ class Command(BaseCommand):
         current = invariants(generics)
         results, passed, skipped_reason = compare_invariants(current, baseline)
 
+        # 每日不變量留檔（append-only jsonl）：
+        # (a) 多日中位數重製 baseline 的原料——單日快照當基準會過擬合當天
+        #     （fill_rough_coordinate 有時段浮動，2026-08-30 兩地實測差 4pp）；
+        # (b) 未來月報「同期月 baseline」的資料基礎。
+        # 落 ../logs：host＝repo logs（隨使用者同步備份）、雲上＝EFS（entrypoint
+        # 接線）——baselines/ 在 image 內是 ephemeral，不能寫那裡。值可從 HouseTS
+        # 回推（90 天歸檔窗口內），此檔是便利快取非唯一來源。
+        history_path = os.path.join(
+            os.path.dirname(os.path.realpath(__file__)),
+            '../../../../../logs/distcheck.history.jsonl')
+        try:
+            with open(history_path, 'a') as f:
+                f.write(json.dumps({
+                    'date': '{}-{:02d}-{:02d}'.format(
+                        ts['year'], ts['month'], ts['day']),
+                    **current,
+                }, ensure_ascii=False) + '\n')
+        except OSError as e:
+            print(f'history append failed (non-fatal): {e}')
+
         if skipped_reason:
             print(f'{date_str}: distcheck skipped — {skipped_reason}')
             return
