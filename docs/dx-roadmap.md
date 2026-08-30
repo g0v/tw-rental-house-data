@@ -242,6 +242,16 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
 - `export` 指令**不讀** `TWRH_TARGET_DATE`，永遠用真實當下日期 —— 用 `go.sh --date` 重跑舊日期時，
   匯出的檔名／範圍會對不上。
 - `ui` 的 Node 版本不一致：`.nvmrc` 是 16，CI matrix 是 14。
+- **list-driven 成交偵測（省爬取成本的正解，2026-08-30 提出）**：成交狀態（N/D）
+  目前完全靠每日全量 detail 產生——`detail_mixin.py` 對 404／`.error-info` 標
+  `NOT_FOUND`、`deal_time` 標 `DEAL`，list 完全不碰 `deal_status`。這使得「其他天
+  只爬新物件（append）」會讓 `n_day_deal` 解析度掉到全量間隔（每週三次 ≈ ±2-3 天）。
+  正解：把成交偵測改由 **list 缺席驅動**（某 OPENED 房源今天沒出現在 list → 候選
+  `NOT_FOUND`），這樣每天靠便宜的 list 維持 1 天解析度，detail 才能安心降頻（只爬
+  新物件＋週期性刷新靜態欄位），大幅省 Fargate 又不損 deal 解析度。代價：list 缺席
+  比 detail 404 雜訊多（591 分頁/排序偶爾漏顯示），需「連續 N 天缺席才確認」之類
+  緩解，`invalidate` 已在處理這類不穩資料。屬架構改動，要設計＋驗證，非改旗標。
+  註：RDS 是雲上費用主體、與爬取頻率無關，此項省的是 Fargate 那塊，先評估再排。
 
 ---
 
@@ -424,3 +434,18 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
   - **3-3 分佈不變量斷言落地**：`twrh survey --baseline` 比對分佈不變量（見 3-3 列），
     與 probe 的填充率漂移互補；驗證產出的全國＋花蓮縣基準值入 `baselines/`，
     花蓮縣 384 筆 live survey 十項全 PASS，並接入 `nightly.sh`。
+- **2026-08-30 實作進度（雲上首航修正＋core 發版）**：
+  - **短 breadcrumb 修復發版 2.2.3**：591 偶發回缺 region 層的 detail 頁
+    （`detail_mixin.py:216` `breadcrumb[1]` IndexError，6 頁實測、下一 batch 重抓
+    皆正常、DB 零損失），改丟具名 `ShortBreadcrumbError` 保留 persist queue 重試
+    語意（暫時性異常自癒、持續性異常成為可讀失敗），取代埋在 traceback 的 IndexError；
+    `breadcrumb[2]` property_type 走 `.pattern` fallback、車位/整層 `.get()` 防缺鍵。
+    143 pytest 綠。**注意這與 line 420 的 list `page_items[-1]` 邊界 bug 是不同的兩個，
+    後者仍待修。**
+  - **雲上 orchestrate 種子 bug 修正**：detail591 加 `seed_only` 旗標（生完種子即退，
+    與 `consume_only` 成對），orchestrate 插 phase 1.5 生種子——首航全 consume_only
+    worker 沒人生種子、0 items 秒退的修正。
+  - **爬取降頻的正解記入 Backlog**：list-driven 成交偵測（見 Backlog 該項）——
+    成交偵測目前綁死每日全量 detail，這是「省爬取頻率」的真正前置。
+  - 附：AWS 費用/架構決策（RDS 降 micro、primary-as-consumer）見
+    `docs/aws-deployment-plan.md` 2026-08-30 編修紀錄。

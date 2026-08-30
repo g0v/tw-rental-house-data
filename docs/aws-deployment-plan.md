@@ -316,8 +316,14 @@ Raw 的唯一用途是事後 re-parse（`tools/rerun_detail_raw.py`，修 parser
 - **gp3 storage、開小顆**：瘦身後穩態 DB 約 25–40 GB，allocate 50 GB（~US$6/月）即可。
   注意 **RDS storage 只能長不能縮**——這是「遷移到新 instance」和「瘦身」必須併案的原因，
   也是為什麼要先 offload 再遷、而不是遷完再清。
-- Sizing 穩定後買 **1 年期 Reserved Instance**（no-upfront 約 -30%）。
+- Sizing 穩定後買 **1 年期 Reserved Instance**（no-upfront 約 -30%）。RDS 只能 RI
+  （Savings Plan 不涵蓋 RDS）；RI 只折實例不折 storage，micro 上實省 ~$3-6/月且綁
+  1-3 年，規格定案前不划算——先靠降 micro 拿無綁定的省法，RI 最後再議。
 - 備份維持預設（7 天 automated snapshot，100% allocated 內免費）。
+- **降 micro 拍板（2026-08-30，見編修紀錄）**：起初從 t4g.small 觀察，實測 RDS
+  幾乎全天閒置（CPU 低檔、非爬取 0 連線、無 live reader）、爬取記憶體無壓力無 swap，
+  且舊 RDS 本就是 micro 撐多年——**降 db.t4g.micro 無阻礙**，省 ~US$12/月，唯一代價
+  是 export/stats 讀取變慢（舊 micro 證明可接受，且雲上 export 不在出貨關鍵路徑）。
 
 ### 瘦身前後對比（估）
 
@@ -451,6 +457,35 @@ Raw 的唯一用途是事後 re-parse（`tools/rerun_detail_raw.py`，修 parser
 
 ## 編修紀錄
 
+- **2026-08-30** **orchestrate 模型 A 首航修正＋RDS 降規與 primary-as-consumer 拍板**：
+  - **seed_only 修正**：首航 detail worker 全數 0 items 秒退——種子由「非
+    consume_only 的 detail591 啟動時」生成，orchestrate 只跑 list→全 consume_only
+    worker→沒人生種子。detail591 加 `seed_only` 旗標（生完種子即退，與 consume_only
+    成對），orchestrate 插 phase 1.5 生種子；乾跑只驗腳本/權限、沒驗種子語意的教訓。
+    distcheck 首航即以「detail 來源欄位全零」的指紋精準抓到（591 混淆哨兵的意外收穫）。
+  - **primary-as-consumer 拍板（待實作）**：primary（list/seed/finalize 之外）
+    在等待 worker 期間純 poll ARN 數小時，是總成本裡被浪費的一半。改為讓 primary
+    也跑 `consume_only` detail 迴圈直到 queue 排空＝當第 N+1 個 consumer，閒置歸零、
+    白賺一個 worker 的吞吐。收尾閘門「all workers STOPPED」語意保留（primary 先跑完
+    queue、worker 隨後排空）。代價：primary 也爬＝多一個出口 IP，屬 dx 2.5-3 觀察項。
+  - **RDS 降 db.t4g.micro 拍板（待實作）**：補跑期間量測——RDS 幾乎全天閒置
+    （CPU 平時低檔、非爬取時段 0 連線、無 live reader，UI 讀 S3），純夜寫/月讀批次庫。
+    micro 與 small **同為 2 vCPU**，差別只 RAM(2→1 GB)；爬取記憶體壓力低、無 swap。
+    **舊 RDS(us-west-1)即 db.t4g.micro**，扛更大歷史段＋月底 export 多年——micro
+    正式驗證過。唯一代價：export/stats cache 變少變慢，已被舊 micro 證明可接受，
+    且雲上 export 不在月底出貨關鍵路徑（canonical 由本機出）。做法：改
+    `rds_instance_class` apply（reboot 數分鐘，無 reader 無痛），等當日爬取寫完再改。
+  - **每月費用重估**：新架構（micro + primary-as-consumer + 4 worker）約 **~US$35/月**
+    （RDS ~$23＋Fargate ~$10＋ECR/傳輸/S3/logs ~$3），較原（small + 3 worker，
+    primary 閒置）~US$51/月省約三成，且爬取更快。RI/Savings Plan（RDS 只能 RI、
+    Fargate 只能 Savings Plan）可再省 ~$3-6/月但綁 1-3 年，規格定案前不划算、延後。
+  - **爬取降頻的正解＝list-driven 成交偵測**：檢討「每週三次全量＋其餘天只爬新物件」
+    發現成交偵測（N/D）目前完全靠每日全量 detail（`detail_mixin.py` 404/error-info
+    → NOT_FOUND、deal_time → DEAL），list 不碰 deal_status——直接 append 會讓
+    `n_day_deal` 解析度掉到全量間隔。正解是把成交偵測改由 list 缺席驅動，detail 才能
+    安心降頻，已記入 dx-roadmap 待設計。
+  - **core 修正發版 2.2.3**：短 breadcrumb（591 偶發回缺 region 層，重抓即正常）
+    改丟 `ShortBreadcrumbError` 保留 queue 重試語意，取代原 IndexError。
 - **2026-08-29（二補）** **A1 未竟＋A4 落地，驗擋發現雲上 IP 條件與本機不同**：
   - A1 未竟：`devop/entrypoint.sh` 把 EFS `/data` 接到 `../logs` 與 `datas/`；
     新 image 已推 us-west-2 ECR。SSM slack-webhook／sentry-dsn 原為 CHANGEME
