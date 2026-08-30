@@ -20,6 +20,11 @@ now="$TWRH_LOG_STAMP"
 mkdir -p ../logs
 echo "=== orchestrate $TWRH_TARGET_DATE : $N workers ==="
 
+# 檔案 log 同步一份到 stdout → awslogs → CloudWatch，中途死也留有現場；
+# tail -F 跨各 phase 的 mv/重建持續跟檔
+tail -F scrapy.log 2>/dev/null &
+TAIL_PID=$!
+
 breaker_tripped() { grep -q 'error_rate_exceeded' "$1"; }
 
 # --- phase 1: list（本行程內跑）---
@@ -80,6 +85,10 @@ echo '===== CHECK EXPORT ====='
 poetry run python ./django/manage.py export -p
 
 echo '===== FINALIZE ====='
+kill "$TAIL_PID" 2>/dev/null || true
 gzip ../logs/*.log 2>/dev/null || true
+# 本輪 log（含 worker 的，同 STAMP）歸檔 S3 logs/<date>/（lifecycle 30 天過期）
+poetry run python devop/workers.py ship_logs ../logs "$now" \
+  || echo '!!! log shipping incomplete — leftovers stay on EFS'
 [ "$timed_out" = 1 ] && echo 'NOTE: finished with worker timeout — check data completeness'
 echo '=== orchestrate done ==='

@@ -1,10 +1,26 @@
 # raw bucket（us-west-2，命名沿用 twrh-w1 的區域後綴慣例）：
 # - raw/<vendor>/<YYYY-MM>.tar.zst（Glacier IR，上傳端指定 storage class）＋同名 index json
 # - 之後 archivehistory tar／EFS 長期封存也收這裡
-# 刻意不設 lifecycle expiration、不給任何角色 DeleteObject——刪除永遠人工。
+# - logs/<date>/*.gz：orchestrate finalize 歸檔的完整爬取 log（ship_logs）
+# raw/archive 刻意不設 lifecycle expiration、不給任何角色 DeleteObject——刪除永遠
+# 人工；唯 logs/ 例外，lifecycle 30 天自動過期（2026-08-31 拍板）。
 
 resource "aws_s3_bucket" "raw" {
   bucket = "twrh-w2"
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "raw" {
+  bucket = aws_s3_bucket.raw.id
+  rule {
+    id     = "expire-logs-30d"
+    status = "Enabled"
+    filter {
+      prefix = "logs/"
+    }
+    expiration {
+      days = 30
+    }
+  }
 }
 
 resource "aws_s3_bucket_public_access_block" "raw" {
@@ -29,6 +45,8 @@ resource "aws_iam_role_policy" "crawler_raw_upload" {
           "${aws_s3_bucket.raw.arn}/raw/*",
           # housekeep.sh 的 HouseTS 歸檔（archivehistory tgz）
           "${aws_s3_bucket.raw.arn}/archive/*",
+          # orchestrate finalize 的爬取 log 歸檔（ship_logs，30 天 lifecycle）
+          "${aws_s3_bucket.raw.arn}/logs/*",
         ]
       },
       {

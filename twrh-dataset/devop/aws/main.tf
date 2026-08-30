@@ -56,9 +56,10 @@ resource "aws_ecr_lifecycle_policy" "keep_recent" {
 }
 
 # ---- Logs ----
+# 30 天與 S3 logs/ 歸檔同步（2026-08-31 拍板）；完整取證檔在 S3，這裡是即時視窗
 resource "aws_cloudwatch_log_group" "crawler" {
   name              = "/twrh/crawler"
-  retention_in_days = 90
+  retention_in_days = 30
 }
 
 # ---- EFS：logs/、datas/、progress/ 的家 ----
@@ -208,8 +209,9 @@ resource "aws_scheduler_schedule" "daily_crawl" {
     arn      = aws_ecs_cluster.twrh.arn
     role_arn = aws_iam_role.scheduler.arn
     ecs_parameters {
-      task_definition_arn = aws_ecs_task_definition.crawler.arn
-      launch_type         = "FARGATE"
+      task_definition_arn    = aws_ecs_task_definition.crawler.arn
+      launch_type            = "FARGATE"
+      enable_execute_command = true
       network_configuration {
         subnets          = data.aws_subnets.default.ids
         security_groups  = [aws_security_group.task.id]
@@ -233,8 +235,9 @@ resource "aws_scheduler_schedule" "monthly_housekeep" {
     arn      = aws_ecs_cluster.twrh.arn
     role_arn = aws_iam_role.scheduler.arn
     ecs_parameters {
-      task_definition_arn = aws_ecs_task_definition.crawler.arn
-      launch_type         = "FARGATE"
+      task_definition_arn    = aws_ecs_task_definition.crawler.arn
+      launch_type            = "FARGATE"
+      enable_execute_command = true
       network_configuration {
         subnets          = data.aws_subnets.default.ids
         security_groups  = [aws_security_group.task.id]
