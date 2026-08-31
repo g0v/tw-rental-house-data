@@ -1484,13 +1484,13 @@ typing = "*"
 
 [[package]]
 name = "scrapy-tw-rental-house"
-version = "2.2.3"
+version = "2.2.4"
 description = "Scrapy spider for TW Rental House"
 optional = false
 python-versions = "<4.0,>=3.10"
 files = [
-    {file = "scrapy_tw_rental_house-2.2.3-py3-none-any.whl", hash = "sha256:cbb1fbef73f386c042c8322f207237dbe95def1d8c818d221767dd65c8562f06"},
-    {file = "scrapy_tw_rental_house-2.2.3.tar.gz", hash = "sha256:6dab67c4827aa2c572c58293c185f34517641bdb0054e65b085eaca41738a297"},
+    {file = "scrapy_tw_rental_house-2.2.4-py3-none-any.whl", hash = "sha256:7c80453edb4016ba8ae0cd8fb00cb3f2c18c95be7459eb498d77d9ffaab85229"},
+    {file = "scrapy_tw_rental_house-2.2.4.tar.gz", hash = "sha256:23a0f0a04d3486778ea1f7bff334fcece06e1d8ad6904f90b4c209cec6d18b80"},
 ]
 
 [package.dependencies]
