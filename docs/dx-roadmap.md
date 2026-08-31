@@ -227,10 +227,10 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
 
 | # | 項目 | 位置 | 成本 | 說明 |
 |---|---|---|---|---|
-| 4-1 | `enums.py` 與 `tw_regions.json` 單一來源（django 端 import package） | 兩邊 | 中 | 現在兩份且**已漂移**，見〈踩雷筆記〉 |
-| 4-2 | `go.sh` 改用 exit code / DB 狀態取代 `grep -q 'Batch limit reached'` | dataset | 小 | 用 log 字串當控制流，改一句訊息就壞 |
-| 4-3 | `RequestTS.seed` 改成有 key 的 dict | dataset | 中 | 現在 `ListRequestMeta(*seed)` 是位置參數，改欄位順序會靜默錯位。需要 migration |
-| 4-4 | `PersistQueue.queue_length` / `n_live_spider` 從 class attribute 改 instance | dataset | 極小 | 現況靠 `self.x -= 1` 隱式建實例屬性，是 footgun |
+| 4-1 | ~~`enums.py` 與 `tw_regions.json` 單一來源~~ **✅ 完成（2026-08-31）** | 兩邊 | 中 | 漂移實為 591 的峨嵋鄉 typo vs 官方峨眉鄉——套件 2.2.4 以官方名為 canonical、591 拼法降 alias，django 端改 re-export、刪複本 json（makemigrations 零變動） |
+| 4-2 | ~~`go.sh` 取代 `grep -q 'Batch limit reached'`~~ **✅ 完成（2026-08-31）** | dataset | 小 | 改 `-a stop_marker=<path>` marker 檔契約，三個消費端（go.sh／orchestrate 3a／workers.py）一起換；marker 放 container-local /tmp（worker log 在共享 EFS，不能當多寫者控制流） |
+| 4-3 | ~~`RequestTS.seed` 改成有 key 的 dict~~ **✅ 完成（2026-08-31）** | dataset | 中 | JSONField 免 schema migration；讀取端保留位置參數 fallback 吃升級前殘留列。`deduprequest` 的 group key 需同步改 `coalesce(seed->>'id', seed->>0)`——差點漏掉的隱藏消費者 |
+| 4-4 | ~~`PersistQueue` class attribute 改 instance~~ **✅ 完成（2026-08-26，`4247192`）** | dataset | 極小 | 隨 batch 閘門修復一併處理 |
 | 4-5 | **拔掉 OCR**：移除 paddlepaddle/PaddleOCR 依賴、`ocr_utils.py`、`parse_obfuscate_fields`、`OCR_CACHE_*` 設定 | package | 小 | **已併入 2.5-1 一次做掉**（2026-08-25，見編修紀錄——不留舊版式 parser，OCR 失去唯一的存在理由）。若 591 恢復圖片混淆（L2 哨兵會告警）再重新引入 |
 | 4-6 | 多站點抽象：`PersistQueue` 的 vendor 改從 spider class attribute 取；enums 拆 shared vs vendor-specific | 兩邊 | 大 | **由真的要加第二站時驅動**，見〈建議不做〉 |
 
@@ -461,3 +461,20 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
     成交偵測目前綁死每日全量 detail，這是「省爬取頻率」的真正前置。
   - 附：AWS 費用/架構決策（RDS 降 micro、primary-as-consumer）見
     `docs/aws-deployment-plan.md` 2026-08-30 編修紀錄。
+- **2026-08-31 Phase 4 收尾（4-1〜4-4 全完成，每項一 commit）**：
+  - 盤點修正：list「超過最後一頁」`page_items[-1]` IndexError 已於 2026-08-27
+    修復（`423c451`，四種版型分流＋越界空頁正常收單）；4-4 已於 2026-08-26
+    隨 batch 閘門修復完成（`4247192`）——兩者當時未回寫本文件。
+  - **峨嵋鄉之謎破案**：兩份 tw_regions.json 的漂移不是誰抄錯——591 介面
+    至今用「峨嵋鄉」（typo），官方名是「峨眉鄉」；套件端忠實跟 591、
+    django 端用官方名，各自都有理。拍板：官方名為 canonical（發布資料
+    歷來如此）、591 拼法留 alias（parser lookup 走 `_member_map_`，
+    alias 也查得到）。**套件 2.2.4 發版**（含此修正＋CLI Fetcher 網路
+    韌性：單一請求 URLError/RST 記 status 0 續跑，不再炸整場 survey——
+    08-29 閥值實驗實踩的缺口），4-1 隨後在 dataset 端收斂為 re-export。
+  - 4-2 的 marker 檔取代 log 字串 grep；4-3 的 seed dict 化免 migration
+    （JSONField 只改內容格式），但揪出隱藏消費者 `deduprequest` 的
+    `seed->>0` group key——若不同步改，dict 種子會全數 NULL 分組誤刪。
+  - Phase 0–4 至此全部完成（4-6 多站點抽象維持「由第二站驅動」不動）。
+    剩餘開放項：2.5-3 ramp-up 觀察（模型 A 編排器已上線，聚合速率
+    ASN 閾值待驗）、Backlog（baseline 重製 9/5、list-driven 成交偵測）。
