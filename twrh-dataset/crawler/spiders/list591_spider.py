@@ -41,6 +41,9 @@ class List591Spider(Rental591Spider):
         self.persist_queue.progress_tracker.log_final()
 
     def parse_seed (self, seed):
+        # dx 4-3：種子是有 key 的 dict；list 為升級前殘留列（--date 重跑舊日）
+        if isinstance(seed, dict):
+            return util.ListRequestMeta(**seed)
         return util.ListRequestMeta(*seed)
 
     def start_list_from_persist_queue (self):
@@ -54,11 +57,12 @@ class List591Spider(Rental591Spider):
             self.logger.info('Generating initial requests for {} (append mode: {})'.format(
                 city['city'], self.append))
             # let's do BFS
-            self.persist_queue.gen_persist_request([
-                city['id'],
-                city['city'],
-                0
-            ])
+            # dx 4-3：seed 用有 key 的 dict——位置參數改欄位順序會靜默錯位
+            self.persist_queue.gen_persist_request({
+                'id': city['id'],
+                'name': city['city'],
+                'page': 0,
+            })
         
         # Initialize progress tracking
         self.persist_queue.init_progress_tracking()
@@ -75,7 +79,7 @@ class List591Spider(Rental591Spider):
             if isinstance(item, Request):
                 meta = item.meta['rental']
                 if isinstance(meta, util.ListRequestMeta):
-                    self.persist_queue.gen_persist_request(meta)
+                    self.persist_queue.gen_persist_request(meta._asdict())
                 continue
             else:
                 yield item

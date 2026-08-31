@@ -62,6 +62,9 @@ class Detail591Spider(Rental591Spider):
                 pass
 
     def parse_seed(self, seed):
+        # dx 4-3：種子是有 key 的 dict；list 為升級前殘留列（--date 重跑舊日）
+        if isinstance(seed, dict):
+            return util.DetailRequestMeta(**seed)
         return util.DetailRequestMeta(*seed)
 
     def parse_detail_and_done (self, response):
@@ -105,7 +108,8 @@ class Detail591Spider(Rental591Spider):
             with transaction.atomic():
                 try:
                     for house in houses:
-                        self.persist_queue.gen_persist_request([house['vendor_house_id']])
+                        self.persist_queue.gen_persist_request(
+                            {'id': house['vendor_house_id']})
                 except:
                     traceback.print_exc()
         

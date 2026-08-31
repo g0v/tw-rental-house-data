@@ -9,7 +9,7 @@ delete from request_ts where id in (
       min(id) as id, 
       count(*) as n
       from request_ts
-      group by year, month, day, (seed->>0)
+      group by year, month, day, coalesce(seed->>'id', seed->>0)
   )
   as t where n > 1
 );
