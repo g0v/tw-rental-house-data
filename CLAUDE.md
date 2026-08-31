@@ -15,7 +15,7 @@ Language: project docs and comments are primarily in Traditional Chinese (zh-TW)
 | `scrapy-tw-rental-house/` | Core Scrapy spider package (published to PyPI as `scrapy-tw-rental-house`) | Python 3.10+, Poetry, Scrapy (plain HTTP, no browser) |
 | `twrh-dataset/` | Full data pipeline: crawling, storage, export | Python 3.10+, Poetry, Django 5, PostgreSQL/GeoDjango |
 | `scrapy-twrh-example/` | Example spiders showing package usage (local path dep on the core package) | Python, Poetry |
-| `ui/` | Public website (rentalhouse.g0v.ddio.io) | Nuxt.js 2, Vue 2, Buefy |
+| `ui-next/` | Public website (rentalhouse.g0v.ddio.io) | Astro 7, Vue 3, Tailwind 4 |
 | `csv-aggregator/` | Merge/dedup monthly CSV ZIPs into quarterly/yearly | Bash, Clickhouse local |
 
 ## First-Time Setup
@@ -66,14 +66,15 @@ poetry run python django/manage.py rawoffload <dir>    # pack raw HTML beyond 90
 poetry run python django/manage.py deduprequest        # drop duplicate rows in request_ts
 ```
 
-### ui (frontend)
-Node 16 (`.nvmrc`); note CI still pins Node 14.
+### ui-next (frontend)
+Node 24 (`.nvmrc`).
 ```bash
-cd ui
+cd ui-next
 npm install
-npm run dev        # Dev server with hot reload
-npm run generate   # Static site generation (for gh-pages deploy)
-npm run lint       # ESLint (the only automated check in CI)
+npm run dev                   # Astro dev server
+npm run build                 # Static build to dist/ (gh-pages deploy)
+npm run check                 # astro check (type check, also run in CI)
+node scripts/check-urls.mjs   # URL 保留清單驗收（CI 會擋，改路由前先跑）
 ```
 
 ### csv-aggregator
@@ -167,8 +168,8 @@ delete or replace it with a copy.
 5. `statscheck` writes `Stats` rows and posts a summary to Slack (errors also go to Sentry).
 6. `export -p` writes `[YYYYMM][CSV][Raw] TW-Rental-Data.zip` into `twrh-dataset/datas/`.
 7. `csv-aggregator` merges monthly ZIPs into quarterly/yearly ones.
-8. ZIPs are published to S3 (`https://twrh.s3.ap-northeast-3.amazonaws.com/<year>/…`); `ui` links to
-   them via `ui/libs/defs.js` `S3_BASE`.
+8. ZIPs are published to S3 (`https://twrh.s3.ap-northeast-3.amazonaws.com/<year>/…`); `ui-next`
+   links to them via `ui-next/src/lib/download.ts`.
 
 ### Spider design (scrapy-tw-rental-house)
 - `RentalSpider` (abstract) defines the contract; concrete spiders override
@@ -250,9 +251,9 @@ Set it manually (or use `go.sh --date`) when re-running part of a pipeline for a
   `twrh-dataset/tw-rental-data/`); stage explicitly, never `git add -A`.
 
 ## CI/CD
-- `.github/workflows/ui-deploy.yml` builds `ui/` with `npm run generate` and deploys `ui/dist` to
-  gh-pages on push to master.
-- `.github/workflows/ui-pull-request.yml` runs ESLint on `ui/`.
+- `.github/workflows/ui-deploy.yml` builds `ui-next/` (`npm run build` + URL 保留清單驗收) and
+  deploys `ui-next/dist` to gh-pages on push to master.
+- `.github/workflows/ui-next-pull-request.yml` runs `astro check` + build + URL 驗收 on `ui-next/` PRs.
 - `.github/workflows/python-tests.yml` runs the offline pytest suite of `scrapy-tw-rental-house/`
   on pushes/PRs touching that package. Live probes stay out of public CI by design.
 - Nothing in CI touches `twrh-dataset` or the data pipeline.

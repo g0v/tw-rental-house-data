@@ -7,15 +7,17 @@
 
 ## 程式使用方式與注意事項
 
-本專案總共分為三部份：
+本專案總共分為四部份：
 
 1. `scrapy-tw-rental-house` - 爬蟲本人，只需要 Scrapy 即可使用，不綁資料庫
    - [原始碼](https://github.com/g0v/tw-rental-house-data/tree/master/scrapy-tw-rental-house)
    - [套件網頁](https://pypi.org/project/scrapy-tw-rental-house/)
-2. `twrh-dataset` - 完整的開放資料流程，包含爬蟲、資料儲存
+2. `twrh-dataset` - 完整的開放資料流程，包含爬蟲、資料儲存、匯出與發佈
    - [原始碼](https://github.com/g0v/tw-rental-house-data/tree/master/twrh-dataset)
-3. `ui` - 開放台灣租屋資料網站
-   - [原始碼](https://github.com/g0v/tw-rental-house-data/tree/master/ui)
+3. `csv-aggregator` - 月資料聚合為季／年資料集的去重工具
+   - [原始碼](https://github.com/g0v/tw-rental-house-data/tree/master/csv-aggregator)
+4. `ui-next` - 開放台灣租屋資料網站
+   - [原始碼](https://github.com/g0v/tw-rental-house-data/tree/master/ui-next)
    - [網站](https://rentalhouse.g0v.ddio.io/)
 
 關於開發的詳細資訊，請參見[專案 wiki](https://github.com/g0v/tw-rental-house-data/wiki/)

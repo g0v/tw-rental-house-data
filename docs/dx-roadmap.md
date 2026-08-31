@@ -241,7 +241,6 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
 - `parser_wrapper` 結尾的 `mercy = 10` 迴圈（`persist_queue.py:256-264`）是沒有說明的魔術數字。
 - `export` 指令**不讀** `TWRH_TARGET_DATE`，永遠用真實當下日期 —— 用 `go.sh --date` 重跑舊日期時，
   匯出的檔名／範圍會對不上。
-- `ui` 的 Node 版本不一致：`.nvmrc` 是 16，CI matrix 是 14。
 - **baseline 重製＋數值欄位哨兵（2026-08-30 拍板，9/5 後做）**：
   (a) national.json 以 **HouseTS（DB 層）多日中位數**重製——現值 0.993 系
   survey（parse 層）產出，與 distcheck 的 DB 層量測天生差 ~2pp，且單日快照
