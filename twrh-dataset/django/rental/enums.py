@@ -1,66 +1,8 @@
-from enum import IntEnum
-from os import path
-import json
+'''enums 單一來源（dx 4-1）：直接 re-export 已安裝套件的定義。
 
-
-class DealStatusType(IntEnum):
-    OPENED = 0
-    NOT_FOUND = 1
-    DEAL = 2
-
-UNKNOWN_ENUM = 0xffff
-
-BuildingType = IntEnum('BuildingType', [
-    ('公寓', 0),
-    ('透天', 1),
-    ('電梯大樓', 2),
-    ('華廈', 3),
-    ('辦公商業大樓', 4),
-    ('倉庫', 5),
-    ('店面（店鋪）', 6),
-    ('廠辦', 7),
-    ('工廠', 8),
-    ('農舍', 9)
-])
-
-class PropertyType(IntEnum):
-    整層住家 = 0
-    獨立套房 = 1
-    分租套房 = 2
-    雅房 = 3
-    車位 = 4
-    其他 = 5
-    倉庫 = 6
-    場地 = 7
-    攤位 = 8
-
-
-class ContactType(IntEnum):
-    屋主 = 0
-    代理人 = 1
-    房仲 = 2
-
-
-class DepositType(IntEnum):
-    月 = 0
-    定額 = 1
-    面議 = 2
-    其他 = 3
-
-
-class GenderType(IntEnum):
-    不限 = 0
-    女 = 1
-    男 = 2
-    其他 = 3
-
-
-tw_regions_path = '{}/data/tw_regions.json'.format(
-    path.dirname(path.realpath(__file__)))
-
-with open(tw_regions_path) as regions_file:
-    tw_regions = json.load(regions_file)
-
-TopRegionType = IntEnum('TopRegionType', tw_regions['top_region'])
-
-SubRegionType = IntEnum('SubRegionType', tw_regions['sub_region'])
+本檔曾是 scrapy_twrh.spiders.enums 的複本（連同 data/tw_regions.json），
+兩份已實際漂移過（峨嵋／峨眉順序相反→SubRegionType canonical 不一致）。
+自 scrapy-tw-rental-house 2.2.4 起兩邊內容拉齊，此處收斂為 re-export——
+enum 整數值出現在已發布資料集，只能新增不能重編號，維護處只剩套件一處。
+'''
+from scrapy_twrh.spiders.enums import *  # noqa: F401,F403
