@@ -5,9 +5,9 @@
 #   2 驗證   check.sh ＋ monthreport（quality gate：紅=exit 2）
 #   3 上傳   aws --profile twrh s3 cp → s3://twrh/<year>/（上傳後驗 size）
 #   4 UI 列  tools/publish_ui_stats.py 寫 ui-next stats json
-#   5 分岔   綠→commit＋直 push master；紅→不 push，人工寫敘事後
-#            `--resume --quality-issue <id>` 續跑 3–5 帶標記出貨（2026-08-30 拍板：
-#            紅月的 UI 更新走 PR）
+#   5 出貨   commit＋直 push master（紅綠皆同——2026-08-31 拍板：紅月的 --resume
+#            本身就是人工確認，不再走 PR）；紅→首跑不 push，人工寫敘事後
+#            `--resume --quality-issue <id>` 續跑 3–5 帶標記出貨
 # 冪等：每步完成寫 marker 到 datas/publish/<YYYYMM>.state.json，--resume 跳過已完成步。
 #
 # 用法：./publish.sh [YYYYMM] [--resume] [--dry-run] [--quality-issue <id>] [--comment <md>]
@@ -45,21 +45,19 @@ p='$STATE'; d=json.load(open(p)) if os.path.exists(p) else {}
 d['$1']=True; json.dump(d,open(p,'w'),indent=1)"; }
 
 notify() {  # notify <emoji+text>（webhook 缺就跳過；雙態都發）
-  poetry run python - "$1" <<'PY' || echo '(slack notify skipped)'
-import sys, os, requests
-sys.path.insert(0, 'django')
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
-try:
-    from django.conf import settings
-    import django; django.setup()
-    hook = getattr(settings, 'SLACK_WEBHOOK_URL', '')
-except Exception:
-    hook = os.environ.get('SLACK_WEBHOOK_URL', '')
+  # 走 manage.py shell 取 settings（與 statscheck 同路）——cwd 底下的 django/
+  # 專案目錄會遮蔽同名套件，直接 import django 必炸（2026-08-31 實踩，通知
+  # 因此靜默跳過了一整輪出貨）
+  NOTIFY_TEXT="$1" poetry run python django/manage.py shell -c '
+import os, requests
+from django.conf import settings
+hook = getattr(settings, "SLACK_WEBHOOK_URL", "") or os.environ.get("SLACK_WEBHOOK_URL", "")
 if not hook:
-    raise SystemExit(1)
-requests.post(hook, json={'blocks': [{'type': 'section', 'text': {
-    'type': 'mrkdwn', 'text': sys.argv[1]}}]}, timeout=10).raise_for_status()
-PY
+    print("(no SLACK_WEBHOOK_URL, notify skipped)")
+else:
+    requests.post(hook, json={"blocks": [{"type": "section", "text": {
+        "type": "mrkdwn", "text": os.environ["NOTIFY_TEXT"]}}]}, timeout=10).raise_for_status()
+' || echo '(slack notify skipped)'
 }
 
 echo "=== publish $YM (resume=$RESUME dry-run=$DRYRUN) ==="
@@ -151,34 +149,31 @@ if ! step_done ui; then
   [ "$DRYRUN" = 0 ] && mark_done ui
 fi
 
-# --- 5. commit / push（綠直 push、紅走 PR——2026-08-30 拍板）---
+# --- 5. commit / push（紅綠都直 push——2026-08-31 拍板：紅月的 --resume 本身
+# 就是人工確認，不再多卡一道 PR merge）---
 echo '----- 5. ship -----'
 STATS_JSON="../ui-next/src/data/stats/$YEAR.json"
+SHIP_SHA=""
 if [ "$DRYRUN" = 1 ]; then
-  echo "(dry-run) would commit $STATS_JSON and $([ "$VERDICT" = red ] && echo 'open PR' || echo 'push master')"
+  echo "(dry-run) would commit $STATS_JSON and push master"
 else
   git -C .. add "ui-next/src/data/stats/$YEAR.json"
   if git -C .. diff --cached --quiet; then
     echo 'stats json 無變更，跳過 commit'
-  elif [ "$VERDICT" = green ]; then
-    git -C .. commit -m "data: 發佈 $YM 月資料"
-    git -C .. push origin master
   else
-    BR="publish-$YM"
-    git -C .. checkout -b "$BR"
-    git -C .. commit -m "data: 發佈 $YM 月資料（quality_issue: $QISSUE）"
-    git -C .. push -u origin "$BR"
-    gh pr create --repo g0v/tw-rental-house-data --head "$BR" \
-      --title "發佈 $YM 月資料（紅色分支）" \
-      --body "quality gate 紅燈出貨，quality_issue: $QISSUE。月報：datas/publish/$YM.report.json" \
-      || echo '!!! gh pr create 失敗，請手動開 PR'
-    git -C .. checkout master
+    MSG="data: 發佈 $YM 月資料"
+    [ "$VERDICT" = red ] && MSG="$MSG（quality_issue: $QISSUE）"
+    git -C .. commit -m "$MSG"
+    git -C .. push origin master
+    SHIP_SHA=$(git -C .. rev-parse HEAD)
   fi
   mark_done ship
 fi
 
-# --- 通知（雙態都發）---
+# --- 通知（雙態都發，附可點連結）---
 ICON=$([ "$VERDICT" = green ] && echo ✅ || echo ⚠️)
+LINKS="<https://rentalhouse.g0v.ddio.io/download/|下載頁>｜<https://twrh.s3.ap-northeast-3.amazonaws.com/$YEAR/|S3>"
+[ -n "$SHIP_SHA" ] && LINKS="<https://github.com/g0v/tw-rental-house-data/commit/$SHIP_SHA|commit ${SHIP_SHA:0:7}>｜$LINKS"
 [ "$DRYRUN" = 0 ] && notify "$ICON *${YM} 已出貨*（$VERDICT$([ -n "$QISSUE" ] && echo "，quality_issue: $QISSUE")）
-S3: https://twrh.s3.ap-northeast-3.amazonaws.com/$YEAR/"
+$LINKS"
 echo "=== publish $YM done ($VERDICT) ==="
