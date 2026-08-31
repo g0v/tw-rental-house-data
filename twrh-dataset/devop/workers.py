@@ -36,12 +36,16 @@ def worker_command():
     # consume-only detail：batch 迴圈直到 queue 排空；log 以 hostname 區分留 EFS。
     # tail -F 把檔案 log 同步一份到 stdout → awslogs → CloudWatch（bash 收尾時
     # container 一併終結背景 tail，不必 kill）。
+    # dx 4-2：batch 額滿由 spider touch marker 檔通知，不再 grep log 字串。
+    # marker 放 container-local /tmp——log 在共享 EFS 上，多 worker 並跑
+    # 不能拿共享路徑當控制流
     log = '/data/logs/{}.worker-$(hostname).$n.log'.format(STAMP)
     return ('tail -F scrapy.log 2>/dev/null & '
-            'n=1; while :; do poetry run scrapy crawl detail591 -L INFO '
-            '-a consume_only=True -a batch_size={batch}; L={log}; '
+            'M=/tmp/twrh-batch-limit; '
+            'n=1; while :; do rm -f $M; poetry run scrapy crawl detail591 -L INFO '
+            '-a consume_only=True -a batch_size={batch} -a stop_marker=$M; L={log}; '
             'mv scrapy.log $L 2>/dev/null || true; '
-            "grep -q 'Batch limit reached' $L 2>/dev/null || break; "
+            '[ -f $M ] || break; '
             'n=$((n+1)); done').format(batch=BATCH, log=log)
 
 

@@ -17,7 +17,7 @@ class Detail591Spider(Rental591Spider):
     }
 
     def __init__(self, append=False, start_early=False, batch_size=0,
-                 consume_only=False, seed_only=False, **kwargs):
+                 consume_only=False, seed_only=False, stop_marker=None, **kwargs):
         super().__init__(
             start_list=self.start_detail_requests,
             **kwargs
@@ -32,6 +32,9 @@ class Detail591Spider(Rental591Spider):
         # 2.5-3 primary：只生種子、不爬——orchestrate 在 list 後、開 worker 前跑，
         # 與 consume_only 成對（首航實測：全 worker 都 consume_only 時沒人生種子）
         self.seed_only = seed_only == 'True' or seed_only == True
+        # dx 4-2：batch 額滿時 touch 這個檔，外層迴圈以檔案存在與否判斷是否
+        # 重啟下一個 batch——取代 grep log 字串當控制流
+        self.stop_marker = stop_marker
 
         self.persist_queue = PersistQueue(
             vendor='591 租屋網',
@@ -54,6 +57,9 @@ class Detail591Spider(Rental591Spider):
     def spider_closed(self, spider=None):
         self.persist_queue.release_claims()
         self.persist_queue.progress_tracker.log_final()
+        if self.stop_marker and self.persist_queue.is_batch_complete():
+            with open(self.stop_marker, 'w'):
+                pass
 
     def parse_seed(self, seed):
         return util.DetailRequestMeta(*seed)

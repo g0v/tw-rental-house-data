@@ -63,15 +63,19 @@ echo "workers: $ARNS"
 # 423 resp/min 撐了 3.6 分鐘就陣亡）。---
 echo '===== PRIMARY CONSUME ====='
 BATCH="${DETAIL_BATCH_SIZE:-10000}"
+# dx 4-2：batch 額滿由 spider touch marker 檔通知，不再 grep log 字串
+MARKER=$(mktemp -u /tmp/twrh-batch-limit.XXXXXX)
 n=1
 while :; do
+  rm -f "$MARKER"
   TWRH_CONCURRENT_REQUESTS="${TWRH_WORKER_CONCURRENCY:-1}" \
   TWRH_DOWNLOAD_DELAY="${TWRH_WORKER_DELAY:-1}" \
-  poetry run scrapy crawl detail591 -L INFO -a consume_only=True -a batch_size="$BATCH"
+  poetry run scrapy crawl detail591 -L INFO -a consume_only=True -a batch_size="$BATCH" -a stop_marker="$MARKER"
   mv scrapy.log "../logs/$now.primary-detail.$n.log" 2>/dev/null || true
-  grep -q 'Batch limit reached' "../logs/$now.primary-detail.$n.log" 2>/dev/null || break
+  [ -f "$MARKER" ] || break
   n=$((n+1))
 done
+rm -f "$MARKER"
 
 # --- phase 3b: 輪詢 worker ARN 直到全 STOPPED 或逾時（exit 2）——queue 空後
 # worker 隨即自然收工，這裡只是等尾巴；「worker 全停」仍是唯一可靠收尾閘門 ---

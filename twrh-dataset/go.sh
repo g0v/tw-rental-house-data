@@ -79,17 +79,22 @@ DETAIL_BATCH=1
 # 2000 是 playwright/OCR 時代的 memory-leak 保險；兩者已移除（dx 4-5），
 # 可用環境變數放大實測（見 docs/aws-deployment-plan.md 的 sizing 量測）
 DETAIL_BATCH_SIZE=${DETAIL_BATCH_SIZE:-2000}
+# dx 4-2：batch 額滿由 spider touch marker 檔（-a stop_marker）通知，
+# 不再 grep log 字串當控制流（改一句訊息就壞）
+BATCH_MARKER=$(mktemp -u /tmp/twrh-batch-limit.XXXXXX)
 while true; do
     echo "--- detail batch $DETAIL_BATCH ---"
-    poetry run scrapy crawl detail591 -L INFO $APPEND_FLAG $START_EARLY_FLAG -a batch_size=$DETAIL_BATCH_SIZE
+    rm -f "$BATCH_MARKER"
+    poetry run scrapy crawl detail591 -L INFO $APPEND_FLAG $START_EARLY_FLAG -a batch_size=$DETAIL_BATCH_SIZE -a stop_marker=$BATCH_MARKER
     mv scrapy.log ../logs/$now.detail.$DETAIL_BATCH.log
     abort_if_breaker_tripped ../logs/$now.detail.$DETAIL_BATCH.log
     # Exit loop when spider finishes before hitting the batch limit (all done)
-    if ! grep -q 'Batch limit reached' ../logs/$now.detail.$DETAIL_BATCH.log; then
+    if [ ! -f "$BATCH_MARKER" ]; then
         break
     fi
     DETAIL_BATCH=$((DETAIL_BATCH + 1))
 done
+rm -f "$BATCH_MARKER"
 
 echo '===== STATEFUL UPDATE ====='
 poetry run python ./django/manage.py syncstateful -ts
