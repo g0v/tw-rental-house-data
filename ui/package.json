@@ -21,7 +21,7 @@
     "@nuxtjs/axios": "^5.13.6",
     "@nuxtjs/sentry": "^5.1.7",
     "core-js": "^3.23.3",
-    "dotenv": "^16.0.1",
+    "dotenv": "^17.4.2",
     "filesize": "^3.6.1",
     "intersection-observer": "^0.12.2",
     "lodash": "^4.17.21",
