@@ -98,6 +98,54 @@
       ],
       "comment": "此為試爬期間資料，詳情請見[部落格說明](https://rentalhouse.g0v.ddio.io/blog/post/2025-nov-release/)",
       "quality_issue": "beta-2025"
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.3",
+      "time": "8",
+      "type": "原始資料",
+      "total_count": 85592,
+      "sources": [
+        {
+          "name": "591",
+          "count": 85592
+        }
+      ],
+      "files": [
+        {
+          "format": "csv",
+          "size_byte": 28100395,
+          "download_url": {
+            "isS3": true
+          }
+        }
+      ],
+      "comment": "此為重啟過渡期資料，僅涵蓋 8/25 之後，詳情請見[部落格說明](https://rentalhouse.g0v.ddio.io/blog/post/2026-aug-restart/)",
+      "quality_issue": "restart-2026-08"
+    },
+    {
+      "schema_ver": "1.0.0",
+      "data_ver": "0.3",
+      "time": "8",
+      "type": "消除重複住宅",
+      "total_count": 76934,
+      "sources": [
+        {
+          "name": "591",
+          "count": 76934
+        }
+      ],
+      "files": [
+        {
+          "format": "csv",
+          "size_byte": 31879683,
+          "download_url": {
+            "isS3": true
+          }
+        }
+      ],
+      "comment": "此為重啟過渡期資料，僅涵蓋 8/25 之後，詳情請見[部落格說明](https://rentalhouse.g0v.ddio.io/blog/post/2026-aug-restart/)",
+      "quality_issue": "restart-2026-08"
     }
   ]
 }
