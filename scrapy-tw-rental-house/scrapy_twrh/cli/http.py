@@ -3,6 +3,8 @@
 不走 scrapy，因此不需要 scrapy 專案設定。
 591 以 30x 表示房源狀態，所以不跟隨 redirect、原樣回報 status code。
 '''
+import http.client
+import sys
 import time
 import urllib.request
 import urllib.error
@@ -26,7 +28,11 @@ class Fetcher:
         self._last_request_at = 0.0
 
     def get(self, url):
-        '''回傳 (status, body_bytes)；30x/4xx 不丟例外，網路層錯誤才丟。'''
+        '''回傳 (status, body_bytes)；30x/4xx 不丟例外。
+
+        網路層錯誤（DNS、timeout、connection reset……）記 status 0 續跑，
+        不讓單一請求炸掉整場 survey/harvest——比率斷言把 0 當失敗算即可。
+        '''
         wait = self.delay - (time.monotonic() - self._last_request_at)
         if wait > 0:
             time.sleep(wait)
@@ -40,4 +46,11 @@ class Fetcher:
             with self._opener.open(req, timeout=30) as resp:
                 return resp.status, resp.read()
         except urllib.error.HTTPError as err:
-            return err.code, err.read()
+            try:
+                return err.code, err.read()
+            except (OSError, http.client.HTTPException):
+                return err.code, b''
+        except (OSError, http.client.HTTPException) as err:
+            print('[http] {}: {} -> status 0'.format(
+                type(err).__name__, url), file=sys.stderr)
+            return 0, b''
