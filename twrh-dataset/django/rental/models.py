@@ -218,6 +218,10 @@ class RegionTS(BaseTimeSeries):
         )
 
 class HouseTS(BaseTimeSeries, BaseHouse):
+    # L-C(8)：diff 模式下被 skip 物件的當日快照由 synthts 合成
+    # （list 新值＋House 現值即 detail 上次值）；True＝此列含合成欄位，
+    # 供資料使用者與月度 gate 分辨爬取值/合成值。full 模式恆為 NULL
+    is_synthesized = models.BooleanField(null=True, default=None)
     class Meta:
         db_table = 'house_ts'
         indexes = [

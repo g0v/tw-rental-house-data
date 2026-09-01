@@ -79,13 +79,21 @@ DETAIL_BATCH=1
 # 2000 是 playwright/OCR 時代的 memory-leak 保險；兩者已移除（dx 4-5），
 # 可用環境變數放大實測（見 docs/aws-deployment-plan.md 的 sizing 量測）
 DETAIL_BATCH_SIZE=${DETAIL_BATCH_SIZE:-2000}
+# L-C：TWRH_DETAIL_SEED_MODE=diff 啟用 list diff 驅動的 skip 降頻
+# （dx-roadmap L-C；發布語意見 L-C-8，拍板前預設 full＝現行全量）
+DETAIL_SEED_MODE=${TWRH_DETAIL_SEED_MODE:-full}
+SEED_MODE_FLAG=""
+if [ "$DETAIL_SEED_MODE" = "diff" ]; then
+    SEED_MODE_FLAG="-a seed_mode=diff -a refresh_days=${TWRH_DETAIL_REFRESH_DAYS:-7}"
+    echo "Detail seed mode: diff (refresh_days=${TWRH_DETAIL_REFRESH_DAYS:-7})"
+fi
 # dx 4-2：batch 額滿由 spider touch marker 檔（-a stop_marker）通知，
 # 不再 grep log 字串當控制流（改一句訊息就壞）
 BATCH_MARKER=$(mktemp -u /tmp/twrh-batch-limit.XXXXXX)
 while true; do
     echo "--- detail batch $DETAIL_BATCH ---"
     rm -f "$BATCH_MARKER"
-    poetry run scrapy crawl detail591 -L INFO $APPEND_FLAG $START_EARLY_FLAG -a batch_size=$DETAIL_BATCH_SIZE -a stop_marker=$BATCH_MARKER
+    poetry run scrapy crawl detail591 -L INFO $APPEND_FLAG $START_EARLY_FLAG $SEED_MODE_FLAG -a batch_size=$DETAIL_BATCH_SIZE -a stop_marker=$BATCH_MARKER
     mv scrapy.log ../logs/$now.detail.$DETAIL_BATCH.log
     abort_if_breaker_tripped ../logs/$now.detail.$DETAIL_BATCH.log
     # Exit loop when spider finishes before hitting the batch limit (all done)
@@ -95,6 +103,13 @@ while true; do
     DETAIL_BATCH=$((DETAIL_BATCH + 1))
 done
 rm -f "$BATCH_MARKER"
+
+# L-C(8)：diff 模式下補齊被 skip 物件的當日 HouseTS（合成快照，標
+# is_synthesized），要在 syncstateful 之前——它吃當日 TS 推導成交狀態
+if [ "$DETAIL_SEED_MODE" = "diff" ]; then
+    echo '===== SYNTHESIZE SKIPPED TS ====='
+    poetry run python ./django/manage.py synthts
+fi
 
 echo '===== STATEFUL UPDATE ====='
 poetry run python ./django/manage.py syncstateful -ts

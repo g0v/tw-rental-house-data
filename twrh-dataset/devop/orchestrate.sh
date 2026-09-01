@@ -38,8 +38,14 @@ fi
 
 # --- phase 1.5: 生 detail 種子——consume-only worker 不生種子，種子由 primary
 # 在這裡生（首航 2026-08-30 實測：漏了這步，worker 全數 0 items 秒退）---
+# L-C：TWRH_DETAIL_SEED_MODE=diff 啟用 skip 降頻（同 go.sh；拍板前預設 full）
+SEED_MODE_FLAG=""
+if [ "${TWRH_DETAIL_SEED_MODE:-full}" = "diff" ]; then
+  SEED_MODE_FLAG="-a seed_mode=diff -a refresh_days=${TWRH_DETAIL_REFRESH_DAYS:-7}"
+  echo "Detail seed mode: diff (refresh_days=${TWRH_DETAIL_REFRESH_DAYS:-7})"
+fi
 echo '===== SEED ====='
-poetry run scrapy crawl detail591 -L INFO -a seed_only=True
+poetry run scrapy crawl detail591 -L INFO -a seed_only=True $SEED_MODE_FLAG
 mv scrapy.log "../logs/$now.seed.log"
 if ! grep -q 'seed-only mode' "../logs/$now.seed.log"; then
   echo '!!! seed generation failed — abort, no workers launched'
@@ -84,6 +90,11 @@ timed_out=0
 poetry run python devop/workers.py wait $ARNS || timed_out=1
 
 # --- phase 4: 收尾（worker 全停後，殘留 request_ts = 失敗，statscheck 會報）---
+# L-C(8)：diff 模式下先補齊被 skip 物件的當日 TS，再讓 syncstateful 推導
+if [ "${TWRH_DETAIL_SEED_MODE:-full}" = "diff" ]; then
+  echo '===== SYNTHESIZE SKIPPED TS ====='
+  poetry run python ./django/manage.py synthts
+fi
 echo '===== STATEFUL UPDATE ====='
 poetry run python ./django/manage.py syncstateful -ts
 echo '===== GENERATE STATISTICS ====='
