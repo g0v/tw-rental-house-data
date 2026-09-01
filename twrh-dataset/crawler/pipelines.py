@@ -55,7 +55,14 @@ class CrawlerPipeline(object):
 
                 # list 層指紋（title/price/update_time…）落地供 L-C 比對；
                 # 空 dict 不覆寫，避免解析失敗清掉上次的指紋
+                fingerprint_changed = False
                 if item['is_list'] and item.get('dict'):
+                    old_dict = house_etc.list_dict or {}
+                    # 指紋只比 price/title：update_time 是「N小時內更新」
+                    # 相對字串，隨時間自然流動，直接 diff 會天天誤報
+                    fingerprint_changed = bool(old_dict) and any(
+                        old_dict.get(key) != item['dict'].get(key)
+                        for key in ('price', 'title'))
                     house_etc.list_dict = item['dict']
 
                 house_etc.save()
@@ -66,7 +73,11 @@ class CrawlerPipeline(object):
                 if item['is_list']:
                     now = timezone.now()
                     house.list_crawled_at = now
-                    house.save(update_fields=['list_crawled_at', 'updated'])
+                    update_fields = ['list_crawled_at', 'updated']
+                    if fingerprint_changed:
+                        house.list_fingerprint_changed_at = now
+                        update_fields.append('list_fingerprint_changed_at')
+                    house.save(update_fields=update_fields)
                     house_ts, _ = HouseTS.objects.get_or_create(
                         year=y, month=m, day=d, hour=h,
                         vendor_house_id=item['house_id'],
@@ -74,6 +85,10 @@ class CrawlerPipeline(object):
                     )
                     house_ts.list_crawled_at = now
                     house_ts.save(update_fields=['list_crawled_at', 'updated'])
+                else:
+                    # detail 成功解析才蓋——L-C「距上次 detail < N 天」謂詞用
+                    house.detail_crawled_at = timezone.now()
+                    house.save(update_fields=['detail_crawled_at', 'updated'])
 
             elif type(item) is GenericHouseItem:
                 house_ts, created = HouseTS.objects.get_or_create(

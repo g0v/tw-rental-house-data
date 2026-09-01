@@ -164,6 +164,11 @@ class BaseHouse(models.Model):
         abstract = True
 
 class House(BaseHouse, BaseModel):
+    # L-C skip 謂詞用（docs/dx-roadmap.md list-driven 三階段）：
+    # 最後一次 detail 成功解析的時間（crawled_at 分不出 list/detail 來源）
+    detail_crawled_at = models.DateTimeField(default=None, null=True)
+    # list 指紋（price/title）最後一次變動的時間，pipeline 覆寫 list_dict 前比對
+    list_fingerprint_changed_at = models.DateTimeField(default=None, null=True)
 
     class Meta:
         db_table='house'
