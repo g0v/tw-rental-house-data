@@ -30,6 +30,9 @@ class Stats(BaseTimeSeries):
     n_new_item = models.IntegerField(default=0)
     n_closed = models.IntegerField(default=0)
     n_dealt = models.IntegerField(default=0)
+    # 當日 OPENED 中有出現在 list 的數量（分母＝n_crawled - n_closed - n_dealt）。
+    # list 完整度哨兵（L-B），比率持續偏低代表 list 掃描漏尾頁
+    n_open_in_list = models.IntegerField(default=0)
 
     class Meta:
         unique_together = (

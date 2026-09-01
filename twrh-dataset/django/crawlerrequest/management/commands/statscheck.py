@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timedelta
 from django.utils import timezone
 from django.core.management.base import BaseCommand
-from django.db.models import Count, IntegerField
+from django.db.models import Count, IntegerField, Q
 from django.conf import settings
 import sentry_sdk
 import requests
@@ -154,6 +154,22 @@ class Command(BaseCommand):
             elif row['deal_status'] == DealStatusType.DEAL:
                 vendor_stats.n_dealt = row['count']
 
+        # list 完整度哨兵（L-B）：當日 OPENED 中有多少出現在今日 list。
+        # 比率偏低＝list 掃描漏尾頁（推薦位灌水擠出最舊物件），是 L-C
+        # 「list 缺席＝成交候選」的前提量測；門檻待累積實據後校準，先 advisory
+        list_capture_query = HouseTS.objects.filter(
+            **self.this_ts,
+            deal_status=DealStatusType.OPENED
+        ).values(
+            'vendor'
+        ).annotate(
+            n_in_list=Count('id', filter=Q(list_crawled_at__isnull=False))
+        )
+
+        for row in list_capture_query:
+            vendor_stats = self.get_vendor_stats(row['vendor'])
+            vendor_stats.n_open_in_list = row['n_in_list']
+
         # get today's new item
         override = os.environ.get('TWRH_TARGET_DATE')
         if override:
@@ -179,9 +195,18 @@ class Command(BaseCommand):
         fail_ratio_threshold = getattr(settings, 'STATSCHECK_FAIL_RATIO', 0.05)
 
         for vendor_id, vendor_stats in self.stats.items():
+            n_opened = vendor_stats.n_crawled  # 此刻還是 OPENED-only
             vendor_stats.n_crawled += vendor_stats.n_closed + vendor_stats.n_dealt
             vendor_stats.n_expected = vendor_stats.n_crawled + vendor_stats.n_fail
             vendor_stats.save()
+
+            if n_opened > 0:
+                list_capture_line = (
+                    f"• list 完整度: `{vendor_stats.n_open_in_list}/{n_opened}` "
+                    f"(`{vendor_stats.n_open_in_list / n_opened:.1%}`)"
+                )
+            else:
+                list_capture_line = None
 
             n_fail_total = vendor_stats.n_fail + vendor_stats.n_list_fail
             if vendor_stats.n_expected > 0:
@@ -205,11 +230,13 @@ class Command(BaseCommand):
                     f"• 失敗的詳細請求: `{vendor_stats.n_fail}`\n"
                     f"• 失敗率: `{fail_ratio:.1%}`（門檻 {fail_ratio_threshold:.0%}）"
                 )
+                if list_capture_line:
+                    slack_msg += f"\n{list_capture_line}"
                 self.send_slack_notification(slack_msg, is_error=True)
             else:
-                msg = f'{self.this_ts["year"]}/{self.this_ts["month"]}/{self.this_ts["day"]}: Vendor {vendor_stats.vendor.name} get total/closed/dealt ({vendor_stats.n_crawled}/{vendor_stats.n_closed}/{vendor_stats.n_dealt}) requests'
+                msg = f'{self.this_ts["year"]}/{self.this_ts["month"]}/{self.this_ts["day"]}: Vendor {vendor_stats.vendor.name} get total/closed/dealt ({vendor_stats.n_crawled}/{vendor_stats.n_closed}/{vendor_stats.n_dealt}) requests, list capture {vendor_stats.n_open_in_list}/{n_opened}'
                 print(msg)
-                
+
                 # Send Slack notification with rich formatting
                 slack_msg = (
                     f"*{vendor_stats.vendor.name}* ✅\n"
@@ -218,6 +245,8 @@ class Command(BaseCommand):
                     f"• 已成交: `{vendor_stats.n_dealt}`\n"
                     f"• 新增物件: `{vendor_stats.n_new_item}`"
                 )
+                if list_capture_line:
+                    slack_msg += f"\n{list_capture_line}"
                 if n_fail_total:
                     slack_msg += f"\n• 失敗（低於 {fail_ratio_threshold:.0%} 門檻）: `{n_fail_total}`"
                 self.send_slack_notification(slack_msg, is_error=False)

@@ -156,6 +156,9 @@ class BaseHouse(models.Model):
     agent_org = models.CharField(null=True, max_length=256)
     imgs = JSONField(null=True)
     crawled_at = models.DateTimeField(default=None, null=True)
+    # 最後一次出現在 list 頁的時間（crawled_at 涵蓋 list+detail 分不出來源）。
+    # L-B 完整度哨兵（open 中多少出現在今日 list）與 L-C「在今日 list」謂詞用
+    list_crawled_at = models.DateTimeField(default=None, null=True)
 
     class Meta:
         abstract = True
@@ -166,6 +169,7 @@ class House(BaseHouse, BaseModel):
         db_table='house'
         indexes = [
             models.Index(fields=['crawled_at']),
+            models.Index(fields=['list_crawled_at']),
         ]
         unique_together = (
             ('vendor', 'vendor_house_id'),

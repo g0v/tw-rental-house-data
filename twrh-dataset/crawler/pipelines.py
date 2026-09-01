@@ -60,6 +60,21 @@ class CrawlerPipeline(object):
 
                 house_etc.save()
 
+                # 出現在 list 就蓋時間戳——L-B 完整度哨兵（statscheck 算
+                # open 中多少在今日 list）與 L-C「在今日 list」謂詞的落地。
+                # crawled_at 蓋不了這用途：list/detail 都會動它，分不出來源
+                if item['is_list']:
+                    now = timezone.now()
+                    house.list_crawled_at = now
+                    house.save(update_fields=['list_crawled_at', 'updated'])
+                    house_ts, _ = HouseTS.objects.get_or_create(
+                        year=y, month=m, day=d, hour=h,
+                        vendor_house_id=item['house_id'],
+                        vendor=self.item_vendor(item)
+                    )
+                    house_ts.list_crawled_at = now
+                    house_ts.save(update_fields=['list_crawled_at', 'updated'])
+
             elif type(item) is GenericHouseItem:
                 house_ts, created = HouseTS.objects.get_or_create(
                     year=y, month=m, day=d, hour=h,
