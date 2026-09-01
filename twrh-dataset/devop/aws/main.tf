@@ -130,6 +130,9 @@ locals {
     { name = "TWRH_DOWNLOAD_DELAY", value = var.crawl_download_delay },
     { name = "TWRH_CONCURRENT_REQUESTS", value = var.crawl_concurrency },
     { name = "DETAIL_BATCH_SIZE", value = "10000" },
+    # L-C skip 降頻（go.sh／orchestrate.sh 讀，dx-roadmap L-C）
+    { name = "TWRH_DETAIL_SEED_MODE", value = var.detail_seed_mode },
+    { name = "TWRH_DETAIL_REFRESH_DAYS", value = var.detail_refresh_days },
     # housekeep.sh（raw offload / HouseTS 歸檔）上傳目標
     { name = "TWRH_RAW_BUCKET", value = aws_s3_bucket.raw.bucket },
     # orchestrate.sh（模型 A）開/查 detail worker 所需

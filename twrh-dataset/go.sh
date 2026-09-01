@@ -80,7 +80,12 @@ DETAIL_BATCH=1
 # 可用環境變數放大實測（見 docs/aws-deployment-plan.md 的 sizing 量測）
 DETAIL_BATCH_SIZE=${DETAIL_BATCH_SIZE:-2000}
 # L-C：TWRH_DETAIL_SEED_MODE=diff 啟用 list diff 驅動的 skip 降頻
-# （dx-roadmap L-C；發布語意見 L-C-8，拍板前預設 full＝現行全量）
+# （dx-roadmap L-C；發布語意見 L-C-8，拍板前預設 full＝現行全量）。
+# .env 只有 scrapy 行程會讀（dotenv），這裡的 shell 判斷要自己補讀
+if [ -z "${TWRH_DETAIL_SEED_MODE:-}" ] && [ -f .env ]; then
+    TWRH_DETAIL_SEED_MODE=$(grep -E '^TWRH_DETAIL_SEED_MODE=' .env | tail -1 | cut -d= -f2)
+    TWRH_DETAIL_REFRESH_DAYS=$(grep -E '^TWRH_DETAIL_REFRESH_DAYS=' .env | tail -1 | cut -d= -f2)
+fi
 DETAIL_SEED_MODE=${TWRH_DETAIL_SEED_MODE:-full}
 SEED_MODE_FLAG=""
 if [ "$DETAIL_SEED_MODE" = "diff" ]; then

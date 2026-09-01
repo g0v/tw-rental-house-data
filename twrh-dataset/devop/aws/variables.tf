@@ -115,6 +115,18 @@ variable "db_user" {
   default = "twrh"
 }
 
+variable "detail_seed_mode" {
+  description = "TWRH_DETAIL_SEED_MODE：full＝全量（現行）；diff＝L-C list-diff skip 降頻（dx-roadmap L-C，語意拍板後於 tfvars 切）"
+  type        = string
+  default     = "full"
+}
+
+variable "detail_refresh_days" {
+  description = "TWRH_DETAIL_REFRESH_DAYS：diff 模式的週期強制刷新天數（L-C-7）"
+  type        = string
+  default     = "7"
+}
+
 variable "housekeep_schedule" {
   description = "月度 housekeep（raw offload＋HouseTS 歸檔）的 cron（Asia/Taipei）；避開爬蟲時段"
   type        = string
