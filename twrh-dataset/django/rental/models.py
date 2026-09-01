@@ -181,6 +181,9 @@ class HouseEtc(BaseModel):
     vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE)
     vendor_house_id = models.CharField(max_length=128)
     detail_dict = JSONField(null=True)
+    # list 頁解析出的欄位（title/price/update_time…），L-C skip 判準的指紋來源：
+    # pipeline 覆寫前可拿舊值與當日 list 比對（docs/dx-roadmap.md list-driven 三階段）
+    list_dict = JSONField(null=True)
     list_raw = models.TextField(null=True)
     detail_raw = models.TextField(null=True)
     could_be_rooftop = models.BooleanField(null=True)

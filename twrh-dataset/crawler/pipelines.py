@@ -53,6 +53,11 @@ class CrawlerPipeline(object):
                 if 'dict' in item and not item['is_list']:
                     house_etc.detail_dict = item['dict']
 
+                # list 層指紋（title/price/update_time…）落地供 L-C 比對；
+                # 空 dict 不覆寫，避免解析失敗清掉上次的指紋
+                if item['is_list'] and item.get('dict'):
+                    house_etc.list_dict = item['dict']
+
                 house_etc.save()
 
             elif type(item) is GenericHouseItem:
