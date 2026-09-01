@@ -267,21 +267,34 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
   極高，且缺席主要是**爬蟲端 list 掃描不完整**（推薦位灌水使實際頁數超過宣稱
   `total_page`，尾頁最舊物件被擠出範圍；城市越大越嚴重）而非 591 端狀態——
   慢速重掃後絕大多數缺席者現身（數據見 repo 外報告）。計畫改為三階段：
-  - **L-A list 完整度（package，小）**：(1) 翻頁改「遇空頁標記才收單」、不信
-    total_page（423c451 的空頁偵測從例外處理升為正常終止條件）；(2) 推薦位
-    跨頁重複由既有 upsert 吸收，確認即可；(3) 確認 list 層 `update_time`／
-    `price`／`title` 有落地可比對（L-C 指紋要用）。
-  - **L-B 觀測與重測（dataset，小）**：(4)「list 捕獲數/open 數」進每日
-    statscheck/distcheck 當完整度哨兵；(5) 以同套交叉表＋單城慢掃法重測
-    誤殺率，降至個位數才進 L-C——這是 gate。
+  - **L-A list 完整度（package，小）✅ 完成（2026-09-01）**：(1) 翻頁改
+    「遇空頁標記才收單」、不信 total_page——宣稱頁範圍照舊展開當下限，
+    有物件的頁在前緣外再探一頁，直到空頁收單（hard cap＝宣稱數 2 倍 +5
+    防 591 任意頁碼都回物件時無限探測）；survey 翻頁改 worklist 跟進。
+    (2) 確認跨頁重複由 pipeline 的 get_or_create+save upsert 吸收。
+    (3) list 層欄位落地 `HouseEtc.list_dict`（pipeline 原本丟棄 list 的
+    parsed dict）。**踩雷**：list 的 `update_time` 是「N小時內更新」相對
+    字串，隨時間自然流動，L-C 指紋不能直接 diff、需正規化或只用
+    price/title。
+  - **L-B 觀測與重測（dataset，小）✅ 完成（2026-09-01）**：(4)
+    `House`/`HouseTS.list_crawled_at`（crawled_at 分不出 list/detail 來源）
+    ＋statscheck「list 完整度」＝當日 OPENED 出現在今日 list 的比率，寫
+    `Stats.n_open_in_list` 留歷史、進 Slack 日報，先 advisory 待實據定門檻。
+    (5) 最大城台中重測（交叉表＋缺席者慢掃＋立即二掃）：單次掃描誤殺率較
+    前置驗證大幅下降但未達個位數；殘餘誤殺者幾乎全為近 7 日新刊登、detail
+    無隱藏標記，屬掃描期間頁面位移的暫時抖動——立即二掃絕大多數現身、
+    噪音集合每掃輪替，連兩掃皆缺席且仍開者僅個位數件。**連續 ≥2 天缺席
+    判準下誤殺率達個位數 → gate 通過**；L-C 缺席判準據此定為連續 ≥2 天。
   - **L-C skip 判準與 detail 降頻（架構改動）**：(6) detail 種子改 list diff
     驅動，skip 謂詞＝「在今日 list ∧ DB 現況 OPENED ∧ list 指紋未變 ∧ 距上次
     detail < N 天」；不滿足者進 queue（新物件 full detail／關閉後回列＝複查
-    分辨重新刊登／指紋變＝refresh／缺席＝定向複查），狀態變更永遠由 detail
-    判定；(7) 週期強制刷新（N≈7）兜底 update_time 不跳的暗改；(8) **發布語意
-    審查**：被 skip 物件的 HouseTS 為「list 新值＋detail 上次值」合成、detail
-    欄位最舊 N−1 天——唯一動到資料產品語意處，需操作者拍板；(9) 預估 detail
-    量減約七成。關聯：#229（成交資訊消失）不擋此線，但影響複查產出語意。
+    分辨重新刊登／指紋變＝refresh／缺席＝**連續 ≥2 天**才定向複查），狀態
+    變更永遠由 detail 判定；指紋用 price＋title（update_time 相對字串見
+    L-A 踩雷）；(7) 週期強制刷新（N≈7）兜底 update_time 不跳的暗改；(8)
+    **發布語意審查**：被 skip 物件的 HouseTS 為「list 新值＋detail 上次值」
+    合成、detail 欄位最舊 N−1 天——唯一動到資料產品語意處，需操作者拍板；
+    (9) 預估 detail 量減約七成。關聯：#229（成交資訊消失）不擋此線，但影響
+    複查產出語意。
 
 ---
 
