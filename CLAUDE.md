@@ -55,6 +55,7 @@ poetry run scrapy crawl list591 -L INFO
 poetry run scrapy crawl detail591 -L INFO -a batch_size=2000
 
 # Django management commands (all under django/, not backend/ as the README says)
+poetry run python django/manage.py synthts             # L-C diff 模式：合成被 skip 物件的當日 HouseTS（標 is_synthesized）
 poetry run python django/manage.py syncstateful -ts    # sync deal status into time-series
 poetry run python django/manage.py statscheck          # generate stats, notify Slack
 poetry run python django/manage.py distcheck           # 當日分佈不變量 vs twrh-dataset/baselines/national.json（591 混淆哨兵）
@@ -209,8 +210,13 @@ date-keyed:
   loops on that string, restarting the spider until it exits without it — this bounds memory over a
   multi-hour detail crawl. Overall progress survives restarts via
   `logs/progress/<YYYY-MM-DD>.detail.json` (`ProgressTracker.init_overall`).
-- `--append` mode: list spider always regenerates seeds; detail spider only picks houses with
-  `monthly_price IS NULL`.
+- `--append` mode: list spider always regenerates seeds; detail spider only picks houses never
+  detail-crawled (`etc.detail_raw IS NULL` — `monthly_price` can't tell since the 2026 redesign).
+- Detail seeding has two modes: `full`（default，全量 OPENED）and `diff`
+  （`TWRH_DETAIL_SEED_MODE=diff`，L-C list-diff skip 降頻：stale/指紋變/連續≥2天缺席/回列
+  才入 queue，之後 `synthts` 合成被 skip 者的當日 HouseTS）。發布語意拍板前 production 走 full。
+- List pagination（package 端）不信 591 的 `total_page`：宣稱頁範圍當下限，前緣逐頁探測
+  直到空結果頁收單；statscheck 的「list 完整度」哨兵（`Stats.n_open_in_list`）監控捕獲率。
 - `--start-early`: when run at/after 22:00, bucket the data under tomorrow's date.
 
 ### TWRH_TARGET_DATE

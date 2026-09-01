@@ -285,16 +285,25 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
     無隱藏標記，屬掃描期間頁面位移的暫時抖動——立即二掃絕大多數現身、
     噪音集合每掃輪替，連兩掃皆缺席且仍開者僅個位數件。**連續 ≥2 天缺席
     判準下誤殺率達個位數 → gate 通過**；L-C 缺席判準據此定為連續 ≥2 天。
-  - **L-C skip 判準與 detail 降頻（架構改動）**：(6) detail 種子改 list diff
-    驅動，skip 謂詞＝「在今日 list ∧ DB 現況 OPENED ∧ list 指紋未變 ∧ 距上次
-    detail < N 天」；不滿足者進 queue（新物件 full detail／關閉後回列＝複查
-    分辨重新刊登／指紋變＝refresh／缺席＝**連續 ≥2 天**才定向複查），狀態
-    變更永遠由 detail 判定；指紋用 price＋title（update_time 相對字串見
-    L-A 踩雷）；(7) 週期強制刷新（N≈7）兜底 update_time 不跳的暗改；(8)
-    **發布語意審查**：被 skip 物件的 HouseTS 為「list 新值＋detail 上次值」
-    合成、detail 欄位最舊 N−1 天——唯一動到資料產品語意處，需操作者拍板；
-    (9) 預估 detail 量減約七成。關聯：#229（成交資訊消失）不擋此線，但影響
-    複查產出語意。
+  - **L-C skip 判準與 detail 降頻（架構改動）🚧 機制完成、default-off
+    （2026-09-01）**：(6)(7) `detail591 -a seed_mode=diff`（預設 full＝現行
+    全量不變）：skip 謂詞＝「在今日 list ∧ OPENED ∧ 指紋未變 ∧ 距上次
+    detail < refresh_days（預設 7，即週期強制刷新兜底暗改）」；不滿足者
+    入 queue 四類——stale/新物件、指紋變（price＋title，在上次 detail 後
+    變過）、**連續 ≥2 天**缺席（L-B gate 定案）、缺席後回列（含關閉後回列，
+    12h 窗口防同輪重排）；狀態變更永遠由 detail 判定。「在今日 list」以
+    HouseTS 當日 bucket 判定，與 TWRH_TARGET_DATE／start-early 分桶一致；
+    bootstrap 自然退化為全量、逐日收斂。謂詞落地：`House.detail_crawled_at`
+    ＋`list_fingerprint_changed_at`（pipeline 覆寫 list_dict 前比對）。
+    (8) `synthts` 指令（detail 後、syncstateful 前）以 House 現值補齊被
+    skip 者的當日 HouseTS 空欄位、標 `is_synthesized`，維持每 open 每日
+    一列；go.sh／orchestrate.sh 均以 `TWRH_DETAIL_SEED_MODE=diff` 啟用。
+    **待拍板後才切 diff**：被 skip 物件 detail 欄位最舊 N−1 天、合成列以
+    is_synthesized 標示——資料產品語意的唯一變動點。(9) 以當日台中實測
+    組合估算穩態日 detail 量約三成（週期刷新＋新物件＋缺席複查＋回列
+    噪音；指紋變動率待實跑校準）→ 省約六五～七成。啟用還需：package
+    發版（L-A 翻頁）、cloud image 重建、RDS migrate（0010–0013）。
+    關聯：#229（成交資訊消失）不擋此線，但影響複查產出語意。
 
 ---
 
