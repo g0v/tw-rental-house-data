@@ -21,6 +21,11 @@ class ListMixin(RequestGenerator):
         self.target_cities = []
         # Set to track houses we've already requested
         self.requested_houses = set()
+        # Per-city pagination state: highest page generated and highest
+        # claimed total_page seen. 591's total_page undercounts when promoted
+        # listings inflate the real page count, so the crawl keeps probing one
+        # page past the frontier and only the empty-result page closes a city.
+        self.list_page_state = {}
 
     def default_start_list(self):
         for city in self.target_cities:
@@ -42,11 +47,11 @@ class ListMixin(RequestGenerator):
                 total_page = 1  # Default if no page number found
         elif response.css('.empty'):
             # 591's empty-result page ("很抱歉，暫時沒有為您找到合適的物件").
-            # Happens when the page count shrank while the crawl was running,
-            # so a tail page generated at page 0 is now beyond the last page.
-            # Expected during any long crawl — finish normally with 0 items.
+            # The only trusted end-of-list marker: every city crawl now walks
+            # past its claimed last page and finishes here (it also shows up
+            # mid-crawl when the page count shrank). Finish normally, 0 items.
             logging.info(
-                '[list] crawl city:%s page %d is beyond the last page, done',
+                '[list] crawl city:%s page %d is empty, list complete',
                 meta.name, meta.page)
             return
         elif response.css('.item'):
@@ -59,8 +64,12 @@ class ListMixin(RequestGenerator):
 
         logging.info('[list] crawl city:%s of %d/%d pages', meta.name, meta.page, total_page)
 
+        state = self.list_page_state.setdefault(
+            meta.id, {'max_page': 0, 'claimed_total': 1})
+        state['claimed_total'] = max(state['claimed_total'], total_page)
+
         if meta.page == 0:
-            # generate all list request as now we know number of result
+            # fan out the claimed page range — a lower bound, not the end
             cur_page = 1
             while cur_page < total_page:
                 yield self.gen_list_request(ListRequestMeta(
@@ -69,10 +78,14 @@ class ListMixin(RequestGenerator):
                     cur_page
                 ))
                 cur_page += 1
-        
+            state['max_page'] = max(state['max_page'], total_page - 1)
+
         # hide promotion houses to avoid duplication
         # promotion_houses = self.gen_promotion_house(response)
         regular_houses = self.gen_regular_house(response)
+
+        if regular_houses:
+            yield from self.gen_next_list_page(meta, state)
 
         for house in regular_houses:
             house_id = house['house_id']
@@ -95,6 +108,30 @@ class ListMixin(RequestGenerator):
             if house_id not in self.requested_houses:
                 self.requested_houses.add(house_id)
                 yield self.gen_detail_request(DetailRequestMeta(house_id))
+
+    def gen_next_list_page(self, meta, state):
+        '''Probe one page past the highest page generated so far.
+
+        Promoted listings inflate the real page count past the claimed
+        total_page, pushing the oldest listings out of the claimed range —
+        the main source of false list absences (docs/dx-roadmap.md, L-A). So
+        any page that still has items keeps the frontier moving, and only the
+        empty-result page ends a city.
+        '''
+        next_page = meta.page + 1
+        if next_page <= state['max_page']:
+            return
+        hard_cap = state['claimed_total'] * 2 + 5
+        if next_page > hard_cap:
+            # runaway guard, in case 591 ever serves items for any page
+            # number instead of the empty-result page
+            logging.error(
+                '[list] crawl city:%s page %d still has items at the hard cap'
+                ' (%d, 2x claimed total), stop probing further',
+                meta.name, meta.page, hard_cap)
+            return
+        state['max_page'] = next_page
+        yield self.gen_list_request(ListRequestMeta(meta.id, meta.name, next_page))
 
     def gen_promotion_house(self, response):
         """

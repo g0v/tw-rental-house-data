@@ -82,7 +82,8 @@ def cmd_list(args):
     dump({
         'city': region['city'],
         'page': args.page,
-        'total_pages': len(next_pages) + 1 if args.page == 0 else None,
+        # 已知頁數下限：宣稱的 total_page 常少算（推薦位灌水），實際以空頁收單
+        'known_pages': len(next_pages) + 1 if args.page == 0 else None,
         'n_houses': len(houses),
         'fill_rates': {
             k: '{}/{}'.format(*v)
@@ -105,14 +106,23 @@ def cmd_survey(args):
         sys.exit('list 第 1 頁就失敗（{}），中止'.format(status))
     houses, next_pages = runner.parse_list_page(spider, region, 0, body)
     list_pages_ok, list_pages_fail = 1, 0
-    for page in next_pages:
+    # worklist 而非固定清單：尾頁會鏈式長出宣稱 total_page 之外的頁
+    #（L-A 翻頁改遇空頁才收單），survey 要跟著走到底才量得到完整度
+    pending = list(next_pages)
+    seen_pages = {0, *pending}
+    while pending:
+        page = pending.pop(0)
         status, body = fetcher.get(runner.list_url(region['id'], page))
         if status != 200:
             list_pages_fail += 1
             continue
-        page_houses, _ = runner.parse_list_page(spider, region, page, body)
+        page_houses, more_pages = runner.parse_list_page(spider, region, page, body)
         houses.extend(page_houses)
         list_pages_ok += 1
+        for more in more_pages:
+            if more not in seen_pages:
+                seen_pages.add(more)
+                pending.append(more)
         print('[list] page {} → 累計 {} 筆'.format(page + 1, len(houses)), file=sys.stderr)
 
     # ---- detail ----

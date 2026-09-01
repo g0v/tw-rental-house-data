@@ -44,7 +44,9 @@ def parse_list_page(spider, region, page, body, status=200):
     '''回傳 (house_dicts, next_list_pages)
 
     house_dicts: [{house_id, dict}]，來自 RawHouseItem(is_list=True)
-    next_list_pages: default_parse_list 在第 0 頁展開的後續頁碼
+    next_list_pages: default_parse_list 產出的後續頁碼——第 0 頁的宣稱頁
+    範圍展開，加上任何有物件頁的前緣探測頁（遇空頁才收單，同一 spider
+    實例跨頁共享翻頁狀態，caller 要用同一個 spider 走完整城）
     '''
     meta = {'rental': u591.ListRequestMeta(region['id'], region['city'], page)}
     response = fake_response(list_url(region['id'], page), body, meta, status)
