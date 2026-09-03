@@ -1,35 +1,36 @@
 """月報產生器＋quality gate（export-automation-plan P1，出貨前的 2c＋2b）。
 
-彙整整月 Stats／RequestTS／HouseTS，產出 <YYYYMM>.report.json 並判紅綠：
+1-2 起改讀 manifest（architecture-roadmap：monthreport＝同一批 manifest
+疊月窗）：缺爬日＝該日 detail manifest 不存在；單日失敗率＝queue 終結
+統計的 (dead＋residue)/seeds。9 月由 DB 回補的 manifest（source=backfill）
+沒有 queue 統計——該日失敗率未知，列 queue_unknown_days 供人工參考、
+不影響紅綠（2026-09-03 拍板：該類斷言降 advisory）。
 
 - 紅綠只由「硬事實」決定（2026-08-30 拍板）：
-    缺爬日（該日無 Stats 列）＞0 → 紅；單日 fail ratio > 門檻（預設 10%）→ 該日
-    fail，當月有任一 fail 日 → 紅。
+    缺爬日 ＞0 → 紅；單日 fail ratio > 門檻（預設 10%）→ 該日 fail，
+    當月有任一 fail 日 → 紅。
 - 分佈不變量（與 distcheck 同一套 compare_invariants）**永遠 advisory**：
-    市場有季節性，跨月比對只進報告與敘事、不決定紅綠。baseline 選擇順位
-    （前一次成功同期月 → 前一次成功月 → committed national.json）中，前兩者
-    需要歷史累積，目前一律落在 national.json；同期比對待 2027 起資料齊備後生效。
+    市場有季節性，跨月比對只進報告與敘事、不決定紅綠。
 
 用法（publish.sh 步驟 2c；手動跑亦可）：
   python django/manage.py monthreport [--month YYYYMM] [-o DIR]
       [--fail-ratio 0.1] [--baseline PATH] [--logs-dir DIR]
 
-exit code：0=綠、2=紅（gate 分岔用）；例外才是 1。
+exit code：0=綠、2=紅；例外才是 1。
 """
 import calendar
 import glob
 import gzip
 import json
 import os
-from datetime import datetime
+from datetime import date, datetime
 
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 from scrapy_twrh.cli.runner import compare_invariants, invariants
 
-from crawlerrequest.models import RequestTS, Stats
-from crawlerrequest.enums import RequestStatus
-from rental import enums, models
+from crawlerrequest import manifests
+from rental import enums
 from rental.enums import DealStatusType
 from rental.models import HouseTS
 
@@ -49,8 +50,17 @@ def _enum_or_none(enum_cls, value):
         return value
 
 
+def _queue_fail(queue):
+    '''(fail 數, seeds)；queue 統計缺席（backfill）回 None。'''
+    if not queue:
+        return None
+    seeds = queue.get('seeds', 0)
+    fail = queue.get('dead', 0) + queue.get('residue', 0)
+    return fail, seeds
+
+
 class Command(BaseCommand):
-    help = 'Aggregate a month of crawl stats into a report and a red/green verdict'
+    help = 'Aggregate a month of manifests into a report and a red/green verdict'
     requires_migrations_checks = True
 
     def add_arguments(self, parser):
@@ -82,50 +92,42 @@ class Command(BaseCommand):
         n_days = calendar.monthrange(year, month)[1]
         threshold = options['fail_ratio']
 
-        # --- 逐日 Stats（statscheck 寫入；無列＝缺爬日）---
-        days, missing_days, failed_days = {}, [], []
-        stats_rows = Stats.objects.filter(year=year, month=month)
-        by_day = {}
-        for row in stats_rows:
-            d = by_day.setdefault(row.day, {
-                'expected': 0, 'crawled': 0, 'fail': 0, 'list_fail': 0,
-                'new': 0, 'closed': 0, 'dealt': 0})
-            d['expected'] += row.n_expected
-            d['crawled'] += row.n_crawled
-            d['fail'] += row.n_fail
-            d['list_fail'] += row.n_list_fail
-            d['new'] += row.n_new_item
-            d['closed'] += row.n_closed
-            d['dealt'] += row.n_dealt
-
+        # --- 逐日 manifest 疊月窗 ---
+        days, missing_days, failed_days, queue_unknown_days = {}, [], [], []
         for day in range(1, n_days + 1):
-            if day not in by_day:
+            date_str = date(year, month, day).isoformat()
+            detail = manifests.load_manifest(date_str, 'detail')
+            if detail is None:
                 missing_days.append(day)
                 continue
-            d = by_day[day]
-            # 與 statscheck 同式：expected>0 用 fail/expected；否則有 fail 即 1.0
-            n_fail_total = d['fail'] + d['list_fail']
-            if d['expected'] > 0:
-                ratio = d['fail'] / d['expected']
-            else:
-                ratio = 1.0 if n_fail_total else 0.0
-            d['fail_ratio'] = round(ratio, 4)
-            if ratio > threshold:
-                failed_days.append(day)
-            days[day] = d
+            listm = manifests.load_manifest(date_str, 'list') or {}
+            snapshot = manifests.load_manifest(date_str, 'snapshot') or {}
 
-        # --- RequestTS 失敗列（1-1 後完成列留存＝DONE，失敗＝其餘；
-        # 舊制月份的完成列已刪，兩制下同一條 query 語意一致）---
-        leftover = {}
-        for row in (RequestTS.objects.filter(year=year, month=month)
-                    .exclude(status=RequestStatus.DONE)
-                    .values('day', 'request_type')):
-            key = str(row['day'])
-            leftover.setdefault(key, {'list': 0, 'detail': 0})
-            if row['request_type'] == 0:
-                leftover[key]['list'] += 1
+            counts = detail.get('counts', {})
+            d = {
+                'crawled': counts.get('n_crawled', 0),
+                'new': counts.get('n_new_item', 0),
+                'closed': counts.get('n_closed', 0),
+                'dealt': counts.get('n_dealt', 0),
+                'synthesized': snapshot.get('counts', {}).get('n_synthesized'),
+                'source': detail.get('source', 'live'),
+            }
+
+            detail_fail = _queue_fail(detail.get('queue'))
+            list_fail = _queue_fail((listm or {}).get('queue'))
+            if detail_fail is None:
+                # backfill：queue 統計已丟（舊制刪列＝完成），failure 未知
+                d['fail_ratio'] = None
+                queue_unknown_days.append(day)
             else:
-                leftover[key]['detail'] += 1
+                fail, seeds = detail_fail
+                d['fail'] = fail
+                d['list_fail'] = list_fail[0] if list_fail else 0
+                ratio = (fail / seeds) if seeds else (1.0 if fail else 0.0)
+                d['fail_ratio'] = round(ratio, 4)
+                if ratio > threshold:
+                    failed_days.append(day)
+            days[day] = d
 
         # --- breaker 事件（log 掃 error_rate_exceeded，best effort）---
         breaker_events = []
@@ -188,8 +190,10 @@ class Command(BaseCommand):
             'thresholds': {'day_fail_ratio': threshold},
             'missing_days': missing_days,
             'failed_days': failed_days,
+            # queue 統計缺席的日子（backfill manifest）：失敗率未知、
+            # 不影響紅綠，供人工參考
+            'queue_unknown_days': queue_unknown_days,
             'days': {str(k): v for k, v in sorted(days.items())},
-            'requestts_leftover': leftover,
             'breaker_events': breaker_events,
             'invariants': invariant_report,
         }
@@ -203,6 +207,9 @@ class Command(BaseCommand):
         self.stdout.write(f'[{month_str}] {flag} — {out_path}')
         for r in reasons:
             self.stdout.write(f'  - {r}')
+        if queue_unknown_days:
+            self.stdout.write(
+                f'  queue 統計缺席（backfill）: {queue_unknown_days}')
         if invariant_report['skipped']:
             self.stdout.write(f'  invariants: skipped ({skipped_reason})')
         elif not inv_passed:
