@@ -165,6 +165,17 @@ schema 版本；**歷史重算永遠由人顯式觸發**（版本對比決定回
 成本可忽略），否則 stub 層沒有「回頭多抓一欄」的重算保險——
 591 版式改版的兜底就不完整。
 
+**S3 治理：無定期清理**：現制清理工作（rawoffload／archivehistory／
+housekeep）存在的理由全是 RDS 的物理性質（貴、只長不縮、容量影響效能）；
+S3 上全部分區的年增量在 Glacier IR 單價下成本可忽略，「為容量刪東西」
+沒有標的。需要的只有兩條 set-once lifecycle 規則（terraform，一次寫定，
+非排程 job）：raw 30 天轉 Glacier IR；若開 versioning，非當前版本
+N 天過期（「重算取代 migration」的配套，與壓縮框架同在 3-1 拍板——
+或不開 versioning、重寫即覆蓋）。唯一可能的定期刪除是**政策性**的：
+raw 含個資、預設永存（replay 兜底的前提），若日後出現下架請求或
+「raw 只留 N 年」的個資政策才需要刪——動機是政策非容量，現制 offload
+包亦同，非新架構引入。raw 保留期限列為待拍板政策項、預設永存。
+
 **存取模式分層**（格式選擇的依據）：(1) 高頻點查（queue claim）留在
 DB——唯一可變狀態不進檔案的另一面；(2) 單屋跨日歷史點查是已承認的
 退化項，緩解＝parquet 分區內按 house_id 排序、靠 row-group 統計跳讀
@@ -365,6 +376,10 @@ synthts／syncstateful／housekeep）——維護面積隨儲存收斂；S3 欄�
 
 ## 編修紀錄
 
+- **2026-09-03（九補）** 軸 C 補〈S3 治理：無定期清理〉：清理 job
+  類別隨 housekeep 退役，僅剩 set-once lifecycle 兩條（Glacier IR 轉換、
+  noncurrent version 過期）；唯一可能的定期刪除是個資政策項（raw
+  預設永存、保留期限待拍板）。
 - **2026-09-03（八補）** L-C 案例節補〈snapshot 即摺疊狀態〉：謂詞
   滾動狀態（last_detail_at／指紋／缺席計數／first_seen）摺入 snapshot
   carry 欄，日更為一階遞迴、冷啟同步深度＝1 天；90 天回看是 DB 保留
