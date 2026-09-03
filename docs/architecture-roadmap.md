@@ -271,6 +271,33 @@ Phase 1 一起做；順序由觸發時點決定，不硬性綁死。
 
 ---
 
+## 附錄：儲存演變對照（每步做完後 DB／FS／S3 的差異）
+
+「—」＝不變；每列為**該步新增的差異**，累積於上一列之上。Phase 4 依
+北極星六 stage 拆成可獨立觸發的子任務（4a–4e），順序可被觸發點抽換
+（例如 re-parse 需求只逼出 4b）；唯一硬依賴＝4e 須等 4b–4d 完成。
+
+| 階段／任務 | DB（RDS） | FS（EFS／本機） | S3 |
+|---|---|---|---|
+| 現況（基準） | House／HouseTS（90 天窗）／HouseEtc（raw 90 天窗＋detail_dict 全量）／RequestTS（刪列＝完成）／Stats | `logs/`＋progress json＋fill-rates、`datas/` 月 zip＋publish state、月報 json；repo 內 `baselines/` | `publish/` 公開 zip；housekeep 月度 raw 包＋TS 歸檔 tgz；logs 歸檔 |
+| Phase 1 | `request_ts` ＋`status/attempts/error`，終結列留存、滾動清理；Stats 停止新增（職責交 manifest） | fill-rates／distcheck history 停產；repo ＋`quality/assertions.yaml`、`baselines/` 退役 | ＋`manifests/<date>/<stage>.json` |
+| Phase 2 | — | —（repo 佈局改 workspace；per-vendor baseline 進 `vendors/<name>/`） | — |
+| 3-1 raw 出 DB | `detail_raw`／`list_raw` 停寫並清空——DB 成長歸零 | — | `raw/<vendor>/<date>.tar.zst`＋index 改每日直寫；housekeep raw 半邊退役 |
+| 3-2 flow 收斂 | — | progress json／stop marker／log-grep 契約退役——完成判據＝產出檔存在 | — |
+| 3-3 零雲相依 | 本機 PostGIS 降為 queue／爬取段才需要 | 開發機 `s3 sync` 分區即可跑 parse 之後段 | — |
+| 4a list 檔案化 | `HouseEtc.list_dict` 停寫 | — | ＋`list/<vendor>/<date>.jsonl.zst` |
+| 4b parsed parquet | `detail_dict` 停寫——`house_etc` 退役；rerun 工具退役 | — | ＋`parsed/<vendor>/<date>.parquet` |
+| 4c snapshot parquet | `house_ts` 退役；`synthts` 消失（carry 併入 stage 定義）——housekeep 整支退役 | — | ＋`snapshot/<date>.parquet`（取代 TS 歸檔 tgz） |
+| 4d deals parquet | deal 推導出 DB（`syncstateful` 退役）——`house` 退役（現值＝最新 snapshot） | — | ＋`deals/<date>.parquet` |
+| 4e RDS 降級純 queue | RDS 只剩 queue 一張表，或換 SQLite-on-EFS（單寫者 $0）；export／statscheck 改 DuckDB 掃 S3 | queue 為 SQLite 時 `.db` 住 EFS | 成為唯一真相來源（北極星全樹到齊） |
+
+讀表要點：DB 欄的走向＝「先停止長大（3-1）→ 逐表退役（4b–4d）→ 只剩
+queue（4e）」，且每一步 DB 少掉的那塊都有一個工具同時退役（rerun／
+synthts／syncstateful／housekeep）——維護面積隨儲存收斂；S3 欄即北極星
+那棵樹的生長順序。
+
+---
+
 ## 編修紀錄
 
 - **2026-09-03（補）** 依維護者回饋補 1-1 的「不刪列」效能對策
