@@ -171,10 +171,15 @@ S3 上全部分區的年增量在 Glacier IR 單價下成本可忽略，「為�
 沒有標的。需要的只有兩條 set-once lifecycle 規則（terraform，一次寫定，
 非排程 job）：raw 30 天轉 Glacier IR；若開 versioning，非當前版本
 N 天過期（「重算取代 migration」的配套，與壓縮框架同在 3-1 拍板——
-或不開 versioning、重寫即覆蓋）。唯一可能的定期刪除是**政策性**的：
-raw 含個資、預設永存（replay 兜底的前提），若日後出現下架請求或
-「raw 只留 N 年」的個資政策才需要刪——動機是政策非容量，現制 offload
-包亦同，非新架構引入。raw 保留期限列為待拍板政策項、預設永存。
+或不開 versioning、重寫即覆蓋）。唯一的定期刪除是**政策性**的——
+**raw 保留 365 天（2026-09-03 拍板）**：lifecycle expiration 一條規則
+（仍是 set-once，非排程 job），個資／著作權暴露面從永存變有界。
+配套設計使 365 天能乾淨地只套用於 raw：stub 指紋存**雜湊**而非 title
+原文、normalized 分區本就不含 title／description——事件分區與 snapshot
+不含個資／著作權內容、永存，replay 與 snapshot 重建不受 raw 過期影響。
+代價＝breaking-change re-parse 回看上限一年，更早歷史以 normalized
+分區＋公開 zip 為準——與現實一致（pre-2024 raw 已佚失且被接受，
+rerun 實務回看深度＝parser bug 發現延遲，遠短於一年）。
 
 **存取模式分層**（格式選擇的依據）：(1) 高頻點查（queue claim）留在
 DB——唯一可變狀態不進檔案的另一面；(2) 單屋跨日歷史點查是已承認的
@@ -374,8 +379,33 @@ synthts／syncstateful／housekeep）——維護面積隨儲存收斂；S3 欄�
 
 ---
 
+## 開放問題
+
+已拍板：raw 保留 365 天（S3 治理節）；snapshot 承載摺疊狀態（L-C 案例
+節）；stub 指紋存雜湊。以下依歸屬 phase 排列，4／5／6 尚無答案，
+1／3 有方向待選，其餘為進場時的機械拍板：
+
+| # | 問題 | 歸屬 |
+|---|---|---|
+| 1 | detail stage 多 worker 的 artifact 佈局：N worker 共產當日 raw 包——worker 各寫 shard、finalize 合併 vs 逐 worker 小包＋index 聚合；「S3 PUT 完成才可見」的原子性約定成文 | 3-1／3-2 |
+| 2 | raw 壓縮框架：整包拉回 vs 可尋址壓縮（軸 C，day one 拍板） | 3-1 |
+| 3 | 私有／公開界線與貢獻者存取：S3 樹住私有 bucket（公開僅 `publish/`）；貢獻者 sync 管道＝scrub 樣本分區或唯讀憑證；normalized 契約欄位以「可散佈」為界的正式定義 | 3-3 |
+| 4 | 各步切換與對帳：3-1／4c／4e 的雙軌並行期；切換日從現制 DB 摺出第一份 snapshot（carry 欄初始化）的一次性工具——各步進場時設計，不預做 | 各步 |
+| 5 | invalidate 的新形狀：不穩定資料判定放哪個 stage、標記落哪、「重寫分區＋重建下游」的觸發介面 | Phase 4 |
+| 6 | deals 語意 × #229：成交訊號消失調查的結論影響 deals 事件類別（DEAL／NOT_FOUND／原因不明下架） | 調查先行 |
+| 7 | 動態基準落點：`rolling_median_30d` 類 ref 由誰算、存哪（manifest 疊窗即算 vs 物化專檔） | 1-2 |
+| 8 | queue 清理窗口長度：預設沿用 90 天慣例，實跑後定案 | Phase 1 |
+| 9 | versioning 開關：開＋noncurrent 過期 vs 不開、重寫即覆蓋 | 3-1 |
+| 10 | 日期 pin 平移：`TWRH_TARGET_DATE`／`--start-early` 跨午夜分桶語意在 flow 的落點（date 是所有分區主鍵） | 3-2 |
+
+---
+
 ## 編修紀錄
 
+- **2026-09-03（十補）** **raw 保留 365 天拍板**（lifecycle expiration，
+  配套：stub 指紋改存雜湊使事件分區永存無虞、re-parse 回看上限一年）；
+  新增〈開放問題〉節：十項，含多 worker artifact 佈局、私有／公開界線、
+  切換對帳、invalidate 新形狀、deals×#229 等。
 - **2026-09-03（九補）** 軸 C 補〈S3 治理：無定期清理〉：清理 job
   類別隨 housekeep 退役，僅剩 set-once lifecycle 兩條（Glacier IR 轉換、
   noncurrent version 過期）；唯一可能的定期刪除是個資政策項（raw
