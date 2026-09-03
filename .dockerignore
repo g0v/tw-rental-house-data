@@ -13,6 +13,9 @@ twrh-dataset/logs/
 twrh-dataset/tw-rental-data/
 twrh-dataset/**/__pycache__/
 twrh-dataset/scrapy.log
+# 1-2／3-1 本機 artifact（雲上住 EFS，不進 image）
+twrh-dataset/manifests/
+twrh-dataset/raws/
 
 # csv-aggregator 只要腳本，不要歷史資料 zip
 csv-aggregator/*.zip
