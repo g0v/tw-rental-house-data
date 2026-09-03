@@ -30,9 +30,9 @@ poetry install
 poetry shell
 
 cd backend
-# 設定資料庫（預設使用 sqlite）
-## 詳細資訊請見 [Django 官網](https://docs.djangoproject.com/en/2.0/topics/settings/)
-vim backend/settings_local.py
+# 設定資料庫（預設使用 sqlite；連 PostGIS 請在 repo 根目錄 .env 設 TWRH_DB_*）
+## 詳細資訊請見 .env.example 與 [Django 官網](https://docs.djangoproject.com/en/2.0/topics/settings/)
+cp ../.env.example ../.env && vim ../.env
 
 # 設定資料庫
 ## 使用 --fake-init 可以讓 Django 跳過已存在的 migration script 
@@ -68,10 +68,10 @@ poetry run backend/manage.py export --help
 #### 設定 Slack 通知
 
 1. 在 Slack 中建立 Incoming Webhook：https://api.slack.com/messaging/webhooks
-2. 在 `django/backend/settings_local.py` 中設定 Webhook URL：
+2. 在 `.env`（或環境變數）中設定 Webhook URL：
 
-```python
-SLACK_WEBHOOK_URL = 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
+```bash
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
 ```
 
 3. 執行 `statscheck` 指令時，系統會自動發送統計資訊到 Slack：

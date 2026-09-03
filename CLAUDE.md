@@ -35,8 +35,8 @@ poetry install
 
 # Config files are gitignored; create them locally
 cp crawler/settings.sample.py crawler/settings.py   # reads per-env overrides from .env
-cp .env.example .env                                # proxy / UA / perf knobs
-vim django/backend/settings_local.py                # DATABASES, SENTRY_DSN, SLACK_WEBHOOK_URL
+cp .env.example .env                                # 全部設定都在這：DB（TWRH_DB_*）、proxy / UA / perf、
+                                                    # SENTRY_DSN、SLACK_WEBHOOK_URL（settings_local.py 已退場）
 
 poetry run python django/manage.py migrate
 poetry run python django/manage.py loaddata vendors   # required: pipeline looks up Vendor by name

@@ -141,16 +141,9 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'  # 既有表全為 int4，勿讓 makemigrations 產生 bigint 遷移
 
-# To overwrite config, or define per-env conf, use backend.settings_local
-# Additional features:
-# 1. Sentry: https://docs.sentry.io/clients/python/integrations/django/
-try:
-    from backend.settings_local import *
-except ImportError:
-    print('backend.settings_local.py is not found, use default setting.')
-
-# 環境變數優先（AWS 部署：非機密放 task definition、機密由 SSM 注入；
-# 本機無這些變數時沿用 settings_local / 預設值）——dx aws-deployment-plan A1
+# 一律以環境變數設定（AWS 部署：非機密放 task definition、機密由 SSM 注入；
+# 本機放 repo 根目錄 .env，由上方 load_dotenv 載入、真環境變數優先）。
+# settings_local.py 已退場（architecture-roadmap 1-0），不再有檔案 fallback。
 if os.environ.get('TWRH_DB_NAME'):
     DATABASES = {
         'default': {

@@ -48,12 +48,12 @@ MAX_LIFETIME=$((24 * 3600))                     # watchdog 自身最長壽命
 
 log() { echo "[$(date +'%F %T')] $*"; }
 
-# Slack webhook：優先吃環境變數，否則從 settings_local.py 撈
+# Slack webhook：優先吃環境變數，否則從 .env 撈（settings_local 已退場）
 slack_webhook() {
     if [ -n "$TWRH_SLACK_WEBHOOK" ]; then
         echo "$TWRH_SLACK_WEBHOOK"
     else
-        sed -n "s/^SLACK_WEBHOOK_URL = '\(.*\)'/\1/p" django/backend/settings_local.py 2>/dev/null
+        sed -n 's/^SLACK_WEBHOOK_URL=\(.*\)/\1/p' .env 2>/dev/null
     fi
 }
 
