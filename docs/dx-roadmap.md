@@ -187,7 +187,7 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
 |---|---|---|---|---|
 | 2.5-1 | detail parser 直接吃純 HTTP response；selector 依 #204 對照表修正（注意 `deep_text`、tooltip 汙染、「房屋已辦產權登記」字串變更） | package | 中 | 需要 Phase 1 安全網先就位 |
 | 2.5-2 | 大規模量測：純 HTTP 的成功率、被擋的形式（403／驗證頁／空頁）、觸發條件（速率？總量？IP？） | dataset | 中 | 與 1-2 harvester、L2 probe 共用同一支程式 |
-| 2.5-3 | 依量測結果設計 fallback／迴避機制 | 兩邊 | 待量測後估 | 也許換 UA、降速就夠；playwright 只是選項之一。**重試要放 downloader middleware**，見踩雷筆記關於 PersistQueue |
+| 2.5-3 | ~~依量測結果設計 fallback／迴避機制~~ **擱置（2026-09-03 拍板：碰到再處理）** | 兩邊 | — | 樣本已齊（雲上 08-29 快速組、本機 09-01 LTE 場次；ASN 聚合閾值實測未觸發），但 L-C 上線後 detail 量降至一～兩成、被擋壓力大降，現階段無動機。真被擋時再動工，屆時優先補的是結構性缺口：403 errback 斷餵 → spider 靜默 finished（正解形狀＝queue 顯式終結狀態＋seeds==terminals 斷言，設計見 repo 外 redo-design 筆記） |
 | 2.5-4 | `twrh` CLI：手動測試入口（Poetry console script） | package | 小 | 子指令：`parse`（離線吃 HTML 檔跑 parser）、`list <縣市名或 list URL>`（抓一頁 list、輸出解析結果與欄位命中率）、`detail <house-id 或 URL>`（抓單一 detail、輸出 parse 結果）、`survey <縣市名或 list URL>`（全量 list + 全部 detail，**不寫 DB**，輸出完整性報告：list/detail 成功率、`property_type` 分布、每欄位填充率與 baseline 差異；`--save-html` 存 fixture 候選）。縣市 → URL 用 `tw_regions.json` 對應，也接受直接貼 URL。與 1-2 harvester、3-1 doctor 共用 plumbing，後兩者做完即併為同一支 CLI 的子指令；`survey` 就是 L3 drift detector 的手動介面（見 3-3） |
 
 ### Phase 3 — 線上診斷與 nightly
@@ -236,11 +236,12 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
 
 ### Backlog（已知但痛感低）
 
-- `PersistQueue.next_request()` 的認領不是 atomic（`persist_queue.py` 註解自承 #21），
-  靠事後 `deduprequest` 兜底。Postgres 可改 `SELECT ... FOR UPDATE SKIP LOCKED`。
-- `parser_wrapper` 結尾的 `mercy = 10` 迴圈（`persist_queue.py:256-264`）是沒有說明的魔術數字。
-- `export` 指令**不讀** `TWRH_TARGET_DATE`，永遠用真實當下日期 —— 用 `go.sh --date` 重跑舊日期時，
-  匯出的檔名／範圍會對不上。
+- ~~`PersistQueue.next_request()` 的認領不是 atomic~~ **✅ 已修（2026-08-29）**：
+  改 `SELECT ... FOR UPDATE SKIP LOCKED`（#21，隨模型 A 編排器一併落地）。
+- `parser_wrapper` 結尾的 `mercy = 10` 迴圈（`persist_queue.py`）——**拍板結案
+  （2026-09-03）**：當時實務需要的值，正式承認它就是 magic number，不另考據。
+- ~~`export` 指令不讀 `TWRH_TARGET_DATE`~~ **✅ 已修（2026-08-28）**：
+  export 現與 pipeline 其他環節同日期語意。
 - **baseline 重製＋數值欄位哨兵（2026-08-30 拍板，9/5 後做）**：
   (a) national.json 以 **HouseTS（DB 層）多日中位數**重製——現值 0.993 系
   survey（parse 層）產出，與 distcheck 的 DB 層量測天生差 ~2pp，且單日快照
@@ -285,8 +286,15 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
     無隱藏標記，屬掃描期間頁面位移的暫時抖動——立即二掃絕大多數現身、
     噪音集合每掃輪替，連兩掃皆缺席且仍開者僅個位數件。**連續 ≥2 天缺席
     判準下誤殺率達個位數 → gate 通過**；L-C 缺席判準據此定為連續 ≥2 天。
-  - **L-C skip 判準與 detail 降頻（架構改動）🚧 機制完成、default-off
-    （2026-09-01）**：(6)(7) `detail591 -a seed_mode=diff`（預設 full＝現行
+  - **L-C skip 判準與 detail 降頻（架構改動）✅ 已部署＋收斂驗證通過
+    （機制 2026-09-01；兩地啟用同日；09-02 bootstrap 全量、09-03 收斂——
+    兩地 diff seeds 降至 open 的 10–12%、skipped ~5.8 萬、synthts 合成
+    ~6.3 萬且分佈占比不變，關單閉環首驗：absent≥2d 種子 1,271 → 翌日
+    n_closed 1,291；detail 時數本機 500→135 分、雲上 5h→1.6h。穩態
+    預估回升至 ~兩成（refresh_days=7 輪轉）。剩：資料語意公告（skip
+    物件 detail 欄位最舊 N−1 天、is_synthesized 標示）、refresh_days
+    與指紋變動率以實跑校準、list 完整度哨兵門檻拍板——實測穩態約九成
+    而非原估近 100%，分母含未關殭屍與單掃抖動）**：(6)(7) `detail591 -a seed_mode=diff`（預設 full＝現行
     全量不變）：skip 謂詞＝「在今日 list ∧ OPENED ∧ 指紋未變 ∧ 距上次
     detail < refresh_days（預設 7，即週期強制刷新兜底暗改）」；不滿足者
     入 queue 四類——stale/新物件、指紋變（price＋title，在上次 detail 後
@@ -298,11 +306,9 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
     (8) `synthts` 指令（detail 後、syncstateful 前）以 House 現值補齊被
     skip 者的當日 HouseTS 空欄位、標 `is_synthesized`，維持每 open 每日
     一列；go.sh／orchestrate.sh 均以 `TWRH_DETAIL_SEED_MODE=diff` 啟用。
-    **待拍板後才切 diff**：被 skip 物件 detail 欄位最舊 N−1 天、合成列以
-    is_synthesized 標示——資料產品語意的唯一變動點。(9) 以當日台中實測
-    組合估算穩態日 detail 量約三成（週期刷新＋新物件＋缺席複查＋回列
-    噪音；指紋變動率待實跑校準）→ 省約六五～七成。啟用還需：package
-    發版（L-A 翻頁）、cloud image 重建、RDS migrate（0010–0013）。
+    資料產品語意的唯一變動點＝被 skip 物件 detail 欄位最舊 N−1 天、
+    合成列以 is_synthesized 標示——**已實際啟用（2.3.0 發版＋cloud image
+    ＋RDS migrate 0010–0013 皆完成），對外語意公告待補**。
     關聯：#229（成交資訊消失）不擋此線，但影響複查產出語意。
 
 ---
@@ -518,3 +524,8 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
   - Phase 0–4 至此全部完成（4-6 多站點抽象維持「由第二站驅動」不動）。
     剩餘開放項：2.5-3 ramp-up 觀察（模型 A 編排器已上線，聚合速率
     ASN 閾值待驗）、Backlog（baseline 重製 9/5、list-driven 成交偵測）。
+- **2026-09-03 收線**：L-C 兩地部署（09-01）→ bootstrap（09-02）→ 收斂驗證
+  通過（09-03，數據見 Backlog 該項）。同日拍板三結案：2.5-3 fallback 擱置
+  （碰到再處理）、mercy=10 承認為 magic number、Backlog 兩條已修項回寫
+  （#21 原子認領、export TARGET_DATE）。本計畫至此**只剩收尾**：9/5 baseline
+  重製＋值哨兵、L-C 語意公告與門檻校準、4-6（由 #29 驅動）。

@@ -101,22 +101,28 @@ publish.sh [YYYYMM]（預設上個月；冪等，可 --resume 從斷點續跑）
    不另開 user；權限不足時再對該 user 補 `s3:PutObject` 限定 `/<year>/*`。
 2. **UI 更新直接 commit master，還是走 PR？** ✅ 拍板（2026-08-30）：採折衷——
    綠色分支直 push、紅色分支（帶 quality_issue 的）走 PR 讓人看一眼。
-3. **觸發方式**：go.sh 月底自動接著跑 publish，還是永遠人工？
-   建議：go.sh 月底時只在 Slack 提示「可以出貨了」，publish 由人執行——
-   外部效應（S3、網站）留一個人類確認點，成本只是每月按一次。
+3. **觸發方式**：✅ 拍板（2026-09-03）——**月底自動接跑**，publish 包進
+   container（隨 publisher 雲化落地：publisher image 補 clickhouse/git、
+   deploy key 進 SSM，月底 export 完自動接 publish）。綠燈月全自動出貨；
+   紅燈月照舊停在敘事關卡、人工補完後 `--resume`（屆時改雲上觸發）。
+   過渡期（publisher 雲化落地前）本機維持現行人工／timer 觸發。
 4. **月報紅綠門檻** ✅ 拍板（2026-08-30）：單日 fail ratio > 10% → 該日 fail；
    當月有任一 fail 日（含缺爬日，即該日無 Stats 列）→ 紅。
    **分佈不變量永遠 advisory、不決定紅綠**——市場有季節性，跨月比對只進報告
    與敘事。baseline 選擇順位：前一次成功的**同期月** → 前一次成功月 →
    committed `baselines/national.json`；前兩者需歷史累積（2025 無資料），
    現階段一律落在 national.json，同期比對待資料齊備後生效。
-5. **JSON 格式 zip 是否同步上傳**：`datas/` 有 `[YYYYMM][JSON][Raw]`，
-   UI 的 files 欄也支援 json 列——假設是要的，P3 一併處理。
+5. **JSON 格式 zip 是否同步上傳**：✅ 拍板（2026-09-03）——**不上傳**。
+   JSON 版現已無人使用，出貨只上 CSV 系列；`datas/` 內的 JSON zip 產出
+   去留可另議（不影響出貨流程）。
 
 ---
 
 ## 編修紀錄
 
+- **2026-09-03** 開放問題 3、5 拍板（見各條 ✅）：月底自動接跑（隨 publisher
+  雲化）、JSON zip 不上傳。至此五個開放問題全數結案，本計畫剩餘＝
+  publisher 雲化實作（門檻：雲上穩定 ~兩週＋9 月出貨走順一次）。
 - **2026-08-26** 建立。盤點 export -p／csv-aggregator／ui-next stats 資料流，
   定義 publish.sh 五步流程與紅綠分岔，列五個開放問題。
 - **2026-08-30（二補）** **P2–P5 完成**：`twrh-dataset/publish.sh`（五步編排，

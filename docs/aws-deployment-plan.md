@@ -178,7 +178,7 @@ GitHub push ──▶ GitHub Actions build ──▶ ECR image
 | A2 | AWS 基礎建設：VPC public subnet、ECR、EFS、ECS cluster、task definitions、SSM 參數、IAM（task role 最小權限） | 中 | 建議用 Terraform 或 CDK 收在 `devop/aws/`，一次寫完可重建 |
 | A3 | **風控探測**：用 workbench task 從 Fargate IP 跑 `twrh probe`／小城市 survey，**大阪與 us-west-2 兩區各跑** | 小 | 本機量測來自住宅 IP；**AWS 資料中心 IP 段是否被 591 差別對待未知**，這是整個計畫的前提假設，要先驗（見開放問題 2）；兩區結果同時是 region 拍板依據（開放問題 1） |
 | A4 | EventBridge 排程上線：先單條「每日全量」，與本機手動跑並行驗證數日後切換 | 小 | 本機退役為備援 |
-| A5 | workbench.sh / Adminer service / publish wrapper | 小 | QoL 收尾 |
+| A5 | ~~workbench.sh / Adminer service / publish wrapper~~ **取消（2026-09-03）** | — | Adminer 由 rds-door＋直連 psql 取代；workbench 由 run-task command override 取代；publish wrapper 併入 publisher 雲化 |
 | A6 | CI：GitHub Actions build & push ECR | 小 | 完成「push 即 deploy」閉環 |
 
 ---
@@ -421,8 +421,8 @@ Raw 的唯一用途是事後 re-parse（`tools/rerun_detail_raw.py`，修 parser
    若正式期被擋，備案是掛 proxy（舊正式機模式，`settings.py` 已支援 rotating
    proxy middleware）——屆時費用另計，且正好餵 dx-roadmap 2.5-3 等待中的
    「真實被擋樣本」。
-3. **Adminer 連線方式**：public IP + SG 白名單（簡單、有一瞬間暴露面）vs SSM port
-   forwarding（零暴露、多裝 session-manager-plugin）。傾向 b，但用過再拍板。
+3. **Adminer 連線方式**：✅ 就地結案（2026-09-03）——Adminer 整個不做。
+   `rds-door.sh open/close` 白名單＋開發機直連 psql 已滿足偶發查庫需求。
 4. **image 私有即可？** ECR private 是預設也是建議——image 內雖無機密，但 Dockerfile
    與依賴版本沒必要多一個公開面；公開的東西已經在 GitHub repo。
 5. **舊 `devop/` 素材處置**：`devop.md` 內含歷史 DB 密碼與主機名，AWS 化落地後應清理
@@ -455,17 +455,30 @@ Raw 的唯一用途是事後 re-parse（`tools/rerun_detail_raw.py`，修 parser
 
 ---
 
-## 待辦優先序（2026-08-30 拍板）
+## 待辦優先序（2026-09-03 更新）
 
-1. **RDS 降 db.t4g.micro ＋ primary-as-consumer 落地**（已拍板的兩項，等當日爬取
-   寫完即動；見編修紀錄 2026-08-30）。
-2. **raw offload ＋ HouseTS 歸檔排程化**（省錢＋防 RDS 長大的關鍵；工具已有，
-   缺 EventBridge 排程）。
-3. 其餘 QoL 與結構性（A5、A6、Adminer 連線拍板、devop.md 清理、dx Phase 4）
-   慢慢來；人工收尾（破壞性）由操作者擇時。
+1. ~~RDS 降 micro ＋ primary-as-consumer~~ ✅（08-30 落地，09-01 起 5-consumer
+   例行穩定；credit 賭局實測日常淨燒極低）。
+2. ~~raw offload ＋ HouseTS 歸檔排程化~~ ✅（housekeep.sh＋EventBridge 每月
+   3 號，08-30 上線）。
+3. ~~A6 CI~~ ✅（08-30，OIDC＋ARM runner）；~~devop.md 清理、人工收尾~~ ✅
+   （09-02 ddio 全數執行，含大阪區 destroy、本機 twrh_new drop）。
+4. **A5 取消（2026-09-03 拍板）**：Adminer 不做——`rds-door.sh open/close`
+   ＋開發機直連 psql 已滿足（開放問題 3 就地結案）；workbench.sh 不做——
+   實務以「run-task 覆寫 command」一次性執行取代，常駐互動 shell 無需求；
+   publish wrapper 併入 publisher 雲化（月底自動接跑，見
+   export-automation-plan 開放問題 3 拍板）。
+5. 剩餘＝**publisher 雲化**（門檻：雲上連續穩定 ~兩週＋9 月出貨走順一次）
+   與小活（primary 縮 0.5 vCPU/1GB、Fargate Spot、RI 皆延後）。
 
 ## 編修紀錄
 
+- **2026-09-03** **收線盤點**：待辦優先序 1–3 全數完成回寫；A5 取消（Adminer／
+  workbench／publish wrapper 各自被 rds-door 直連、run-task override、publisher
+  雲化取代）；人工收尾（migrate maps、workbench-west1、舊 RDS、a2024-10-30、
+  devop.md 密碼、migrate-dev-profile、twrhro、twrh 權限瘦身、大阪區、twrh_new）
+  已由操作者於 09-02 全數執行完畢。L-C diff 模式 09-03 收斂驗證通過後，
+  雲上每日 Fargate 時數 5h→1.6h。本計畫剩餘＝publisher 雲化＋小活。
 - **2026-08-30** **orchestrate 模型 A 首航修正＋RDS 降規與 primary-as-consumer 拍板**：
   - **seed_only 修正**：首航 detail worker 全數 0 items 秒退——種子由「非
     consume_only 的 detail591 啟動時」生成，orchestrate 只跑 list→全 consume_only
