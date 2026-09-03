@@ -54,17 +54,33 @@ poetry run python django/manage.py loaddata vendors   # required: pipeline looks
 poetry run scrapy crawl list591 -L INFO
 poetry run scrapy crawl detail591 -L INFO -a batch_size=2000
 
+# flow runner（arch 3-2）：一份 stage 定義跑整條 pipeline，--from 從任一 stage 續跑；
+# 完成判據＝artifact（rawpack 日包／manifest）或 logs/flow/<date>/ stamp 檔。
+# go.sh／orchestrate.sh 仍是 production 路徑，flow 於 AWS 驗過後（D6）退役兩者
+poetry run python flow.py run [--date YYYY-MM-DD] [--from STAGE] [--executor local|ecs] [--append]
+poetry run python flow.py status [--date YYYY-MM-DD]
+
 # Django management commands (all under django/, not backend/ as the README says)
+poetry run python django/manage.py queuefinalize       # 1-1 收工鐵律 seeds==terminals；紅→exit 1＋Slack；附終結列滾動清理（90d）
 poetry run python django/manage.py synthts             # L-C diff 模式：合成被 skip 物件的當日 HouseTS（標 is_synthesized）
 poetry run python django/manage.py syncstateful -ts    # sync deal status into time-series
-poetry run python django/manage.py statscheck          # generate stats, notify Slack
-poetry run python django/manage.py distcheck           # 當日分佈不變量 vs twrh-dataset/baselines/national.json（591 混淆哨兵）
+poetry run python django/manage.py manifest            # 1-2：產 manifests/<date>/{list,detail,snapshot}.json（--from/--to --source backfill 可回補）
+poetry run python django/manage.py qualitycheck        # 1-2：quality/assertions.yaml × manifest 斷言，單一 Slack 通道
+poetry run python django/manage.py statscheck          # generate stats, notify Slack（平行週後由 qualitycheck 取代）
+poetry run python django/manage.py distcheck           # 當日分佈不變量（平行週後由 qualitycheck 取代）
+poetry run python django/manage.py rawpack --reconcile # 3-1：當日 raw scratch 打成 raws/<vendor>/<date>.tar.zst＋index；--reconcile 抽樣比對 DB
 poetry run python django/manage.py export -p           # periodic export (month-end only)
 poetry run python django/manage.py export --help       # manual export: -f/-t dates, -u, -j, -b6
+poetry run python django/manage.py monthreport         # 月報 quality gate：疊 manifest 出月窗（0=綠、2=紅）
 poetry run python django/manage.py invalidate          # flag suspicious/unstable listing data
 poetry run python django/manage.py archivehistory      # archive old HouseTS/HouseEtc to tar
 poetry run python django/manage.py rawoffload <dir>    # pack raw HTML beyond 90d out of DB (dry-run unless --commit)
 poetry run python django/manage.py deduprequest        # drop duplicate rows in request_ts
+
+# 離線／重放工具（arch 3-3／3-1）
+poetry run python tools/quality_offline.py --date …    # 無 DB 跑斷言引擎（sync 回 manifests/ 即可）
+poetry run python tools/rerun_from_raws.py --from … --to …  # 從 raw 日包重放 detail parser（--commit 寫回；取代已失效的 rerun_detail_raw/dict）
+./tools/sync-dev-data.sh                               # 成員用：拉 manifests/＋近 N 天 raw 日包（需 bucket 讀權限）
 ```
 
 ### ui-next (frontend)
@@ -96,7 +112,16 @@ poetry install --with dev
 poetry run pytest
 ```
 
-`twrh-dataset` has none — `django/*/tests.py` are empty stubs, and verification there is manual,
+`twrh-dataset` has the B-layer queue test matrix (arch 2-3，與 1-1 同做)：
+`django/crawlerrequest/tests.py` — 認領/釋放/batch/seed/狀態機/斷言引擎，
+needs PostGIS（吃 `.env` 的 `TWRH_DB_*`，test DB 自動建立）：
+
+```bash
+cd twrh-dataset
+poetry run python django/manage.py test crawlerrequest
+```
+
+其餘 `django/*/tests.py` are empty stubs；spider 行為驗證仍是 manual，
 by running spiders against small real datasets.
 
 ### Dev/Test Workflow for scrapy-tw-rental-house
@@ -202,10 +227,14 @@ delete or replace it with a copy.
 ### Persistent crawl queue (twrh-dataset)
 `crawler/spiders/persist_queue.py` is the reason crawls are resumable and why the pipeline is
 date-keyed:
-- Every pending request is a `RequestTS` row keyed by (year, month, day, hour, vendor, request_type).
-  Completing a request **deletes** the row; leftover rows are failures (`statscheck` counts them).
-- At most `queue_length` (30) requests live in memory; `next_request()` claims one row atomically-ish
-  with raw SQL setting `owner = spider_id`, so multiple spider processes can share a queue.
+- Every request is a `RequestTS` row keyed by (year, month, day, hour, vendor, request_type)，
+  帶顯式狀態機（arch 1-1）：`pending → in_flight → done | failed(n) | dead`。errback／parse error
+  必寫終結狀態（failed 可重試、達 `TWRH_QUEUE_MAX_ATTEMPTS`（3）轉 dead）；「刪列＝完成」已廢除。
+  收工鐵律＝`queuefinalize`：`done + dead == seeds` 且無殘留，紅→pipeline 中止；終結列保留 90 天
+  （`TWRH_QUEUE_RETENTION_DAYS`，清理併在 queuefinalize）。
+- At most `queue_length` (30) requests live in memory; `next_request()` claims one row atomically
+  with raw SQL (`FOR UPDATE SKIP LOCKED` + `RETURNING`，`status→in_flight`、`attempts+1`)，
+  so multiple spider processes can share a queue.
 - `detail591 -a batch_size=N` stops after N completions and logs `Batch limit reached`. `go.sh`
   loops on that string, restarting the spider until it exits without it — this bounds memory over a
   multi-hour detail crawl. Overall progress survives restarts via
@@ -234,9 +263,10 @@ Set it manually (or use `go.sh --date`) when re-running part of a pipeline for a
 - `RequestTS` / `Stats` (crawlerrequest app) — crawl queue and per-run statistics.
 - GeoDjango `PointField` (WGS84 / SRID 4326) for `rough_coordinate`.
 - Deal status is sticky: once a house is `DEAL`, the pipeline will not overwrite it with `NOT_FOUND`.
-- Because `HouseEtc` keeps raw HTML, `tools/rerun_detail_raw.py` and `tools/rerun_detail_dict.py`
-  can re-parse historical listings through the current parser **without re-crawling** — use these
-  after fixing a detail-parsing bug.
+- Raw HTML 雙寫中（arch 3-1）：`HouseEtc` 照存（cutover 前），pipeline 同步落
+  `raws/scratch/`，收尾 `rawpack` 打成 `raws/<vendor>/<date>.tar.zst`＋index。修完 parser bug 後
+  用 `tools/rerun_from_raws.py` 對日包重放、**不需重爬**（舊 `rerun_detail_raw/dict.py` 已因
+  改組失效，勿用）。
 
 ### Scrapy settings layering (twrh-dataset)
 - `crawler/general_settings.py` — committed, shared. Calls `django.setup()` (adds `django/` to
@@ -262,4 +292,5 @@ Set it manually (or use `go.sh --date`) when re-running part of a pipeline for a
 - `.github/workflows/ui-next-pull-request.yml` runs `astro check` + build + URL 驗收 on `ui-next/` PRs.
 - `.github/workflows/python-tests.yml` runs the offline pytest suite of `scrapy-tw-rental-house/`
   on pushes/PRs touching that package. Live probes stay out of public CI by design.
-- Nothing in CI touches `twrh-dataset` or the data pipeline.
+- `.github/workflows/dataset-tests.yml` runs the `twrh-dataset` queue test matrix against a
+  PostGIS service container on pushes/PRs touching `twrh-dataset/`.

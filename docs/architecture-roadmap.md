@@ -449,8 +449,39 @@ synthts／syncstateful／housekeep）——維護面積隨儲存收斂；S3 欄�
 
 ---
 
+## 實作狀態（2026-09-03，分支 arch-phase1-3）
+
+Phase 1＋3 全部程式面完成、本機開發場驗證通過；部署照拍板逐步走，
+每步 pin commit。部署階梯與日曆門檻：
+
+| 步 | 內容 | 門檻 |
+|---|---|---|
+| D1 | 1-1＋B 層：`request_ts` migration＋errback 終結狀態＋queuefinalize | 唯一一顆 RDS migration（純加欄，向後相容） |
+| D2 | 1-2 平行模式：manifest＋qualitycheck 與四套舊工具並行 | — |
+| D3 | 1-2 切換：退役 statscheck Slack／distcheck／fill-rate ext；跑 9 月 manifest 回補；baseline 重製落 assertions.yaml | **平行週滿** |
+| D4 | 3-1 雙寫：rawpack 上 S3＋terraform lifecycle（raw/ 30d Glacier IR＋365d 過期） | terraform apply |
+| D5 | 3-1 切換：DB 停寫 raw＋一次性清空；rawpack 失敗升硬紅；rawoffload／housekeep raw 半邊退役 | **雙寫對帳數日** |
+| D6 | 3-2：flow.py 取代 go.sh／orchestrate（EventBridge 改指 flow）；驗 ecs executor | flow 於 AWS 驗過 |
+
+實作備註：
+- 驗收重演：403 全滅／殘留 → queuefinalize 當場紅（單元＋e2e）；
+  seed 零產出 → 零種子紅；全 dead 也紅（dead 比率門檻，形式上
+  seeds==terminals 仍不放行）。
+- B 層矩陣 42 例（含並發認領、批次懸掛、seed 四類、斷言引擎），
+  CI 掛 PostGIS（dataset-tests.yml）。
+- 順手修：seed_only 同日重跑（queue 已空）不再全量重排——flow 續跑
+  會踩的 2026-08-26 同型陷阱。
+- 3-2 日期 pin：flow `--date` 單點寫入 env、`--start-early` 上移排程層
+  已落地；「stage 收參數、五處 env 讀點替換」隨 Phase 4 各 stage
+  檔案化時逐一收，env 傳遞在此前是唯一機制（偏離原註記，記錄在案）。
+- 舊 rerun 工具（rerun_detail_raw/dict）實測早因改組失效；重放路徑
+  由 tools/rerun_from_raws.py（讀日包）接手，DB 模式不再修。
+
 ## 編修紀錄
 
+- **2026-09-03（十四補）** Phase 1＋3 程式面全數完成（B 層→1-1→1-2→
+  1-3→3-1→3-2→3-3，各自獨立 commit）；新增〈實作狀態〉節：部署階梯
+  D1–D6、兩個日曆門檻（平行週、雙寫對帳）、驗收重演結果與偏離註記。
 - **2026-09-03（十三補）** Phase 1＋3 開工拍板：雙環境分工（AWS 續跑
   現制、本機新 DB 當新架構開發場，本機接手 ramp-up 凍結）、config
   全走 env（settings_local 退場，列 1-0 前置）、舊 raw 月包取界線日
