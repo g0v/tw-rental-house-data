@@ -417,6 +417,28 @@ synthts／syncstateful／housekeep）——維護面積隨儲存收斂；S3 欄�
   export／統計讀取時 join 排除——帳本模型（訂正用追加不用改寫）：
   可稽核、可撤銷、判定邏輯改版只需重出名單；判定邏輯（跨日欄位
   穩定性）平移自現制。落選 (a) 重寫歷史分區：動作大且原始證據被改寫。
+- **Phase 1＋3 開發環境分工**（2026-09-03 拍板）：AWS 續跑現制日更並
+  觀察 L-C 收斂；本機另起全新 DB（複製近 14 天＋vendors fixture）作
+  新架構開發場——本機 DB 不再視為 production 副本，本機接手 ramp-up
+  凍結。驗證與部署皆逐步：本機驗過一步、AWS migrate 一步，不攢包
+  切換；AWS 每步部署 pin commit、記於編修紀錄。Phase 2 順延至 1＋3
+  部署完（新站踩點、fixture 蒐集可先行）。
+- **config 全走 env（1-0 前置）**：`settings_local.py` 退場、不留
+  fallback——DATABASES／SENTRY_DSN／SLACK_WEBHOOK_URL 併入 .env 體系，
+  兩地部署同步改。本機實驗關 Slack／Sentry；3-1 產出先寫本機目錄，
+  production bucket 留給 AWS 雙寫對帳階段。
+- **舊 raw 月包不回整**：3-1 上線日即界線日——界線前的 housekeep
+  月度 raw 包維持原格式（僅 debug 價值），不重整為按日分區；raw
+  365 天／Glacier IR lifecycle 規則（軸 C 既拍板）與 3-1 同步落地
+  terraform。
+- **9 月 manifest 由 DB 回補**：1-3 附帶一次性 backfill——從 DB 重算
+  9 月已爬日的 manifest（筆數／fill-rate／分佈皆可重算，manifest 本是
+  對資料的純函數；queue 終結統計因「刪列＝完成」已丟，缺項標
+  `source=backfill`、該類斷言降 advisory），使 monthreport 的 9 月窗
+  全走新格式、不跨兩制。9/5 的 baseline 重製順延至 1-2 完成後
+  （落 assertions.yaml，不產第五套格式）。
+- **2-3 B 層提前**：queue 語意測試矩陣與 1-1 同做（原備註的觸發
+  成立——它同時是 1-1 重構自身的安全網）。
 
 ### 仍開放
 
@@ -429,6 +451,11 @@ synthts／syncstateful／housekeep）——維護面積隨儲存收斂；S3 欄�
 
 ## 編修紀錄
 
+- **2026-09-03（十三補）** Phase 1＋3 開工拍板：雙環境分工（AWS 續跑
+  現制、本機新 DB 當新架構開發場，本機接手 ramp-up 凍結）、config
+  全走 env（settings_local 退場，列 1-0 前置）、舊 raw 月包取界線日
+  不回整、9 月 manifest 由 DB 回補＋9/5 baseline 順延至 1-2 後、
+  2-3 B 層提前與 1-1 同做、Phase 2 順延至 1＋3 部署完。
 - **2026-09-03（十二補）** 末兩項拍板：多 worker 佈局＝方案 A（EFS
   scratch＋finalize 單包）、invalidate＝訂正疊加層。開放問題僅餘
   #6（deals×#229，調查先行）與 #8（queue 窗口，實跑定案）——
