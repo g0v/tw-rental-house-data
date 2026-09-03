@@ -30,19 +30,13 @@ from datetime import date as date_cls, datetime
 
 from django.core.management.base import BaseCommand, CommandError
 
-from crawler import raw_sink
+from rental import raws as raw_sink
+from rental.raws import raw_dir
 from rental.models import HouseEtc, Vendor
 from crawlerrequest.models import RequestTS
 from crawlerrequest.enums import RequestType, RequestStatus
 
 SAMPLE_SIZE = 20
-
-DEFAULT_RAW_DIR = os.path.join(
-    os.path.dirname(os.path.realpath(__file__)), '../../../../raws')
-
-
-def raw_dir():
-    return os.environ.get('TWRH_RAW_DIR', DEFAULT_RAW_DIR)
 
 
 class Command(BaseCommand):
