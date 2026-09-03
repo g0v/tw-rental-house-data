@@ -162,11 +162,11 @@ class Command(BaseCommand):
 
     def reconcile(self, vendor, date_str, index):
         '''雙寫對帳：包內容 vs DB raw 欄位抽樣 byte 比對＋量的對照。'''
-        try:
-            vendor_obj = Vendor.objects.get(name=vendor)
-        except Vendor.DoesNotExist:
+        vendor_obj = Vendor.objects.filter(name__startswith=vendor).first()
+        if vendor_obj is None:
             raise CommandError('vendor {} not in DB'.format(vendor))
 
+        # vendor 參數是目錄短名（'591'），DB 查全名（'591 租屋網'）
         detail_entries = [e for e in index if e['member'].endswith('.detail.html')]
         sample = random.sample(
             detail_entries, min(SAMPLE_SIZE, len(detail_entries)))

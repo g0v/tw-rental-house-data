@@ -27,8 +27,15 @@ def scratch_dir():
     return os.environ.get('TWRH_RAW_SCRATCH_DIR', DEFAULT_SCRATCH)
 
 
+def vendor_dirname(vendor_name):
+    '''目錄／S3 key 用的 vendor 短名：取首個 token（'591 租屋網' → '591'），
+    對齊 housekeep 月包既有的 raw/591/ 佈局，也避開 key 帶空白的麻煩。'''
+    return vendor_name.split()[0]
+
+
 def day_dir(vendor_name, date_str, base=None):
-    return os.path.join(base or scratch_dir(), vendor_name, date_str)
+    return os.path.join(
+        base or scratch_dir(), vendor_dirname(vendor_name), date_str)
 
 
 def write_raw(vendor_name, date_str, house_id, kind, text):

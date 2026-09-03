@@ -94,6 +94,8 @@ def main():
     options = parser.parse_args()
 
     vendor = Vendor.objects.get(name=options.vendor)
+    # 日包目錄用 vendor 短名（raws/591/，與 S3 raw/591/ 對齊）
+    vendor_dir = options.vendor.split()[0]
     spider = Detail591Spider()
     current = datetime.strptime(options.date_from, '%Y-%m-%d').date()
     end = datetime.strptime(options.date_to, '%Y-%m-%d').date()
@@ -102,7 +104,7 @@ def main():
     while current <= end:
         date_str = current.isoformat()
         pack_path = os.path.join(
-            options.raw_dir, options.vendor, date_str + '.tar.zst')
+            options.raw_dir, vendor_dir, date_str + '.tar.zst')
         current += timedelta(days=1)
         if not os.path.exists(pack_path):
             missing_pack += 1
