@@ -66,6 +66,8 @@ resource "aws_iam_role_policy" "crawler_raw_upload" {
           "${aws_s3_bucket.raw.arn}/archive/*",
           # orchestrate finalize 的爬取 log 歸檔（ship_logs，30 天 lifecycle）
           "${aws_s3_bucket.raw.arn}/logs/*",
+          # 1-2 觀測層 manifest（manifest command 日日上傳，重跑覆蓋）
+          "${aws_s3_bucket.raw.arn}/manifests/*",
         ]
       },
       {

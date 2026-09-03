@@ -11,7 +11,8 @@ from dataclasses import dataclass
 
 import yaml
 
-from crawlerrequest import manifests
+# 只依賴檔案層（無 Django）——引擎因此可離線跑（tools/quality_offline.py）
+from crawlerrequest import manifest_files as manifests
 
 DEFAULT_ASSERTIONS = os.path.join(
     os.path.dirname(os.path.realpath(__file__)),
@@ -138,7 +139,7 @@ def evaluate(date_str, assertions_path=None, base_dir=None):
     defaults = spec.get('defaults', {})
     loaded = {
         stage: manifests.load_manifest(date_str, stage, base_dir)
-        for stage in manifests.BUILDERS
+        for stage in manifests.STAGES
     }
     return [
         run_check(check, loaded.get(check['stage']), date_str,

@@ -48,10 +48,23 @@ class Command(BaseCommand):
             override = os.environ.get('TWRH_TARGET_DATE')
             current = end = _parse(override) if override else date.today()
 
+        bucket = os.environ.get('TWRH_RAW_BUCKET')
+        s3 = None
+        if bucket:
+            import boto3
+            s3 = boto3.client('s3')
+
         n = 0
         while current <= end:
             for path in manifests.build_all(current, source=options['source']):
                 print('wrote {}'.format(os.path.relpath(path)))
+                # manifest 同步上雲（北極星 S3 樹的 manifests/ 分支）：
+                # 檔案極小、日日覆蓋；3-3 的 sync-dev-data.sh 從這裡拉
+                if s3 is not None:
+                    key = 'manifests/{}/{}'.format(
+                        current.isoformat(), os.path.basename(path))
+                    s3.upload_file(path, bucket, key)
+                    print('  -> s3://{}/{}'.format(bucket, key))
                 n += 1
             current += timedelta(days=1)
         print('{} manifest(s) written'.format(n))

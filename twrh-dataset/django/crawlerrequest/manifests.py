@@ -14,8 +14,6 @@ stage 對應現制（3-2 flow 收斂前的過渡分界）：
   detail   — detail 爬取＋解析（fill_rate／dist 都量在這）
   snapshot — syncstateful／synthts 之後的當日 TS 總覽
 '''
-import json
-import os
 from datetime import datetime, timedelta
 from importlib.metadata import version, PackageNotFoundError
 
@@ -36,10 +34,12 @@ from rental import enums
 from rental.enums import DealStatusType
 from rental.models import House, HouseTS
 
-SCHEMA_VERSION = 1
-
-DEFAULT_DIR = os.path.join(
-    os.path.dirname(os.path.realpath(__file__)), '..', '..', 'manifests')
+# 檔案層（路徑／讀寫／dot-path 取值）住在 manifest_files.py——純函數、
+# 無 Django 相依，離線斷言（tools/quality_offline.py）直接 import 那邊；
+# 這裡 re-export 維持既有 import 路徑
+from crawlerrequest.manifest_files import (  # noqa: F401
+    SCHEMA_VERSION, DEFAULT_DIR, manifest_dir, manifest_path,
+    write_manifest, load_manifest, get_metric)
 
 # fill_rate 追的欄位：GenericHouseItem 與 HouseTS 的交集（DB 層量法，
 # 1-2 起為唯一基準；survey 層 FillRateMonitor 於切換日退役）
@@ -56,40 +56,6 @@ FILL_RATE_FIELDS = [
     'gender_restriction', 'can_cook', 'allow_pet', 'facilities',
     'contact', 'agent_org', 'imgs',
 ]
-
-
-def manifest_dir():
-    return os.environ.get('TWRH_MANIFEST_DIR', DEFAULT_DIR)
-
-
-def manifest_path(date_str, stage, base_dir=None):
-    return os.path.join(base_dir or manifest_dir(), date_str, stage + '.json')
-
-
-def write_manifest(manifest, base_dir=None):
-    path = manifest_path(manifest['date'], manifest['stage'], base_dir)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, 'w') as f:
-        json.dump(manifest, f, ensure_ascii=False, indent=1, default=str)
-    return path
-
-
-def load_manifest(date_str, stage, base_dir=None):
-    try:
-        with open(manifest_path(date_str, stage, base_dir)) as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return None
-
-
-def get_metric(manifest, dotted):
-    '''以 "queue.dead_ratio"、"dist.median_floor" 這類 dot path 取值。'''
-    node = manifest
-    for part in dotted.split('.'):
-        if not isinstance(node, dict) or part not in node:
-            return None
-        node = node[part]
-    return node
 
 
 def _ts_of(date_obj):
