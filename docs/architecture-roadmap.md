@@ -196,6 +196,31 @@ fixture／scrub 方法論已成文、`twrh` CLI 讓 parser 開發不碰 DB——
      「sync 幾天分區檔案」取代「自建 PostGIS」成為開發環境。
    - **UI 迴路**：已獨立（Astro，npm 三指令），不受本計畫影響。
 
+### 案例對照：L-C（list 驅動 detail 降頻）在新架構的形狀
+
+以最近完成的 L-A/B/C 為試金石——它同時踩到四個軸，新架構讓它從
+「後補的 diff 模式＋一支補丁指令」變成「預設語意＋一個純函數」：
+
+| 現制機制 | 新架構落點 |
+|---|---|
+| L-A 翻頁邏輯 | 不變，住在 vendor plugin 的 `list_requests`／`parse_list` |
+| `list_dict`／`list_crawled_at` 欄位 | 消失——`list/<date>.jsonl.zst` stub 檔即完整紀錄 |
+| 指紋比對＋`list_fingerprint_changed_at` | stub 自帶 `fingerprint` 欄（vendor 的 `parse_list` 正規化產出）；「上次指紋」＝昨日 stub 檔 |
+| `seed_mode=diff` skip 謂詞（散在三處 DB 狀態） | **seed 推導＝純函數**：今日 list＋前 N 日 list＋昨日 snapshot 三組檔案 → 四類 seeds（stale／指紋變／連續缺席／回列）→ 寫 queue |
+| `synthts`＋`is_synthesized` | 整支消失——snapshot stage 定義即 carry（`source=carry` 欄） |
+| 缺席 ≥2 天、`refresh_days`、回列窗口 | 政策參數進 `quality/`，per-vendor 可覆寫 |
+| `Stats.n_open_in_list` 哨兵 | 一行斷言：昨日 snapshot OPENED ∩ 今日 stubs 比率，入 list manifest |
+| 收斂驗證（人工 DB query） | detail manifest 自帶 `seeds_by_class`／`skipped`，疊時間窗即收斂曲線 |
+
+純函數化的三個紅利：**離線可測**（fixture 檔即可測四類 seeds 的邊界
+情況，不需 DB）；**可稽核**（list 檔不可變，對任何歷史日重算 seed 函數
+即重現當天決策——L-B 式誤殺率實驗不再需要重掃站方）；**多 vendor 免費**
+（降頻做在 `ListingStub` 契約上，新 vendor 的 `parse_list` 產得出帶指紋
+的 stub 就自動獲得整套機制）。
+
+兩條實驗換來的判準原封保留：狀態變更永遠由 detail 判定（缺席只是種子）；
+bootstrap 自然退化為全量、逐日收斂——行為語意與儲存形狀無關。
+
 ---
 
 ## 四、分階段
@@ -300,6 +325,10 @@ synthts／syncstateful／housekeep）——維護面積隨儲存收斂；S3 欄�
 
 ## 編修紀錄
 
+- **2026-09-03（五補）** 三之末新增〈案例對照：L-C 在新架構的形狀〉：
+  diff 降頻從「後補模式＋synthts 補丁」變「seed 純函數＋snapshot carry
+  語意」，離線可測／可稽核／多 vendor 免費；判準（detail 判官、bootstrap
+  退化全量）原封保留。
 - **2026-09-03（四補）** 新增附錄〈儲存演變對照〉：各 phase 與 Phase 4
   子任務（4a–4e）對 DB／FS／S3 的差異、工具退役對應、子任務觸發順序
   可抽換原則（硬依賴僅 4e←4b–4d）。
