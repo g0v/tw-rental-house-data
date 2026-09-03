@@ -6,10 +6,12 @@ from datetime import datetime, timedelta
 from twisted.internet import threads
 from django.db import connection
 from django.utils import timezone
+from scrapy.spidermiddlewares.httperror import HttpError
 from rental.models import HouseTS, Vendor
 from rental import models
 from crawlerrequest.models import RequestTS
-from crawlerrequest.enums import RequestType
+from crawlerrequest.enums import (
+    RequestType, RequestStatus, REQUEST_STATUS_ACTIVE, REQUEST_STATUS_CLAIMABLE)
 from crawler import signals as twrh_signals
 from .progress_tracker import ProgressTracker
 
@@ -57,6 +59,8 @@ class PersistQueue(object):
         # 4-4：原為 class attribute，靠 `self.x -= 1` 隱式轉 instance 是 footgun
         self.queue_length = 30
         self.n_live_spider = 0
+        # 1-1：failed 重試上限，達上限轉 dead（errback／parse error 都算）
+        self.max_attempts = int(os.environ.get('TWRH_QUEUE_MAX_ATTEMPTS', 3))
 
         self.spider_id = str(uuid.uuid4())
         self.logger = logger
@@ -94,26 +98,29 @@ class PersistQueue(object):
                 signal, spider=self.spider, **kwargs)
 
     def has_request(self):
+        '''還有可認領的列嗎（pending／failed 且未達重試上限）。'''
         undone_requests = RequestTS.objects.filter(
             year = self.ts['y'],
             month = self.ts['m'],
             day = self.ts['d'],
             hour = self.ts['h'],
-            # Ignore pending request since we will generate new one and rerun it anyway
-            is_pending = False,
+            status__in = REQUEST_STATUS_CLAIMABLE,
+            attempts__lt = self.max_attempts,
+            owner__isnull = True,
             vendor = self.vendor,
             request_type = self.request_type
         )[:1]
 
         return undone_requests.count() > 0
-    
+
     def get_total_count(self):
-        """Get the total number of requests in the queue."""
+        """剩餘工作量＝未終結列數（1-1 後終結列留存，不能再數全表）。"""
         total = RequestTS.objects.filter(
             year = self.ts['y'],
             month = self.ts['m'],
             day = self.ts['d'],
             hour = self.ts['h'],
+            status__in = REQUEST_STATUS_ACTIVE,
             vendor = self.vendor,
             request_type = self.request_type
         ).count()
@@ -170,14 +177,15 @@ class PersistQueue(object):
         return today_houses.count() > 0
 
     def release_claims(self):
-        """行程收工時，把自己認領但未完成的列放回 queue（owner 歸零）。
+        """行程收工時，把自己認領但未終結的列標 failed 放回 queue。
 
-        errback（403、網路錯誤）的列不會 delete；不釋放就掛在死掉的 owner 上，
-        誰也爬不到。多 task 並跑（2.5-3）下尤其關鍵：被擋而亡的 worker 放手後，
-        換新 IP 的替補 task 才接得走。單機 go.sh 下等於讓下一個 batch 多一輪重試，
-        永久性失敗仍會在批尾自然沉澱、由 statscheck 計為失敗。
+        不釋放就掛在死掉的 owner 上，誰也爬不到。多 task 並跑（2.5-3）下
+        尤其關鍵：被擋而亡的 worker 放手後，換新 IP 的替補 task 才接得走。
+        單機 go.sh 下等於讓下一個 batch 多一輪重試。1-1 後：released 列
+        寫 failed（達 attempts 上限則 dead），永久性失敗沉澱為 dead、
+        由 queuefinalize 對帳。
         """
-        released = RequestTS.objects.filter(
+        own_claims = RequestTS.objects.filter(
             year=self.ts['y'],
             month=self.ts['m'],
             day=self.ts['d'],
@@ -185,11 +193,18 @@ class PersistQueue(object):
             vendor=self.vendor,
             request_type=self.request_type,
             owner=self.spider_id,
-        ).update(owner=None, is_pending=False)
-        if released:
+            # 只放未終結的：DONE/DEAD 已收工（且 owner 已清，這裡是雙保險）
+            status=RequestStatus.IN_FLIGHT,
+        )
+        dead = own_claims.filter(attempts__gte=self.max_attempts).update(
+            owner=None, status=RequestStatus.DEAD, error='released:unfinished')
+        released = own_claims.update(
+            owner=None, status=RequestStatus.FAILED, error='released:unfinished')
+        if released or dead:
             self.logger.info(
-                'released {} unfinished claimed request(s)'.format(released))
-        return released
+                'released {} unfinished claimed request(s) ({} dead)'.format(
+                    released + dead, dead))
+        return released + dead
 
     def gen_persist_request(self, seed):
         RequestTS.objects.create(
@@ -213,43 +228,38 @@ class PersistQueue(object):
         # 各自跳過已被鎖定的列，不再搶到同一筆（2.5-3 多 task 並跑的前提）。
         # 外層再補 owner is null 當保險：即使子查詢在鎖釋放後重讀，也不會蓋掉
         # 別人已寫入的 owner。
+        # 1-1：認領＝pending/failed → in_flight、attempts+1（原子累加）；
+        # failed 排在新列之後（order by attempts），達上限的列不再認領。
         with connection.cursor() as cursor:
             sql = (
-                'update request_ts set owner = %s where id = ('
+                'update request_ts set owner = %s, status = %s, '
+                'attempts = attempts + 1 where id = ('
                 'select id from request_ts where year = %s and month = %s '
                 'and day = %s and hour = %s and vendor_id = %s and request_type = %s '
-                'and is_pending = %s and owner is null order by id limit 1 '
-                'for update skip locked) and owner is null'
+                'and status in (%s, %s) and attempts < %s and owner is null '
+                'order by attempts, id limit 1 '
+                'for update skip locked) and owner is null '
+                'returning id'
             )
-            a = cursor.execute(sql, [
+            cursor.execute(sql, [
                 self.spider_id,
+                int(RequestStatus.IN_FLIGHT),
                 self.ts['y'],
                 self.ts['m'],
                 self.ts['d'],
                 self.ts['h'],
                 self.vendor.id,
                 self.request_type.value,
-                False
+                int(RequestStatus.PENDING),
+                int(RequestStatus.FAILED),
+                self.max_attempts,
             ])
+            claimed = cursor.fetchone()
 
-        next_row = RequestTS.objects.filter(
-            year=self.ts['y'],
-            month=self.ts['m'],
-            day=self.ts['d'],
-            hour=self.ts['h'],
-            vendor=self.vendor,
-            request_type=self.request_type,
-            is_pending=False,
-            owner=self.spider_id
-        ).order_by('created')
-
-        next_row = next_row.first()
-
-        if next_row is None:
+        if claimed is None:
             return None
 
-        next_row.is_pending = True
-        next_row.save()
+        next_row = RequestTS.objects.get(id=claimed[0])
         self.n_live_spider += 1
 
         rental_meta = self.seed_parser(next_row.seed)
@@ -271,6 +281,38 @@ class PersistQueue(object):
 
         return scrapy.Request(**request_args)
 
+    def mark_failed(self, db_request, error):
+        '''1-1：失敗必寫終結狀態——failed 可重試，達 attempts 上限轉 dead。'''
+        db_request.error = (error or '')[:255] or None
+        if db_request.attempts >= self.max_attempts:
+            db_request.status = RequestStatus.DEAD
+        else:
+            db_request.status = RequestStatus.FAILED
+        db_request.owner = None
+        db_request.save()
+
+    def handle_errback(self, failure):
+        '''spider errback 的 DB 側：分類錯誤、寫終結狀態、釋放 in-memory 名額。
+
+        403 全滅這類「spider 正常 finished 但整批 errback」的事故，
+        從此在 queue 留下可對帳的 failed/dead 列，queuefinalize 當場紅，
+        而不是等 statscheck 事後驗屍。
+        '''
+        request = getattr(failure, 'request', None)
+        db_request = request.meta.get('db_request') if request else None
+        if db_request is None:
+            return
+        if failure.check(HttpError):
+            response = failure.value.response
+            db_request.last_status = response.status
+            error = 'http_{}'.format(response.status)
+        else:
+            error = failure.type.__name__
+        self.mark_failed(db_request, error)
+        # errback 的請求不會再進 parser_wrapper，名額在這裡釋放——
+        # 舊制 errback 佔著 queue_length 名額不放，是「斷餵」的成因之一
+        self.n_live_spider -= 1
+
     def parser_wrapper(self, response):
         db_request = response.meta['db_request']
         db_request.last_status = response.status
@@ -281,7 +323,12 @@ class PersistQueue(object):
         try:
             for item in self.parse_response(response):
                 if item is True:
-                    db_request.delete()
+                    # 1-1：「刪列＝完成」廢除，完成寫顯式終結狀態。
+                    # owner 必清：否則收工的 release_claims 會把 DONE 翻回 failed
+                    db_request.status = RequestStatus.DONE
+                    db_request.error = None
+                    db_request.owner = None
+                    db_request.save()
                     # Track progress after successful completion
                     self.progress_tracker.increment()
                     self.send_signal(twrh_signals.parse_success)
@@ -297,6 +344,8 @@ class PersistQueue(object):
                 )
             )
             traceback.print_exc()
+            self.mark_failed(
+                db_request, 'parse_error:{}'.format(type(err).__name__))
             self.send_signal(twrh_signals.parse_error, exception=err)
 
         self.n_live_spider -= 1

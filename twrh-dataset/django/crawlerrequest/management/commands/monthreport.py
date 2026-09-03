@@ -28,6 +28,7 @@ from django.utils import timezone
 from scrapy_twrh.cli.runner import compare_invariants, invariants
 
 from crawlerrequest.models import RequestTS, Stats
+from crawlerrequest.enums import RequestStatus
 from rental import enums, models
 from rental.enums import DealStatusType
 from rental.models import HouseTS
@@ -113,9 +114,11 @@ class Command(BaseCommand):
                 failed_days.append(day)
             days[day] = d
 
-        # --- RequestTS 殘留（完成會刪列；剩的就是失敗）---
+        # --- RequestTS 失敗列（1-1 後完成列留存＝DONE，失敗＝其餘；
+        # 舊制月份的完成列已刪，兩制下同一條 query 語意一致）---
         leftover = {}
         for row in (RequestTS.objects.filter(year=year, month=month)
+                    .exclude(status=RequestStatus.DONE)
                     .values('day', 'request_type')):
             key = str(row['day'])
             leftover.setdefault(key, {'list': 0, 'detail': 0})

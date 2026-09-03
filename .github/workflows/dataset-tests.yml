@@ -1,0 +1,52 @@
+# twrh-dataset B 層測試（architecture-roadmap 2-3，與 1-1 同做）：
+# queue 語意矩陣掛 PostGIS 跑——queue 是歷史上 bug 密度最高的共用件，
+# 這裡是它的迴歸防線。爬蟲類 live probe 依既定原則不進公開 CI。
+name: dataset tests
+
+on:
+  push:
+    paths:
+      - 'twrh-dataset/**'
+      - '.github/workflows/dataset-tests.yml'
+  pull_request:
+    paths:
+      - 'twrh-dataset/**'
+      - '.github/workflows/dataset-tests.yml'
+
+jobs:
+  queue-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:15-3.4
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: twrh-dataset
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      # GeoDjango 需要的系統庫
+      - run: >
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          gdal-bin libgdal-dev libgeos-dev libproj-dev
+      - run: pipx install poetry
+      - run: poetry install
+      - name: Run queue semantics tests
+        env:
+          TWRH_DB_NAME: twrh_ci
+          TWRH_DB_USER: postgres
+          TWRH_DB_PASSWORD: postgres
+          TWRH_DB_HOST: 127.0.0.1
+          TWRH_DB_PORT: '5432'
+        run: poetry run python django/manage.py test crawlerrequest -v 2

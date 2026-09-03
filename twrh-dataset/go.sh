@@ -109,6 +109,15 @@ while true; do
 done
 rm -f "$BATCH_MARKER"
 
+# 1-1 收工鐵律：seeds == terminals（done+dead==seeds、無殘留）。
+# 紅＝資料殘缺（403 全滅、seed 零產出、spider 假 finished），當場中止，
+# 不讓 sync/stats/export 把殘缺的一輪當正常資料處理；順帶滾動清理舊終結列
+echo '===== QUEUE FINALIZE ====='
+if ! poetry run python ./django/manage.py queuefinalize; then
+    echo "!!! queue finalize red (seeds != terminals) -- aborting pipeline"
+    exit 1
+fi
+
 # L-C(8)：diff 模式下補齊被 skip 物件的當日 HouseTS（合成快照，標
 # is_synthesized），要在 syncstateful 之前——它吃當日 TS 推導成交狀態
 if [ "$DETAIL_SEED_MODE" = "diff" ]; then

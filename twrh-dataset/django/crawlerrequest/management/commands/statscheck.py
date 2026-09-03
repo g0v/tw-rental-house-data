@@ -8,7 +8,7 @@ import sentry_sdk
 import requests
 import json
 from crawlerrequest.models import RequestTS, Stats
-from crawlerrequest.enums import RequestType
+from crawlerrequest.enums import RequestType, RequestStatus
 from rental import models
 from rental.models import House, HouseTS, Vendor
 from rental.enums import DealStatusType
@@ -115,9 +115,12 @@ class Command(BaseCommand):
 
         self.stats = {}
 
-        # get every remaining request, include pending request
+        # 失敗＝未完成的列（1-1 後終結列留存：dead＋未收斂殘留都算，
+        # 舊制「殘留即失敗」的語意不變）
         failed_query = RequestTS.objects.filter(
             **self.this_ts
+        ).exclude(
+            status=RequestStatus.DONE
         ).values(
             'request_type',
             'vendor'

@@ -28,7 +28,7 @@ import scrapy  # noqa: E402
 from scrapy.http import TextResponse  # noqa: E402
 
 from crawlerrequest.models import RequestTS  # noqa: E402
-from crawlerrequest.enums import RequestType  # noqa: E402
+from crawlerrequest.enums import RequestType, RequestStatus  # noqa: E402
 from rental.models import House, HouseTS, Vendor  # noqa: E402
 from rental import enums  # noqa: E402
 from crawler.spiders.persist_queue import PersistQueue  # noqa: E402
@@ -85,19 +85,21 @@ class QueueTestMixin:
             os.environ['TWRH_TARGET_DATE'] = self._old_target_date
         super().tearDown()
 
-    # --- 終結語意斷言（1-1 只改這裡） ---
+    # --- 終結語意斷言（1-1 狀態機版；舊制為「刪列＝完成」） ---
 
     def assert_completed(self, row_id):
-        '''完成＝刪列（現制）。1-1 後：列留存、status=DONE。'''
-        self.assertFalse(RequestTS.objects.filter(id=row_id).exists())
-
-    def assert_retriable_failure(self, row_id):
-        '''失敗列仍在、可被之後的認領撿走（現制：release 後 owner 歸零）。
-
-        1-1 後：status=FAILED、attempts+1、error 有分類。'''
+        '''完成＝列留存、status=DONE、owner 已清。'''
         row = RequestTS.objects.get(id=row_id)
+        self.assertEqual(row.status, RequestStatus.DONE)
         self.assertIsNone(row.owner)
-        self.assertFalse(row.is_pending)
+
+    def assert_retriable_failure(self, row_id, error=None):
+        '''失敗列仍在、status=FAILED、可被之後的認領撿走。'''
+        row = RequestTS.objects.get(id=row_id)
+        self.assertEqual(row.status, RequestStatus.FAILED)
+        self.assertIsNone(row.owner)
+        if error is not None:
+            self.assertEqual(row.error, error)
 
 
 class GenAndClaimTests(QueueTestMixin, TestCase):
@@ -112,7 +114,8 @@ class GenAndClaimTests(QueueTestMixin, TestCase):
         self.assertEqual(row.request_type, RequestType.DETAIL)
         self.assertEqual((row.year, row.month, row.day), (2026, 1, 15))
         self.assertIsNone(row.owner)
-        self.assertFalse(row.is_pending)
+        self.assertEqual(row.status, RequestStatus.PENDING)
+        self.assertEqual(row.attempts, 0)
         self.assertEqual(q.progress_tracker.total, 1)
         self.assertTrue(q.has_request())
 
@@ -127,7 +130,8 @@ class GenAndClaimTests(QueueTestMixin, TestCase):
         claimed = request.meta['db_request']
         claimed.refresh_from_db()
         self.assertEqual(claimed.owner, q.spider_id)
-        self.assertTrue(claimed.is_pending)
+        self.assertEqual(claimed.status, RequestStatus.IN_FLIGHT)
+        self.assertEqual(claimed.attempts, 1)
         self.assertEqual(q.n_live_spider, 1)
         # 另一列仍是可認領狀態
         other = RequestTS.objects.exclude(id=claimed.id).get()
@@ -140,7 +144,8 @@ class GenAndClaimTests(QueueTestMixin, TestCase):
     def test_next_request_skips_rows_claimed_by_others(self):
         q = make_queue()
         q.gen_persist_request({'id': 'h1'})
-        RequestTS.objects.update(owner='someone-else', is_pending=True)
+        RequestTS.objects.update(
+            owner='someone-else', status=RequestStatus.IN_FLIGHT)
 
         self.assertIsNone(q.next_request())
 
@@ -196,10 +201,11 @@ class ReleaseClaimsTests(QueueTestMixin, TestCase):
         released = q1.release_claims()
 
         self.assertEqual(released, 1)
-        self.assert_retriable_failure(r1.meta['db_request'].id)
+        self.assert_retriable_failure(
+            r1.meta['db_request'].id, error='released:unfinished')
         other = RequestTS.objects.get(id=r2.meta['db_request'].id)
         self.assertEqual(other.owner, q2.spider_id)
-        self.assertTrue(other.is_pending)
+        self.assertEqual(other.status, RequestStatus.IN_FLIGHT)
 
     def test_released_row_is_claimable_again(self):
         q1 = make_queue()
@@ -230,21 +236,39 @@ class ParserWrapperTests(QueueTestMixin, TestCase):
         self.assertEqual(q.progress_tracker.completed, 1)
         self.assertEqual(q.n_live_spider, 0)
 
-    def test_parse_error_keeps_row_for_retry(self):
-        def exploding_parser(response):
-            raise ValueError('boom')
-            yield  # pragma: no cover
+    @staticmethod
+    def exploding_parser(response):
+        raise ValueError('boom')
+        yield  # pragma: no cover
 
-        q = make_queue(batch_size=1, parse_response=exploding_parser)
+    def test_parse_error_marks_failed_and_retries_in_run(self):
+        q = make_queue(batch_size=5, parse_response=self.exploding_parser)
         row = self._claim_one(q)
 
-        list(q.parser_wrapper(make_response(row)))
+        yielded = list(q.parser_wrapper(make_response(row)))
 
-        # 現制：列還在、掛在 owner 上，收工靠 release_claims 放回
-        self.assertTrue(RequestTS.objects.filter(id=row.id).exists())
+        # 失敗列當場標 failed；同一輪的補貨迴圈立即重新認領重試
+        followups = [r for r in yielded if isinstance(r, scrapy.Request)]
+        self.assertEqual(len(followups), 1)
+        self.assertEqual(followups[0].meta['db_request'].id, row.id)
+        row.refresh_from_db()
+        self.assertEqual(row.status, RequestStatus.IN_FLIGHT)
+        self.assertEqual(row.attempts, 2)
         self.assertEqual(q.progress_tracker.completed, 0)
-        q.release_claims()
-        self.assert_retriable_failure(row.id)
+
+    def test_parse_error_at_max_attempts_goes_dead(self):
+        q = make_queue(batch_size=5, parse_response=self.exploding_parser)
+        q.max_attempts = 1
+        row = self._claim_one(q)
+
+        yielded = list(q.parser_wrapper(make_response(row)))
+
+        self.assertEqual(
+            [r for r in yielded if isinstance(r, scrapy.Request)], [])
+        row.refresh_from_db()
+        self.assertEqual(row.status, RequestStatus.DEAD)
+        self.assertEqual(row.error, 'parse_error:ValueError')
+        self.assertEqual(q.release_claims(), 0)
 
     def test_last_status_recorded(self):
         q = make_queue(batch_size=1)
@@ -428,6 +452,178 @@ class SeedMatrixTests(QueueTestMixin, TestCase):
             list(spider.start_detail_requests())
 
         self.assertEqual(RequestTS.objects.count(), 0)
+
+
+class StateMachineTests(QueueTestMixin, TestCase):
+    '''1-1 終結狀態機：errback 必寫終結狀態、attempts 上限轉 dead。'''
+
+    def _claim(self, q, seed_id='h1'):
+        q.gen_persist_request({'id': seed_id})
+        return q.next_request()
+
+    def _fail_via_errback(self, q, request, exception):
+        from twisted.python.failure import Failure
+        failure = Failure(exception)
+        failure.request = request
+        q.handle_errback(failure)
+        return request.meta['db_request']
+
+    def test_http_errback_writes_failed_with_classification(self):
+        from scrapy.spidermiddlewares.httperror import HttpError
+        q = make_queue()
+        request = self._claim(q)
+        response = TextResponse(
+            url=request.url, status=403, body=b'', request=request)
+
+        row = self._fail_via_errback(q, request, HttpError(response))
+
+        self.assert_retriable_failure(row.id, error='http_403')
+        row.refresh_from_db()
+        self.assertEqual(row.last_status, 403)
+        self.assertEqual(q.n_live_spider, 0)  # errback 必須釋放 in-memory 名額
+
+    def test_network_errback_writes_type_name(self):
+        from twisted.internet.error import TimeoutError as TxTimeoutError
+        q = make_queue()
+        request = self._claim(q)
+
+        row = self._fail_via_errback(q, request, TxTimeoutError())
+
+        self.assert_retriable_failure(row.id, error='TimeoutError')
+
+    def test_errback_without_db_request_is_noop(self):
+        from twisted.python.failure import Failure
+        q = make_queue()
+        failure = Failure(ValueError('no meta'))
+        failure.request = scrapy.Request(url='https://example.com/robots.txt')
+        q.handle_errback(failure)  # 不炸即可（robots 等非 queue 請求）
+
+    def test_attempts_exhaustion_turns_dead(self):
+        from twisted.internet.error import TimeoutError as TxTimeoutError
+        q = make_queue()
+        q.max_attempts = 2
+        request = self._claim(q)
+
+        # 第一次失敗：attempts=1 < 2 → failed，可再認領
+        row = self._fail_via_errback(q, request, TxTimeoutError())
+        self.assert_retriable_failure(row.id)
+        # 重新認領（attempts=2）再失敗 → dead
+        request2 = q.next_request()
+        self.assertIsNotNone(request2)
+        row = self._fail_via_errback(q, request2, TxTimeoutError())
+
+        row.refresh_from_db()
+        self.assertEqual(row.status, RequestStatus.DEAD)
+        # dead 不再被認領
+        self.assertIsNone(q.next_request())
+        self.assertFalse(q.has_request())
+
+    def test_release_claims_escalates_exhausted_to_dead(self):
+        q = make_queue()
+        q.max_attempts = 1
+        self._claim(q)  # attempts=1 == max，收工釋放時直接 dead
+
+        released = q.release_claims()
+
+        self.assertEqual(released, 1)
+        row = RequestTS.objects.get()
+        self.assertEqual(row.status, RequestStatus.DEAD)
+        self.assertIsNone(row.owner)
+
+    def test_done_rows_survive_release_claims(self):
+        q = make_queue(batch_size=1)
+        q.gen_persist_request({'id': 'h1'})
+        request = q.next_request()
+        list(q.parser_wrapper(make_response(request.meta['db_request'])))
+
+        self.assertEqual(q.release_claims(), 0)
+        self.assert_completed(request.meta['db_request'].id)
+
+    def test_remaining_work_excludes_terminal_rows(self):
+        q = make_queue(batch_size=1)
+        q.gen_persist_request({'id': 'h1'})
+        q.gen_persist_request({'id': 'h2'})
+        request = q.next_request()
+        list(q.parser_wrapper(make_response(request.meta['db_request'])))
+
+        self.assertEqual(q.get_total_count(), 1)  # DONE 不算剩餘工作
+
+
+class QueueFinalizeTests(QueueTestMixin, TestCase):
+    '''queuefinalize：seeds==terminals 斷言、零產出、dead 門檻、滾動清理。'''
+
+    def setUp(self):
+        super().setUp()
+        self.vendor = Vendor.objects.get(name=VENDOR_NAME)
+
+    def add_rows(self, request_type, status, n=1, error=None, attempts=1,
+                 day=15):
+        for _ in range(n):
+            RequestTS.objects.create(
+                year=2026, month=1, day=day, hour=0,
+                request_type=request_type, vendor=self.vendor,
+                seed={'id': 'x'}, status=status, error=error,
+                attempts=attempts)
+
+    def finalize(self, *args):
+        from django.core.management import call_command
+        call_command('queuefinalize', '--no-cleanup', *args)
+
+    def assert_red(self, *fragments):
+        from django.core.management.base import CommandError
+        with self.assertRaises(CommandError) as ctx:
+            self.finalize()
+        for fragment in fragments:
+            self.assertIn(fragment, str(ctx.exception))
+
+    def test_green_when_all_terminal(self):
+        self.add_rows(RequestType.LIST, RequestStatus.DONE, 3)
+        self.add_rows(RequestType.DETAIL, RequestStatus.DONE, 100)
+        self.finalize()  # 不炸即綠
+
+    def test_red_on_residue(self):
+        self.add_rows(RequestType.LIST, RequestStatus.DONE, 3)
+        self.add_rows(RequestType.DETAIL, RequestStatus.DONE, 10)
+        self.add_rows(RequestType.DETAIL, RequestStatus.FAILED, 2,
+                      error='http_403')
+        self.assert_red('未收斂', 'http_403')
+
+    def test_red_on_dead_ratio_over_threshold(self):
+        '''403 全滅場景：全數 dead——形式上 seeds==done+dead，但必須紅。'''
+        self.add_rows(RequestType.LIST, RequestStatus.DONE, 3)
+        self.add_rows(RequestType.DETAIL, RequestStatus.DEAD, 50,
+                      error='http_403')
+        self.assert_red('dead 比率', 'http_403')
+
+    def test_green_with_dead_below_threshold(self):
+        self.add_rows(RequestType.LIST, RequestStatus.DONE, 3)
+        self.add_rows(RequestType.DETAIL, RequestStatus.DONE, 99)
+        self.add_rows(RequestType.DETAIL, RequestStatus.DEAD, 1,
+                      error='http_500')
+        self.finalize()  # 1% < 5% 門檻：照列訊息、不當錯誤
+
+    def test_red_on_zero_seeds(self):
+        '''seed 零產出場景：detail 連一顆種子都沒有。'''
+        self.add_rows(RequestType.LIST, RequestStatus.DONE, 3)
+        self.assert_red('零種子')
+
+    def test_cleanup_deletes_only_old_terminal_rows(self):
+        from django.core.management import call_command
+        # 舊 bucket、窗口外的列
+        self.add_rows(RequestType.DETAIL, RequestStatus.DONE, 2, day=1)
+        self.add_rows(RequestType.DETAIL, RequestStatus.FAILED, 1, day=1)
+        RequestTS.objects.update(created=timezone.now() - timedelta(days=120))
+        # 今日 bucket（窗口內、全終結 → 斷言綠）
+        self.add_rows(RequestType.LIST, RequestStatus.DONE, 1)
+        self.add_rows(RequestType.DETAIL, RequestStatus.DONE, 5)
+
+        call_command('queuefinalize', '--cleanup-days', '90')
+
+        # 窗口外 DONE 刪除；FAILED（未終結）即使過期也留著等對帳
+        self.assertEqual(RequestTS.objects.count(), 7)
+        self.assertEqual(
+            RequestTS.objects.filter(
+                status=RequestStatus.FAILED).count(), 1)
 
 
 class ConcurrentClaimTests(QueueTestMixin, TransactionTestCase):

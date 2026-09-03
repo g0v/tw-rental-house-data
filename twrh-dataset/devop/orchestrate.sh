@@ -89,7 +89,19 @@ echo '===== WAIT FOR WORKERS ====='
 timed_out=0
 poetry run python devop/workers.py wait $ARNS || timed_out=1
 
-# --- phase 4: 收尾（worker 全停後，殘留 request_ts = 失敗，statscheck 會報）---
+# --- phase 4: 收尾。1-1 收工鐵律 seeds == terminals：worker 全停後 queue
+# 必須全數終結（done+dead），殘留＝資料殘缺，當場紅、中止收尾——不讓
+# sync/stats/export 把殘缺的一輪當正常資料處理；順帶滾動清理舊終結列 ---
+echo '===== QUEUE FINALIZE ====='
+if ! poetry run python ./django/manage.py queuefinalize; then
+  echo '!!! queue finalize red (seeds != terminals) -- aborting before sync/stats/export'
+  kill "$TAIL_PID" 2>/dev/null || true
+  gzip ../logs/*.log 2>/dev/null || true
+  poetry run python devop/workers.py ship_logs ../logs "$now" \
+    || echo '!!! log shipping incomplete — leftovers stay on EFS'
+  exit 1
+fi
+
 # L-C(8)：diff 模式下先補齊被 skip 物件的當日 TS，再讓 syncstateful 推導
 if [ "${TWRH_DETAIL_SEED_MODE:-full}" = "diff" ]; then
   echo '===== SYNTHESIZE SKIPPED TS ====='

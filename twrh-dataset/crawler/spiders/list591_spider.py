@@ -40,6 +40,12 @@ class List591Spider(Rental591Spider):
         self.persist_queue.release_claims()
         self.persist_queue.progress_tracker.log_final()
 
+    def error_handler(self, failure):
+        # 核心包的 errback 只留 log（vendor 中立）；1-1：dataset 側必寫
+        # 終結狀態——failed／attempts＋1、達上限 dead，收工由 queuefinalize 對帳
+        super().error_handler(failure)
+        self.persist_queue.handle_errback(failure)
+
     def parse_seed (self, seed):
         # dx 4-3：種子是有 key 的 dict；list 為升級前殘留列（--date 重跑舊日）
         if isinstance(seed, dict):
