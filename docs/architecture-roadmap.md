@@ -248,6 +248,19 @@ fixture／scrub 方法論已成文、`twrh` CLI 讓 parser 開發不碰 DB——
 兩條實驗換來的判準原封保留：狀態變更永遠由 detail 判定（缺席只是種子）；
 bootstrap 自然退化為全量、逐日收斂——行為語意與儲存形狀無關。
 
+**snapshot 即摺疊狀態（冷啟同步深度＝1 天）**：謂詞所需的 per-house
+滾動狀態全部摺進 snapshot 當 carry 欄——`last_detail_at`（refresh_days）、
+`fingerprint_at_last_detail`（指紋變）、`days_absent`（連續缺席計數，
+免回掃 N 天 list 檔）、`last_seen_at`（回列窗口）、`first_seen_at`＋
+sticky deal 狀態（n_day_deal）。**每日運行因此是一階遞迴**
+`f(昨日 snapshot, 今日輸入)`：新環境冷啟只需 sync 昨日一份 snapshot，
+不隨 refresh_days 或 deal 回看深度放大；現制的 90 天窗口是「DB 保留
+窗口」的產物，新架構歷史分區永存、回看深度與同步深度脫鉤。重建
+snapshot（fold 邏輯改動或 carry 欄修錯）＝從任一舊 checkpoint replay
+事件分區，深度是修復決策而非環境需求。代價與緩解：carry 欄 bug 會
+向前傳播——manifest 對 carry 欄分佈下斷言，且事件分區永存保證隨時
+可 replay 重建（現制 House 覆寫後連 replay 原料都沒有）。
+
 ---
 
 ## 四、分階段
@@ -352,6 +365,10 @@ synthts／syncstateful／housekeep）——維護面積隨儲存收斂；S3 欄�
 
 ## 編修紀錄
 
+- **2026-09-03（八補）** L-C 案例節補〈snapshot 即摺疊狀態〉：謂詞
+  滾動狀態（last_detail_at／指紋／缺席計數／first_seen）摺入 snapshot
+  carry 欄，日更為一階遞迴、冷啟同步深度＝1 天；90 天回看是 DB 保留
+  窗口的產物，新架構回看深度與同步深度脫鉤，重建走 replay。
 - **2026-09-03（七補）** 軸 C 補〈schema 演進紀律〉：三層分界（raw 無
   schema／vendor dict 不落地／normalized 契約只增不改）、breaking 用
   重算不用 migration、重算人為觸發不自動級聯；補強拍板項：list raw
