@@ -187,11 +187,10 @@ DB——唯一可變狀態不進檔案的另一面；(2) 單屋跨日歷史點�
 （秒級），常查再物化本機 DuckDB；(3) jsonl 只用在「整檔掃描是唯一
 熱路徑」的小檔（list stubs、manifest），若分析量變大，stage 產出格式
 是契約後的實作細節、可換 parquet。唯一需要 random access 的 jsonl 是
-`raw/` 的 index（debug 點查單頁 HTML），而 **tar.zst 整流壓縮下 offset
-無法直接跳**——3-1 落地時需在「整包拉回（日包百 MB 級，可接受）」與
-「可尋址壓縮（zstd seekable frames 或 member 各自壓＋每日字典補壓縮率，
-index 直接對應 S3 Range GET）」間定案，且**格式 day one 拍板**：raw
-分區不可變，事後換框架＝重寫全部歷史。
+`raw/` 的 index（debug 點查單頁 HTML），而 tar.zst 整流壓縮下 offset
+無法直接跳——**已拍板整包拉回（2026-09-03）**：不採可尋址壓縮、
+不依賴 S3 特有功能，debug 點查＝拉當日包（百 MB 級可接受），
+單流壓縮率最佳、換任何 object storage 都成立。
 
 ### D. 協作層：vendor 即 plugin＋monorepo＋貢獻者迴路
 
@@ -381,27 +380,52 @@ synthts／syncstateful／housekeep）——維護面積隨儲存收斂；S3 欄�
 
 ## 開放問題
 
-已拍板：raw 保留 365 天（S3 治理節）；snapshot 承載摺疊狀態（L-C 案例
-節）；stub 指紋存雜湊。以下依歸屬 phase 排列，4／5／6 尚無答案，
-1／3 有方向待選，其餘為進場時的機械拍板：
+### 已拍板（2026-09-03，二輪 review）
+
+- **raw 保留 365 天**（S3 治理節）；**snapshot 承載摺疊狀態**（L-C 案例
+  節）；**stub 指紋存雜湊**。
+- **raw 壓縮框架＝整包拉回**：不採可尋址壓縮、不依賴 S3 特有功能；
+  單流壓縮率最佳、可攜性最好，debug 點查＝拉當日包（百 MB 級可接受）。
+- **versioning 不開**：重寫分區即覆蓋，兜底＝「365 天內可重算」本身。
+- **動態基準＝疊窗即算**：斷言引擎當場掃近 30 份 manifest（KB 級），
+  不物化第二種 baseline artifact——觀測層單一機制原則的延伸；history
+  不足 N 天（bootstrap 期）該類斷言自動降 advisory。
+- **可散佈界線與存取**：S3 樹全私有（公開僅 `publish/`）；可散佈界線
+  切在 normalized，但 normalized 分區**原則上不公開釋出**（著作權
+  顧慮）；一般貢獻者以 `twrh` CLI 自抓資料開發；簽署相關同意條款的
+  專案成員，才議定分區釋出管道——與現制同構（公開僅 publish zip、
+  開發迴路靠 CLI），只是明文化到 bucket 權限。
+- **切換與對帳＝非開放問題**，併入各步驗收（Phase 1 平行週、3-1 雙寫
+  對帳、其餘由 bootstrap 語意吸收）；唯一具名產物＝4c/4d 切換日從
+  現制 DB 摺出歷史 sticky 狀態（first_seen、deal 史——bootstrap 長
+  不回來、會使 n_day_deal 歸零）的一次性工具。
+- **日期 pin＝3-2 實作註記**：flow `--date` 是唯一日期來源，所有 stage
+  收參數、**禁止 stage 內部看時鐘**——現制 env 隱式傳遞的結構化修正
+  （export 曾漏讀 TWRH_TARGET_DATE 即此類 bug，跨午夜才發作）；
+  `--start-early` 上移排程層（22:00 後的排程直接傳明日 date）；bucket
+  歸屬走 pin 日期、記錄型時間戳（seen_at）記真實時刻，兩者明文分開。
+  剩現制讀 env 五處（rental.models／now_tuple／persist_queue／
+  syncstateful／statscheck）的盤點替換，機械工作。
+
+### 仍開放
 
 | # | 問題 | 歸屬 |
 |---|---|---|
-| 1 | detail stage 多 worker 的 artifact 佈局：N worker 共產當日 raw 包——worker 各寫 shard、finalize 合併 vs 逐 worker 小包＋index 聚合；「S3 PUT 完成才可見」的原子性約定成文 | 3-1／3-2 |
-| 2 | raw 壓縮框架：整包拉回 vs 可尋址壓縮（軸 C，day one 拍板） | 3-1 |
-| 3 | 私有／公開界線與貢獻者存取：S3 樹住私有 bucket（公開僅 `publish/`）；貢獻者 sync 管道＝scrub 樣本分區或唯讀憑證；normalized 契約欄位以「可散佈」為界的正式定義 | 3-3 |
-| 4 | 各步切換與對帳：3-1／4c／4e 的雙軌並行期；切換日從現制 DB 摺出第一份 snapshot（carry 欄初始化）的一次性工具——各步進場時設計，不預做 | 各步 |
-| 5 | invalidate 的新形狀：不穩定資料判定放哪個 stage、標記落哪、「重寫分區＋重建下游」的觸發介面 | Phase 4 |
-| 6 | deals 語意 × #229：成交訊號消失調查的結論影響 deals 事件類別（DEAL／NOT_FOUND／原因不明下架） | 調查先行 |
-| 7 | 動態基準落點：`rolling_median_30d` 類 ref 由誰算、存哪（manifest 疊窗即算 vs 物化專檔） | 1-2 |
-| 8 | queue 清理窗口長度：預設沿用 90 天慣例，實跑後定案 | Phase 1 |
-| 9 | versioning 開關：開＋noncurrent 過期 vs 不開、重寫即覆蓋 | 3-1 |
-| 10 | 日期 pin 平移：`TWRH_TARGET_DATE`／`--start-early` 跨午夜分桶語意在 flow 的落點（date 是所有分區主鍵） | 3-2 |
+| 1 | **多 worker artifact 佈局**。(A) worker 落 EFS scratch、finalize 單一打包上傳：一日一檔、完成判據純粹、壓縮率最佳、與單機模式同構；代價＝收尾 O(日量) 打包（分鐘級）＋crash 後 scratch 清理。(B) 逐 worker 小包＋index 聚合：零收尾、失敗隔離；代價＝一日 N 檔（N 浮動）滲進所有下游、完成判據退化為 manifest 記載清單。**建議 A**（與整包拉回拍板最合拍），待拍板 | 3-1／3-2 |
+| 5 | **invalidate 新形狀**。(a) 重寫歷史分區＋重建下游：符合重算哲學但動作大、原始證據被改寫。(b) **訂正疊加層（傾向）**：invalidate 產出本身是 artifact（house_id＋影響範圍＋判定理由），歷史分區不動、export／統計讀取時 join 排除——帳本模型（訂正用追加不用改寫）：可稽核、可撤銷、判定邏輯改版只需重出名單。判定邏輯（跨日欄位穩定性）平移自現制 | Phase 4 |
+| 6 | **deals 語意 × #229**：成交訊號消失調查的結論影響事件類別設計（DEAL／NOT_FOUND／原因不明下架） | 調查先行 |
+| 8 | **queue 清理窗口長度**：預設 90 天，實跑後定案 | Phase 1 |
 
 ---
 
 ## 編修紀錄
 
+- **2026-09-03（十一補）** 開放問題二輪 review：拍板五項（壓縮框架＝
+  整包拉回、versioning 不開、動態基準＝疊窗即算、可散佈界線＝normalized
+  但原則不公開＋CLI 自抓＋成員條款、切換對帳併入各步驗收）；日期 pin
+  降為 3-2 實作註記（顯式 --date、stage 禁看時鐘、start-early 上移
+  排程層）；#1 補 A/B 優劣與建議 A、#5 補兩形狀與傾向訂正疊加層。
+  仍開放四項：#1、#5、#6（#229）、#8。
 - **2026-09-03（十補）** **raw 保留 365 天拍板**（lifecycle expiration，
   配套：stub 指紋改存雜湊使事件分區永存無虞、re-parse 回看上限一年）；
   新增〈開放問題〉節：十項，含多 worker artifact 佈局、私有／公開界線、
