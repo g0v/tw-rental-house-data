@@ -407,12 +407,21 @@ synthts／syncstateful／housekeep）——維護面積隨儲存收斂；S3 欄�
   剩現制讀 env 五處（rental.models／now_tuple／persist_queue／
   syncstateful／statscheck）的盤點替換，機械工作。
 
+- **多 worker artifact 佈局＝方案 A**（2026-09-03 拍板）：worker 落
+  EFS scratch、finalize 單一打包上傳——一日一檔、完成判據純粹、壓縮率
+  最佳、與單機模式同構；代價（收尾分鐘級打包、crash 後 scratch 清理
+  ——重跑覆蓋即可）接受。落選 (B) 逐 worker 小包：一日 N 檔滲進所有
+  下游、完成判據退化為 manifest 記載清單。
+- **invalidate＝訂正疊加層**（2026-09-03 拍板）：invalidate 產出本身
+  是 artifact（house_id＋影響範圍＋判定理由），歷史分區一 byte 不動，
+  export／統計讀取時 join 排除——帳本模型（訂正用追加不用改寫）：
+  可稽核、可撤銷、判定邏輯改版只需重出名單；判定邏輯（跨日欄位
+  穩定性）平移自現制。落選 (a) 重寫歷史分區：動作大且原始證據被改寫。
+
 ### 仍開放
 
 | # | 問題 | 歸屬 |
 |---|---|---|
-| 1 | **多 worker artifact 佈局**。(A) worker 落 EFS scratch、finalize 單一打包上傳：一日一檔、完成判據純粹、壓縮率最佳、與單機模式同構；代價＝收尾 O(日量) 打包（分鐘級）＋crash 後 scratch 清理。(B) 逐 worker 小包＋index 聚合：零收尾、失敗隔離；代價＝一日 N 檔（N 浮動）滲進所有下游、完成判據退化為 manifest 記載清單。**建議 A**（與整包拉回拍板最合拍），待拍板 | 3-1／3-2 |
-| 5 | **invalidate 新形狀**。(a) 重寫歷史分區＋重建下游：符合重算哲學但動作大、原始證據被改寫。(b) **訂正疊加層（傾向）**：invalidate 產出本身是 artifact（house_id＋影響範圍＋判定理由），歷史分區不動、export／統計讀取時 join 排除——帳本模型（訂正用追加不用改寫）：可稽核、可撤銷、判定邏輯改版只需重出名單。判定邏輯（跨日欄位穩定性）平移自現制 | Phase 4 |
 | 6 | **deals 語意 × #229**：成交訊號消失調查的結論影響事件類別設計（DEAL／NOT_FOUND／原因不明下架） | 調查先行 |
 | 8 | **queue 清理窗口長度**：預設 90 天，實跑後定案 | Phase 1 |
 
@@ -420,6 +429,10 @@ synthts／syncstateful／housekeep）——維護面積隨儲存收斂；S3 欄�
 
 ## 編修紀錄
 
+- **2026-09-03（十二補）** 末兩項拍板：多 worker 佈局＝方案 A（EFS
+  scratch＋finalize 單包）、invalidate＝訂正疊加層。開放問題僅餘
+  #6（deals×#229，調查先行）與 #8（queue 窗口，實跑定案）——
+  **Phase 1 可動工**。
 - **2026-09-03（十一補）** 開放問題二輪 review：拍板五項（壓縮框架＝
   整包拉回、versioning 不開、動態基準＝疊窗即算、可散佈界線＝normalized
   但原則不公開＋CLI 自抓＋成員條款、切換對帳併入各步驗收）；日期 pin
