@@ -133,8 +133,13 @@ locals {
     # L-C skip 降頻（go.sh／orchestrate.sh 讀，dx-roadmap L-C）
     { name = "TWRH_DETAIL_SEED_MODE", value = var.detail_seed_mode },
     { name = "TWRH_DETAIL_REFRESH_DAYS", value = var.detail_refresh_days },
-    # housekeep.sh（raw offload / HouseTS 歸檔）上傳目標
+    # housekeep.sh（raw offload / HouseTS 歸檔）與 3-1 rawpack／1-2 manifest 上傳目標
     { name = "TWRH_RAW_BUCKET", value = aws_s3_bucket.raw.bucket },
+    # 1-2 manifest 與 3-1 raw 落 EFS：manifest 的疊窗即算要跨日留存；
+    # raw scratch 必須多 worker task 共享（方案 A），日包打完由 rawpack 上 S3
+    { name = "TWRH_MANIFEST_DIR", value = "/data/manifests" },
+    { name = "TWRH_RAW_SCRATCH_DIR", value = "/data/raws/scratch" },
+    { name = "TWRH_RAW_DIR", value = "/data/raws" },
     # orchestrate.sh（模型 A）開/查 detail worker 所需
     { name = "AWS_DEFAULT_REGION", value = var.region },
     { name = "TWRH_CLUSTER", value = aws_ecs_cluster.twrh.name },
