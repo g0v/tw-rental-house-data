@@ -168,11 +168,13 @@ class Detail591Spider(Rental591Spider):
         elif self.seed_only and self.persist_queue.has_request():
             # 同日重跑：種子已在，不重生成（gen_persist_request 是 create 非 upsert）
             self.logger.info('seed-only mode: queue not empty, nothing to generate')
-        elif not self.persist_queue.has_request() and not self.seed_only \
+        elif not self.persist_queue.has_request() \
                 and self.persist_queue.has_run_today():
-            # queue 耗盡 + 今天已跑過 = go.sh batch 重啟時的正常收尾，不是新的一天。
-            # 少了這個判斷，恰好在 batch 邊界耗盡 queue 會觸發下面的全量重生成，
-            # 把全台 open 房源再排一輪（2026-08-26 實測 55,943 筆）。
+            # queue 耗盡 + 今天已跑過 = batch 重啟／同日重跑時的正常收尾，
+            # 不是新的一天。少了這個判斷，恰好在 batch 邊界耗盡 queue 會觸發
+            # 下面的全量重生成（2026-08-26 實測 55,943 筆）。seed_only 也適用
+            # ——flow 續跑／orchestrate 同日重啟時 seed stage 不得重排全量
+            # （seed_only 的首跑不受影響：generation 在 progress 檔建立之前）。
             # 若要同日強制重生成（例如 --date 重跑），先刪當日 logs/progress/*.detail.json。
             self.logger.info(
                 'queue empty and progress file exists — resume with nothing to do')

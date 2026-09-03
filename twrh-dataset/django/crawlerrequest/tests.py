@@ -430,6 +430,20 @@ class SeedMatrixTests(QueueTestMixin, TestCase):
 
         self.assertEqual(RequestTS.objects.count(), 0)
 
+    def test_seed_only_rerun_on_drained_day_does_not_regen(self):
+        '''flow 續跑／orchestrate 同日重啟：queue 已排空＋今天跑過 →
+        seed_only 不得全量重排（2026-08-26 同型陷阱的 seed_only 版）。'''
+        self.make_house('h1')
+        spider = self.make_spider(seed_only=True)
+
+        with mock.patch.object(
+                PersistQueue, 'has_run_today', return_value=True), \
+             mock.patch.object(
+                PersistQueue, 'init_progress_tracking', return_value=0):
+            list(spider.start_detail_requests())
+
+        self.assertEqual(RequestTS.objects.count(), 0)
+
     def test_seed_only_generates_without_crawling(self):
         self.make_house('h1')
         spider = self.make_spider(seed_only=True)
