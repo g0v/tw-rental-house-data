@@ -118,6 +118,13 @@ if ! poetry run python ./django/manage.py queuefinalize; then
     exit 1
 fi
 
+# 3-1：當日 raw scratch 打成日包（raw/<vendor>/<date>.tar.zst＋index）。
+# 雙寫對帳期：--reconcile 抽樣比對包 vs DB；失敗只警告不中止（DB 仍有 raw，
+# scratch 也會保留供重打）；cutover（DB 停寫 raw）後升級為硬失敗
+echo '===== RAW PACK ====='
+poetry run python ./django/manage.py rawpack --reconcile \
+    || echo '!!! rawpack failed -- raw kept in scratch/DB, investigate before cutover'
+
 # L-C(8)：diff 模式下補齊被 skip 物件的當日 HouseTS（合成快照，標
 # is_synthesized），要在 syncstateful 之前——它吃當日 TS 推導成交狀態
 if [ "$DETAIL_SEED_MODE" = "diff" ]; then

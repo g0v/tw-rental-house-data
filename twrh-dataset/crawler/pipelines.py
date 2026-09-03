@@ -14,6 +14,7 @@ from scrapy_twrh.items import GenericHouseItem, RawHouseItem
 from django.contrib.gis.geos import Point
 from crawler.utils import now_tuple
 from crawler import signals as twrh_signals
+from crawler import raw_sink
 
 
 class CrawlerPipeline(object):
@@ -49,6 +50,15 @@ class CrawlerPipeline(object):
                         house_etc.list_raw = item['raw']
                     else:
                         house_etc.detail_raw = item['raw']
+                    # 3-1 雙寫：raw 同步落 scratch（收尾 rawpack 打日包）；
+                    # 對帳期過後 DB 停寫 raw、此處成為唯一去向
+                    if raw_sink.enabled():
+                        raw_sink.write_raw(
+                            item['vendor'],
+                            '{:04d}-{:02d}-{:02d}'.format(y, m, d),
+                            item['house_id'],
+                            'list' if item['is_list'] else 'detail',
+                            item['raw'])
 
                 if 'dict' in item and not item['is_list']:
                     house_etc.detail_dict = item['dict']

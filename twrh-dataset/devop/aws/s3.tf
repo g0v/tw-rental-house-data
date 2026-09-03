@@ -1,9 +1,14 @@
 # raw bucket（us-west-2，命名沿用 twrh-w1 的區域後綴慣例）：
-# - raw/<vendor>/<YYYY-MM>.tar.zst（Glacier IR，上傳端指定 storage class）＋同名 index json
-# - 之後 archivehistory tar／EFS 長期封存也收這裡
+# - raw/<vendor>/<YYYY-MM>.tar.zst：3-1 界線日前的 housekeep 月包（拍板：不回整，
+#   維持原格式、僅 debug 價值）＋同名 index json
+# - raw/<vendor>/<YYYY-MM-DD>.tar.zst＋.index.jsonl：3-1 起 rawpack 的日包
+#   （方案 A：finalize 單包；versioning 不開，重寫即覆蓋）
+# - archive/：archivehistory tar／EFS 長期封存——無 expiration、刪除永遠人工
 # - logs/<date>/*.gz：orchestrate finalize 歸檔的完整爬取 log（ship_logs）
-# raw/archive 刻意不設 lifecycle expiration、不給任何角色 DeleteObject——刪除永遠
-# 人工；唯 logs/ 例外，lifecycle 30 天自動過期（2026-08-31 拍板）。
+# lifecycle（set-once，非排程 job；2026-09-03 拍板）：
+#   raw/ 30 天轉 Glacier IR、365 天過期——個資／著作權暴露面從永存變有界；
+#   更早歷史以 normalized 分區＋公開 zip 為準。logs/ 30 天過期（2026-08-31 拍板）。
+# DeleteObject 仍不授予任何角色（lifecycle 過期不需要它）。
 
 resource "aws_s3_bucket" "raw" {
   bucket = "twrh-w2"
@@ -19,6 +24,20 @@ resource "aws_s3_bucket_lifecycle_configuration" "raw" {
     }
     expiration {
       days = 30
+    }
+  }
+  rule {
+    id     = "raw-glacier-ir-30d-expire-365d"
+    status = "Enabled"
+    filter {
+      prefix = "raw/"
+    }
+    transition {
+      days          = 30
+      storage_class = "GLACIER_IR"
+    }
+    expiration {
+      days = 365
     }
   }
 }

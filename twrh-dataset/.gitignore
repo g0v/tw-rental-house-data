@@ -15,3 +15,5 @@ js_cache
 ocr_cache
 # 1-2 觀測層 artifact（本機／EFS 落地，非版控物；正式歸宿是 S3）
 manifests/
+# 3-1 raw 日包與 scratch（本機／EFS 落地；正式歸宿是 S3 raw/）
+raws/

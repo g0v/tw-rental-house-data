@@ -102,6 +102,12 @@ if ! poetry run python ./django/manage.py queuefinalize; then
   exit 1
 fi
 
+# 3-1：worker 全停後（方案 A 的 finalize 時點）把 EFS scratch 打成日包；
+# TWRH_RAW_BUCKET 有設即上傳 S3。雙寫對帳期失敗只警告，cutover 後升級硬失敗
+echo '===== RAW PACK ====='
+poetry run python ./django/manage.py rawpack --reconcile \
+  || echo '!!! rawpack failed -- raw kept in scratch/DB, investigate before cutover'
+
 # L-C(8)：diff 模式下先補齊被 skip 物件的當日 TS，再讓 syncstateful 推導
 if [ "${TWRH_DETAIL_SEED_MODE:-full}" = "diff" ]; then
   echo '===== SYNTHESIZE SKIPPED TS ====='
