@@ -113,6 +113,10 @@ echo '===== GENERATE STATISTICS ====='
 poetry run python ./django/manage.py statscheck
 echo '===== DISTRIBUTION CHECK ====='
 poetry run python ./django/manage.py distcheck
+# 1-2 新觀測通道（平行週；切換後退役 statscheck/distcheck/fill-rate/monthreport 舊讀法）
+echo '===== MANIFEST + QUALITY CHECK ====='
+poetry run python ./django/manage.py manifest
+poetry run python ./django/manage.py qualitycheck
 echo '===== CHECK EXPORT ====='
 poetry run python ./django/manage.py export -p
 

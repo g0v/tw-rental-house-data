@@ -13,3 +13,5 @@ devop/*
 datas/*.zip
 js_cache
 ocr_cache
+# 1-2 觀測層 artifact（本機／EFS 落地，非版控物；正式歸宿是 S3）
+manifests/

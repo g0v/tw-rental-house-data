@@ -136,6 +136,12 @@ poetry run python ./django/manage.py statscheck
 echo '===== DISTRIBUTION CHECK ====='
 poetry run python ./django/manage.py distcheck
 
+# 1-2 新觀測通道（平行週：與 statscheck/distcheck/fill-rate 並行跑，
+# 驗證一致後切換、退役四套舊工具）：manifest 產出＋assertions.yaml 斷言
+echo '===== MANIFEST + QUALITY CHECK ====='
+poetry run python ./django/manage.py manifest
+poetry run python ./django/manage.py qualitycheck
+
 # do this in last step, as it may run for a long time
 echo '===== CHECK EXPORT ====='
 poetry run python ./django/manage.py export -p

@@ -626,6 +626,117 @@ class QueueFinalizeTests(QueueTestMixin, TestCase):
                 status=RequestStatus.FAILED).count(), 1)
 
 
+class QualityEngineTests(TestCase):
+    '''1-2 斷言引擎：min/max、near、樣本門檻、疊窗即算、缺席降級。'''
+
+    def setUp(self):
+        import tempfile
+        self.dir = tempfile.mkdtemp(prefix='twrh-manifests-')
+        self.assertions = os.path.join(self.dir, 'assertions.yaml')
+
+    def write_spec(self, checks, defaults=None):
+        import yaml
+        with open(self.assertions, 'w') as f:
+            yaml.safe_dump({
+                'version': 1,
+                'defaults': defaults or {
+                    'window': 30, 'min_history': 3, 'min_samples': 100},
+                'checks': checks,
+            }, f, allow_unicode=True)
+
+    def write_manifest(self, date_str, stage='detail', **payload):
+        from crawlerrequest import manifests
+        manifests.write_manifest({
+            'schema': 1, 'stage': stage, 'date': date_str,
+            'source': payload.pop('source', 'live'), **payload,
+        }, base_dir=self.dir)
+
+    def evaluate(self, date_str='2026-09-15'):
+        from crawlerrequest import quality
+        return quality.evaluate(
+            date_str, assertions_path=self.assertions, base_dir=self.dir)
+
+    def by_id(self, results, check_id):
+        return next(r for r in results if r.check_id == check_id)
+
+    def test_min_max_and_near(self):
+        self.write_spec([
+            {'id': 'c.min', 'stage': 'detail', 'metric': 'queue.seeds',
+             'min': 1},
+            {'id': 'c.max', 'stage': 'detail', 'metric': 'queue.residue',
+             'max': 0},
+            {'id': 'c.near', 'stage': 'detail', 'metric': 'dist.median_floor',
+             'near': 4, 'tolerance': 1},
+        ])
+        self.write_manifest(
+            '2026-09-15',
+            queue={'seeds': 0, 'residue': 3}, dist={'median_floor': 6})
+
+        results = self.evaluate()
+
+        for check_id in ('c.min', 'c.max', 'c.near'):
+            r = self.by_id(results, check_id)
+            self.assertFalse(r.ok)
+            self.assertFalse(r.advisory)
+
+    def test_small_sample_skips_hard_assert(self):
+        self.write_spec([
+            {'id': 'c.dist', 'stage': 'detail', 'metric': 'dist.median_floor',
+             'sample_n': 'dist.n', 'near': 4, 'tolerance': 1},
+        ])
+        self.write_manifest(
+            '2026-09-15', dist={'n': 50, 'median_floor': 99})
+
+        r = self.by_id(self.evaluate(), 'c.dist')
+        self.assertTrue(r.ok)
+        self.assertIn('跳過', r.message)
+
+    def test_rolling_median_bootstrap_then_drift(self):
+        self.write_spec([
+            {'id': 'c.roll', 'stage': 'detail', 'metric': 'counts.n',
+             'rolling_median_within': 0.2},
+        ])
+        # history 不足 → 暫緩（綠）
+        self.write_manifest('2026-09-15', counts={'n': 100})
+        r = self.by_id(self.evaluate(), 'c.roll')
+        self.assertTrue(r.ok)
+        self.assertIn('bootstrap', r.message)
+        # 補齊 history：中位數 100，今日 50 → 相對差 50% > 20% → 紅
+        for day in (11, 12, 13, 14):
+            self.write_manifest('2026-09-{:02d}'.format(day),
+                                counts={'n': 100})
+        self.write_manifest('2026-09-15', counts={'n': 50})
+        r = self.by_id(self.evaluate(), 'c.roll')
+        self.assertFalse(r.ok)
+        self.assertFalse(r.advisory)
+        # 在容差內 → 綠
+        self.write_manifest('2026-09-15', counts={'n': 90})
+        self.assertTrue(self.by_id(self.evaluate(), 'c.roll').ok)
+
+    def test_missing_metric_degrades_to_advisory(self):
+        '''backfill manifest 缺 queue 節：不判紅、標 advisory（1-3 回補配套）。'''
+        self.write_spec([
+            {'id': 'c.q', 'stage': 'detail', 'metric': 'queue.seeds',
+             'min': 1},
+        ])
+        self.write_manifest('2026-09-15', source='backfill', counts={'n': 5})
+
+        r = self.by_id(self.evaluate(), 'c.q')
+        self.assertFalse(r.ok)
+        self.assertTrue(r.advisory)
+        self.assertIn('backfill', r.message)
+
+    def test_missing_manifest_is_hard_failure(self):
+        self.write_spec([
+            {'id': 'c.q', 'stage': 'detail', 'metric': 'queue.seeds',
+             'min': 1},
+        ])
+        r = self.by_id(self.evaluate(), 'c.q')
+        self.assertFalse(r.ok)
+        self.assertFalse(r.advisory)
+        self.assertIn('manifest 不存在', r.message)
+
+
 class ConcurrentClaimTests(QueueTestMixin, TransactionTestCase):
     '''#21：FOR UPDATE SKIP LOCKED——並發認領不得撞列、不得漏列。'''
 

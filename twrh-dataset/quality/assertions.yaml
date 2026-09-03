@@ -1,0 +1,179 @@
+# 品質門檻＝對 manifest 的斷言集（architecture-roadmap 1-2，軸 B）。
+# 由 qualitycheck 引擎執行：日檢、月報、漂移偵測是同一機制的不同時間窗。
+#
+# 斷言型式：
+#   min / max                  — 靜態上下限
+#   near + tolerance           — 靜態基準值雙向比對（漂移偵測，變好也算漂移）
+#   rolling_median_within      — 與近 window 份 manifest 同 metric 中位數的
+#                                「相對差」上限（疊窗即算，2026-09-03 拍板：
+#                                不物化第二種 baseline artifact）
+#   rolling_median_within_abs  — 同上但取絕對差（比率型 metric 用）
+# 修飾：
+#   sample_n: <dot path>       — 樣本數欄位；低於 defaults.min_samples 時
+#                                跳過硬斷言（小樣本噪音，同 distcheck 慣例）
+#   advisory: true             — 只報告不判紅（門檻未校準／bootstrap 期）
+# 引擎行為：rolling 檢查 history 不足 min_history 份時自動降 advisory；
+# metric 缺席（如 backfill manifest 沒有 queue 節）時降 advisory 並註記。
+#
+# dist.* 基準值：baselines/national.json（2026-08-26 全台全量），
+# 1-3 baseline 重製時在此檔更新，不再產第五套 baseline 格式。
+
+version: 1
+
+defaults:
+  window: 30
+  min_history: 14
+  min_samples: 10000
+
+checks:
+  # --- queue 終結統計（queuefinalize 當場擋紅；這裡是觀測層的留檔斷言） ---
+  - id: list.queue.seeds_nonzero
+    stage: list
+    metric: queue.seeds
+    min: 1
+  - id: list.queue.converged
+    stage: list
+    metric: queue.residue
+    max: 0
+  - id: detail.queue.seeds_nonzero
+    stage: detail
+    metric: queue.seeds
+    min: 1
+  - id: detail.queue.converged
+    stage: detail
+    metric: queue.residue
+    max: 0
+  - id: detail.queue.dead_ratio
+    stage: detail
+    metric: queue.dead_ratio
+    max: 0.05
+
+  # --- L-B list 完整度哨兵（門檻待實據校準，暫 advisory） ---
+  - id: list.capture.ratio
+    stage: list
+    metric: capture.ratio
+    min: 0.85
+    advisory: true
+
+  # --- 量的漂移（疊窗即算） ---
+  - id: detail.counts.n_crawled
+    stage: detail
+    metric: counts.n_crawled
+    rolling_median_within: 0.2
+  - id: snapshot.counts.n_total
+    stage: snapshot
+    metric: counts.n_total
+    rolling_median_within: 0.2
+
+  # --- 分佈不變量（distcheck 平移；值對不對的防線，防 591 混淆） ---
+  - id: detail.dist.median_floor
+    stage: detail
+    metric: dist.median_floor
+    sample_n: dist.n
+    near: 4
+    tolerance: 1
+  - id: detail.dist.median_total_floor
+    stage: detail
+    metric: dist.median_total_floor
+    sample_n: dist.n
+    near: 7
+    tolerance: 1
+  - id: detail.dist.share_電梯大樓
+    stage: detail
+    metric: dist.share_電梯大樓
+    sample_n: dist.n
+    near: 0.546
+    tolerance: 0.10
+  - id: detail.dist.share_公寓
+    stage: detail
+    metric: dist.share_公寓
+    sample_n: dist.n
+    near: 0.221
+    tolerance: 0.10
+  - id: detail.dist.share_整層住家
+    stage: detail
+    metric: dist.share_整層住家
+    sample_n: dist.n
+    near: 0.569
+    tolerance: 0.10
+  - id: detail.dist.share_套房
+    stage: detail
+    metric: dist.share_套房
+    sample_n: dist.n
+    near: 0.382
+    tolerance: 0.10
+  - id: detail.dist.rooftop_rate
+    stage: detail
+    metric: dist.rooftop_rate
+    sample_n: dist.n
+    near: 0.022
+    tolerance: 0.10
+  - id: detail.dist.fill_rough_coordinate
+    stage: detail
+    metric: dist.fill_rough_coordinate
+    sample_n: dist.n
+    near: 0.993
+    tolerance: 0.05
+  - id: detail.dist.fill_floor_ping
+    stage: detail
+    metric: dist.fill_floor_ping
+    sample_n: dist.n
+    near: 1.0
+    tolerance: 0.05
+  - id: detail.dist.fill_monthly_price
+    stage: detail
+    metric: dist.fill_monthly_price
+    sample_n: dist.n
+    near: 1.0
+    tolerance: 0.05
+
+  # --- 逐欄填充率（fill-rate monitor 平移到 DB 層；ref＝滾動中位數，
+  #     survey 層與 DB 層兩套量法的分歧天生不存在） ---
+  - id: detail.fill.building_type
+    stage: detail
+    metric: fill_rate.building_type
+    sample_n: fill_rate.n
+    min_samples: 5000   # diff 模式的非合成樣本日常約 8–10k
+    rolling_median_within_abs: 0.15
+  - id: detail.fill.property_type
+    stage: detail
+    metric: fill_rate.property_type
+    sample_n: fill_rate.n
+    min_samples: 5000   # diff 模式的非合成樣本日常約 8–10k
+    rolling_median_within_abs: 0.15
+  - id: detail.fill.floor
+    stage: detail
+    metric: fill_rate.floor
+    sample_n: fill_rate.n
+    min_samples: 5000   # diff 模式的非合成樣本日常約 8–10k
+    rolling_median_within_abs: 0.15
+  - id: detail.fill.deposit_type
+    stage: detail
+    metric: fill_rate.deposit_type
+    sample_n: fill_rate.n
+    min_samples: 5000   # diff 模式的非合成樣本日常約 8–10k
+    rolling_median_within_abs: 0.15
+  - id: detail.fill.rough_address
+    stage: detail
+    metric: fill_rate.rough_address
+    sample_n: fill_rate.n
+    min_samples: 5000   # diff 模式的非合成樣本日常約 8–10k
+    rolling_median_within_abs: 0.15
+  - id: detail.fill.imgs
+    stage: detail
+    metric: fill_rate.imgs
+    sample_n: fill_rate.n
+    min_samples: 5000   # diff 模式的非合成樣本日常約 8–10k
+    rolling_median_within_abs: 0.15
+  - id: detail.fill.contact
+    stage: detail
+    metric: fill_rate.contact
+    sample_n: fill_rate.n
+    min_samples: 5000   # diff 模式的非合成樣本日常約 8–10k
+    rolling_median_within_abs: 0.15
+  - id: detail.fill.gender_restriction
+    stage: detail
+    metric: fill_rate.gender_restriction
+    sample_n: fill_rate.n
+    min_samples: 5000   # diff 模式的非合成樣本日常約 8–10k
+    rolling_median_within_abs: 0.15
