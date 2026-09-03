@@ -65,6 +65,14 @@ DB 大遷移整條線消失）、合成快照（synthts）變成 snapshot stage 
 （raw tar.zst 上 S3、公開 zip 當 TS 永久副本、distcheck history jsonl、
 L-C list-diff）——接下來是**逐項偷回來，每一步獨立有收益**，不做 big-bang。
 
+**與分階段的對應**（避免誤讀為「做完就是北極星」）：Phase 1–3 到達的是
+北極星的**殼**——manifest／斷言機制、queue 顯式狀態機、raw 檔案化、單一
+flow 定義；定義性特徵「DB 降級為純 queue、parse 之後全是讀檔寫檔的純函數」
+是 Phase 4 的**本體**，且觸發式、可能永遠只走一部分——三個目標最痛的部分
+（靜默失敗、協作門檻、多 vendor、橫向擴展）Phase 1–3 已解掉，Phase 4 剩的
+主要是費用與全歷史 re-parse 便利。「不做 big-bang」約束的是遷移方式而非
+終點：**路線上每一格都是完整可運作的系統**，停在任何一格收工都不是半套。
+
 ---
 
 ## 三、四個分類軸
