@@ -150,6 +150,18 @@ S3 index。收益：DB 體積成長歸零、rawoffload／housekeep 退役、
 DuckDB 掃分區做分析）**留給明確觸發點**：591 再改版逼全歷史 re-parse、
 或 RDS 費用重新變成痛點。屆時一個 stage 一個 stage 換，不是一次翻掉。
 
+**存取模式分層**（格式選擇的依據）：(1) 高頻點查（queue claim）留在
+DB——唯一可變狀態不進檔案的另一面；(2) 單屋跨日歷史點查是已承認的
+退化項，緩解＝parquet 分區內按 house_id 排序、靠 row-group 統計跳讀
+（秒級），常查再物化本機 DuckDB；(3) jsonl 只用在「整檔掃描是唯一
+熱路徑」的小檔（list stubs、manifest），若分析量變大，stage 產出格式
+是契約後的實作細節、可換 parquet。唯一需要 random access 的 jsonl 是
+`raw/` 的 index（debug 點查單頁 HTML），而 **tar.zst 整流壓縮下 offset
+無法直接跳**——3-1 落地時需在「整包拉回（日包百 MB 級，可接受）」與
+「可尋址壓縮（zstd seekable frames 或 member 各自壓＋每日字典補壓縮率，
+index 直接對應 S3 Range GET）」間定案，且**格式 day one 拍板**：raw
+分區不可變，事後換框架＝重寫全部歷史。
+
 ### D. 協作層：vendor 即 plugin＋monorepo＋貢獻者迴路
 
 **現況**：`RentalSpider` contract 本來就 vendor 中立、出貨端天生多來源、
@@ -325,6 +337,9 @@ synthts／syncstateful／housekeep）——維護面積隨儲存收斂；S3 欄�
 
 ## 編修紀錄
 
+- **2026-09-03（六補）** 軸 C 補〈存取模式分層〉：點查／掃描／jsonl 的
+  格式歸屬原則；raw index 的 random access 前提（tar.zst 整流壓縮 vs
+  可尋址壓縮）列為 3-1 day one 拍板項。
 - **2026-09-03（五補）** 三之末新增〈案例對照：L-C 在新架構的形狀〉：
   diff 降頻從「後補模式＋synthts 補丁」變「seed 純函數＋snapshot carry
   語意」，離線可測／可稽核／多 vendor 免費；判準（detail 判官、bootstrap
