@@ -96,6 +96,15 @@ L-C list-diff）——接下來是**逐項偷回來，每一步獨立有收益**
 三欄（一顆 migration）；spider errback 改寫狀態不刪列；go.sh／orchestrate
 finalize 加斷言，紅 → 非零 exit＋Slack。
 
+**不刪列的效能與容量對策**（設計時一併落地，避免表無限長）：現制的
+問題不是「有刪除」而是「刪除承載完成語意」，新制把兩者拆開——
+(a) 熱路徑用 partial index（`WHERE status IN ('pending','in_flight','failed')`），
+終結列自動掉出索引，claim 掃描量只跟「當下未終結列」有關、與表總量無關；
+(b) finalize 時終結統計（seeds／done／dead／error 分類）快照進當日
+manifest，之後這些列只剩 debug 價值——套既有滾動窗口哲學保留 N 天
+（比照 raw 的 90 天），窗口外每日批次 DELETE。**「何時刪」從正確性條件
+降級為清理政策**，早刪晚刪都不影響對帳。
+
 ### B. 觀測層：manifest 作為階段間契約
 
 **現況**：品質觀測是四套工具、四種 baseline 格式——statscheck（當日）、
@@ -249,6 +258,8 @@ Phase 1 一起做；順序由觸發時點決定，不硬性綁死。
 
 ## 編修紀錄
 
+- **2026-09-03（補）** 依維護者回饋補 1-1 的「不刪列」效能對策
+  （partial index＋manifest 快照後滾動清理，刪除從語意降級為清理政策）。
 - **2026-09-03** Claude 起草。整併 repo 外兩篇 redo-design 筆記的結構性結論
   （量測數據依慣例省略）、docs/ 七份計畫現況、與 2026-08 以來的事故經驗；
   五步「偷回來」路線中 list-driven 成交偵測（L-C）已完成，其餘四步落入
