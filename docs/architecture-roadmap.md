@@ -150,6 +150,21 @@ S3 index。收益：DB 體積成長歸零、rawoffload／housekeep 退役、
 DuckDB 掃分區做分析）**留給明確觸發點**：591 再改版逼全歷史 re-parse、
 或 RDS 費用重新變成痛點。屆時一個 stage 一個 stage 換，不是一次翻掉。
 
+**schema 演進紀律**（跨年分區並存的規則）：三層分界——raw 無 schema
+永不遷移；vendor parse 中間產物（現制 detail_dict）**不再持久化**，
+降為 parse stage 行程內中間值，591 改版打到的是 vendor plugin 程式碼
+而非任何落地資料；`parsed/`／stubs 落地的是我們控制的 normalized 契約，
+與站方版式解耦。契約演進兩條路：(a) **只增不改**（同 enum 治理）——
+新欄位 nullable append、改語意＝新欄位＋棄用標記，讀取端
+`union_by_name` 掃跨年分區、舊分區自動補 NULL，並存無害；(b) breaking
+change **不寫 migration、用重算**——raw 都在，`--from parse` 重寫
+歷史分區＋下游依 DAG 重建。每列帶 `parser_version`、manifest 記
+schema 版本；**歷史重算永遠由人顯式觸發**（版本對比決定回溯深度），
+不做 make 式 mtime 自動級聯——避免 parser 改一行自動重算全歷史。
+推論出的補強：**list raw 也應按日落地 `raw/`**（list 頁均長極小、
+成本可忽略），否則 stub 層沒有「回頭多抓一欄」的重算保險——
+591 版式改版的兜底就不完整。
+
 **存取模式分層**（格式選擇的依據）：(1) 高頻點查（queue claim）留在
 DB——唯一可變狀態不進檔案的另一面；(2) 單屋跨日歷史點查是已承認的
 退化項，緩解＝parquet 分區內按 house_id 排序、靠 row-group 統計跳讀
@@ -337,6 +352,10 @@ synthts／syncstateful／housekeep）——維護面積隨儲存收斂；S3 欄�
 
 ## 編修紀錄
 
+- **2026-09-03（七補）** 軸 C 補〈schema 演進紀律〉：三層分界（raw 無
+  schema／vendor dict 不落地／normalized 契約只增不改）、breaking 用
+  重算不用 migration、重算人為觸發不自動級聯；補強拍板項：list raw
+  也按日落地，補齊 stub 層的重算保險。
 - **2026-09-03（六補）** 軸 C 補〈存取模式分層〉：點查／掃描／jsonl 的
   格式歸屬原則；raw index 的 random access 前提（tar.zst 整流壓縮 vs
   可尋址壓縮）列為 3-1 day one 拍板項。
