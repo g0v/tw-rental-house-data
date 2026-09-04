@@ -12,9 +12,15 @@
         itemprop="url"
         :href="`/blog/post/${post.id}/`"
       >
-        <div class="aspect-video overflow-hidden border-b border-rule">
+        <div class="relative aspect-video overflow-hidden border-b border-rule">
           <img
-            class="h-full w-full object-cover"
+            class="absolute inset-0 h-full w-full scale-110 object-cover blur-lg"
+            aria-hidden="true"
+            alt=""
+            :src="post.cover.placeholder"
+          />
+          <img
+            class="lqip relative h-full w-full object-cover"
             itemprop="image"
             :src="post.cover.src"
             :srcset="post.cover.srcset"
@@ -24,6 +30,7 @@
             :alt="post.title"
             loading="lazy"
             decoding="async"
+            onload="this.classList.add('is-loaded')"
           />
         </div>
         <div class="flex-auto px-4 pt-3">
