@@ -11,6 +11,13 @@ SESSION_ENDPOINT = '{}/?kind=0&region=6'.format(SITE_URL)
 
 ListRequestMeta = namedtuple('ListRequestMeta', ['id', 'name', 'page'])
 
+# 「已成交」列表（#229）：591 改版後成交資訊只在這裡，detail 頁成交即 404。
+# 依成交時間倒序分頁，page 從 1 起算（與 list 的 0-based meta 不同，
+# 這裡直接用 591 的頁碼）
+DEAL_LIST_ENDPOINT = f'{SITE_URL}/list?shType=clinch&'
+
+DealRequestMeta = namedtuple('DealRequestMeta', ['id', 'name', 'page'])
+
 DetailRequestMeta = namedtuple('DetailRequestMeta', ['id'])
 
 zh_number_dict = {

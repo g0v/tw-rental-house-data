@@ -1,7 +1,9 @@
 from scrapy.spidermiddlewares.httperror import HttpError
 from scrapy_twrh.spiders.rental_spider import RentalSpider
 
-from .util import DETAIL_ENDPOINT, LIST_ENDPOINT, ListRequestMeta, DetailRequestMeta
+from .util import (
+    DETAIL_ENDPOINT, LIST_ENDPOINT, DEAL_LIST_ENDPOINT,
+    ListRequestMeta, DetailRequestMeta, DealRequestMeta)
 
 
 class RequestGenerator(RentalSpider):
@@ -51,6 +53,19 @@ class RequestGenerator(RentalSpider):
             #     'device': 'pc',
             #     'deviceid': self.session['PHPSESSID']
             # }
+        }
+
+    def gen_deal_request_args(self, rental_meta: DealRequestMeta):
+        # https://rent.591.com.tw/list?shType=clinch&region=1&page=3
+        # 已成交列表（#229），依成交時間倒序；page 用 591 的 1-based 頁碼
+        return {
+            'dont_filter': True,
+            'errback': self.error_handler,
+            'url': "{}region={}&page={}".format(
+                DEAL_LIST_ENDPOINT,
+                rental_meta.id,
+                rental_meta.page
+            ),
         }
 
     def error_handler(self, failure):

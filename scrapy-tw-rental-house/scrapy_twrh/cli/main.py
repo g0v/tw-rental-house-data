@@ -3,6 +3,7 @@
   twrh parse <html 檔>                離線跑 detail parser
   twrh detail <house-id 或 URL>       抓單一 detail 並解析
   twrh list <縣市名或 list URL>       抓一頁 list 並解析
+  twrh deals <縣市名> [--lookback N]  走「已成交」列表，列出 N 天內的成交事件（#229）
   twrh survey <縣市名> [--limit N]    全量 list + detail，輸出完整性報告（不寫 DB）
   twrh harvest <縣市名> [-k N]        分層取樣 detail HTML → fixture 候選 + manifest
   twrh probe <縣市名> [-k N]          nightly 比率斷言，exit code 判紅綠（3-2）
@@ -89,6 +90,36 @@ def cmd_list(args):
             k: '{}/{}'.format(*v)
             for k, v in runner.fill_rates([h['dict'] for h in houses]).items()},
         'houses': houses if args.verbose else [h['house_id'] for h in houses],
+    })
+
+
+def cmd_deals(args):
+    fetcher = http.Fetcher(delay=args.delay)
+    region = _resolve_region(args.target)
+    spider = runner.make_spider()
+    spider.deal_lookback_days = args.lookback
+    events = []
+    page = 1
+    while True:
+        status, body = fetcher.get(runner.deal_url(region['id'], page))
+        if status != 200:
+            sys.exit('deal list 頁 {} 回應 {}'.format(page, status))
+        page_events, has_next = runner.parse_deal_page(spider, region, page, body)
+        events.extend(page_events)
+        if not has_next or page >= args.max_pages:
+            break
+        page += 1
+    by_date = {}
+    for event in events:
+        by_date[event['deal_time']] = by_date.get(event['deal_time'], 0) + 1
+    dump({
+        'city': region['city'],
+        'lookback_days': args.lookback,
+        'pages': page,
+        'n_events': len(events),
+        'by_deal_date': dict(sorted(by_date.items())),
+        'unknown_deal_time': spider.deal_unknown_ages,
+        'events': events if args.verbose else [e['house_id'] for e in events],
     })
 
 
@@ -254,6 +285,13 @@ def main():
     p.add_argument('--page', type=int, default=0, help='0-based 頁碼')
     p.add_argument('-v', '--verbose', action='store_true')
     p.set_defaults(func=cmd_list)
+
+    p = sub.add_parser('deals', help='走「已成交」列表，列出 lookback 窗內的成交事件')
+    p.add_argument('target', help='縣市名或 list URL')
+    p.add_argument('--lookback', type=int, default=2, help='只收 N 天內的成交（預設 2）')
+    p.add_argument('--max-pages', type=int, default=200, help='最多翻 N 頁（預設 200）')
+    p.add_argument('-v', '--verbose', action='store_true')
+    p.set_defaults(func=cmd_deals)
 
     p = sub.add_parser('survey', help='全量 list+detail 完整性報告（不寫 DB）')
     p.add_argument('city', help='縣市名或 list URL')

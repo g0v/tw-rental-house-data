@@ -78,6 +78,26 @@ scrapy crawl awesome
 
 Please see [example](https://github.com/g0v/tw-rental-house-data/tree/master/scrapy-twrh-example) for detail usage.
 
+### Deal events (成交)
+
+Since 591's 2026 redesign a rented listing's detail page returns 404, and the
+deal signal lives only in the "已成交" list (`list?shType=clinch`, newest deal
+first). `Rental591Spider` walks that list per city and yields one
+`GenericHouseItem` per deal with `deal_status=DEAL`, `deal_time` (the deal
+date, derived from 591's relative "N天前" against a base date) and `n_day_deal`
+(591's own "N天成交", days from posting to deal):
+
+```bash
+scrapy crawl awesome -a deals_only=True -a deal_lookback_days=2
+twrh deals 台北市 --lookback 2           # same thing, no project needed
+```
+
+`deal_lookback_days` bounds how far back the walk goes (a daily run needs 2:
+today, yesterday and one day of overlap — events are idempotent). Pass
+`deal_base_date=YYYY-MM-DD` when the crawl date is pinned by the caller; the
+spider otherwise uses today. Houses never seen before may appear — how to
+store them is the caller's decision.
+
 ## Items
 
 All spiders populates 2 type of Scrapy items: `GenericHouseItem` and `RawHouseItem`.

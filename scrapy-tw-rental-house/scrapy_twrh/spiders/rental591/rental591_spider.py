@@ -1,10 +1,11 @@
 import scrapy # type: ignore
 from .list_mixin import ListMixin
 from .detail_mixin import DetailMixin
+from .deal_mixin import DealMixin
 from .all_591_cities import all_591_cities
 # from .util import SESSION_ENDPOINT
 
-class Rental591Spider(ListMixin, DetailMixin):
+class Rental591Spider(ListMixin, DetailMixin, DealMixin):
     name = 'rental591'
     # not used since #176
     # csrf_token = ''
@@ -13,11 +14,15 @@ class Rental591Spider(ListMixin, DetailMixin):
     #     'PHPSESSID': None
     # }
 
-    def __init__(self, target_cities=None, **kwargs):
+    def __init__(self, target_cities=None, deals_only=False, **kwargs):
         super().__init__(
             vendor='591 租屋網',
             **kwargs
         )
+        # -a deals_only=True：只走「已成交」列表產成交事件（#229），
+        # 不爬 list／detail
+        if deals_only == 'True' or deals_only is True:
+            self.start_list = self.start_deal
 
         if target_cities:
             lookup_dict = {}

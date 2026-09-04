@@ -25,6 +25,8 @@ today, past templates live in git history and released packages.
 | `20260820-detail-parking.html` | 車位，沒有房屋詳情與租住設備區塊 |
 | `20260820-detail-not-found.html` | 591 對已下架房源回的 404 頁 |
 | `20260827-list-beyond-last-page.html` | 591 的空結果列表頁（`.empty`）——爬取途中頁數縮減後，越界尾頁拿到的回應（HTTP 200） |
+| `20260904-deal-list.html` | 「已成交」列表頁（`list?shType=clinch`，#229）的合成縮影：payload `dealDataList` 三筆，混用變數與字面值、字串內含逗號與 `]`、相對成交日 今日／昨日／N天前 |
+| `20260904-deal-list-empty.html` | 同上但 `dealDataList:[]`——翻到底的空頁 |
 
 ## How they were made
 
@@ -46,7 +48,9 @@ steps, both of which were asserted before the file was written:
    the scrub does not claim to touch still equals the pruned one.
 
 Nothing here is traceable back to a real listing, and no landlord's copy is in
-git.
+git. The two `deal-list` fixtures were not pruned from a real page but written
+by hand in the payload's shape (see the parser docstring for what 591 serves);
+their titles and ids are synthetic.
 
 Two things are worth knowing about the files:
 

@@ -40,6 +40,33 @@ def detail_url(house_id):
     return '{}{}'.format(u591.DETAIL_ENDPOINT, house_id)
 
 
+def deal_url(region_id, page):
+    '''page 為 591 的 1-based 頁碼，與 DealRequestMeta 相同'''
+    return '{}region={}&page={}'.format(u591.DEAL_LIST_ENDPOINT, region_id, page)
+
+
+def parse_deal_page(spider, region, page, body, status=200):
+    '''回傳 (events, has_next)
+
+    events: [{house_id, deal_time, n_day_deal}]，來自 default_parse_deal 產出的
+    GenericHouseItem（只含 lookback 窗內的）；has_next: 是否還要翻下一頁
+    '''
+    meta = {'rental': u591.DealRequestMeta(region['id'], region['city'], page)}
+    response = fake_response(deal_url(region['id'], page), body, meta, status)
+    events = []
+    has_next = False
+    for entry in spider.default_parse_deal(response):
+        if isinstance(entry, GenericHouseItem):
+            events.append({
+                'house_id': entry['vendor_house_id'],
+                'deal_time': entry['deal_time'].date().isoformat(),
+                'n_day_deal': entry['n_day_deal'],
+            })
+        elif isinstance(entry, scrapy.Request):
+            has_next = True
+    return events, has_next
+
+
 def parse_list_page(spider, region, page, body, status=200):
     '''回傳 (house_dicts, next_list_pages)
 
