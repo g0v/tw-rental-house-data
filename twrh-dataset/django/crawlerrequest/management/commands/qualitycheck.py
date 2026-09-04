@@ -48,6 +48,11 @@ class Command(BaseCommand):
         n_synth = snapshot.get('counts', {}).get('n_synthesized')
         if n_synth:
             lines.append('• 合成快照: `{}`'.format(n_synth))
+        deals = manifests.load_manifest(date_str, 'deals') or {}
+        n_events = deals.get('counts', {}).get('n_events')
+        if n_events is not None:
+            lines.append('• 成交事件（deals stage）: `{}`，中位 n_day_deal `{}`'.format(
+                n_events, deals.get('dist', {}).get('median_n_day_deal', '?')))
         return '\n'.join(lines)
 
     def handle(self, *_args, **options):

@@ -8,7 +8,7 @@ import json
 import os
 
 SCHEMA_VERSION = 1
-STAGES = ('list', 'detail', 'snapshot')
+STAGES = ('list', 'detail', 'deals', 'snapshot')
 
 DEFAULT_DIR = os.path.join(
     os.path.dirname(os.path.realpath(__file__)), '..', '..', 'manifests')
