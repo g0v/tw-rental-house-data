@@ -53,6 +53,10 @@ DB 降級為 queue 與索引：
 
 1. **檔案存在＝該 stage 完成**——resumability、冪等、進度追蹤免費得到。
 2. **只有 crawl 需要可變狀態**，收在一張 queue 表；其他 stage 都是純函數。
+   （終局連這個例外也消掉：seeds 事先已知，queue 退化為「seeds 檔＋
+   每 worker 一份 append-only 終結紀錄」，不需要任何 server——見
+   〈開放問題・已拍板〉2026-09-04 項。Phase 1–3 仍用表，因為 DB 此時
+   還是 House／HouseTS 的真相，queue 只是搭便車。）
 3. **每個 stage 附一份 manifest**，品質門檻＝對 manifest 的斷言。
 
 這個形狀的紅利是連鎖的：re-parse 歷史＝重跑一個 stage（rerun 工具消失）、
@@ -317,7 +321,7 @@ Phase 1 一起做；順序由觸發時點決定，不硬性綁死。
 
 | 事項 | 觸發條件 |
 |---|---|
-| snapshot／deals parquet 化、RDS 降級為純 queue（SQLite-on-EFS 或極小 Postgres）、DuckDB 分析工作流 | 591 大改版逼全歷史 re-parse，或 RDS 費用重新成為痛點 |
+| snapshot／deals parquet 化、queue 出 DB（檔案化靜態分片，RDS 退役）、DuckDB 分析工作流 | 591 大改版逼全歷史 re-parse，或 RDS 費用重新成為痛點 |
 | AI triage A1／A2（告警自動開 issue、核准後自動修 PR） | Phase 1 的 manifest 告警就位後（manifest 即證據包）；見 `docs/ai-triage.md` |
 | 第二個 vendor 之後的規模化（新增 vendor 指南、issue 模板、發版節奏文件） | multi-vendor P2，第一個新站走通後 |
 
@@ -346,7 +350,8 @@ Phase 1 一起做；順序由觸發時點決定，不硬性綁死。
 | **現在就 parquet 化 snapshot／deals** | 沒有觸發點（re-parse 需求、RDS 費用痛點）之前，收益不抵遷移成本與心智轉換（invalidate 類「回頭修歷史」變成重寫分區＋重建下游）。留給 Phase 4 |
 | **csv-aggregator 換 DuckDB** | clickhouse local 已對「公開資料集去重語意」驗證過、每年只跑十幾次；port 要重驗 byte 級等價，收益趨近零 |
 | **在第二個 vendor 出現前做 monorepo 收攏** | 沒有第二個實作者時的 workspace 邊界是猜的；與 2-1 同動才有驗證對象（dx-roadmap 4-6 的既定原則） |
-| **queue 換訊息佇列（SQS 等）** | 「認領＋終結狀態＋收工對帳」需要的是可查詢的表，不是 at-least-once 投遞；SQS 反而做不到 seeds==terminals 對帳 |
+| **queue 換訊息佇列（SQS 等）** | 「認領＋終結狀態＋收工對帳」需要的是可查詢的紀錄，不是 at-least-once 投遞；SQS 反而做不到 seeds==terminals 對帳。終局形狀（檔案化靜態分片）同樣滿足對帳且不需 server，見已拍板 2026-09-04 項 |
+| **SQLite-on-EFS 給多 worker 共用** | NFS 檔案鎖不可靠，多寫者 claim 是已知地雷；只在單寫者成立。真要多 worker，走「每 worker 一檔」佈局——到那時 jsonl 就夠，SQLite 也沒必要 |
 | **為橫向擴展預先拆微服務** | 擴展軸（worker 數、vendor 數）都已由 queue 表與 Vendor Protocol 承載；行程邊界不是瓶頸 |
 
 ---
@@ -369,12 +374,12 @@ Phase 1 一起做；順序由觸發時點決定，不硬性綁死。
 | 4b parsed parquet | `detail_dict` 停寫——`house_etc` 退役；rerun 工具退役 | — | ＋`parsed/<vendor>/<date>.parquet` |
 | 4c snapshot parquet | `house_ts` 退役；`synthts` 消失（carry 併入 stage 定義）——housekeep 整支退役 | — | ＋`snapshot/<date>.parquet`（取代 TS 歸檔 tgz） |
 | 4d deals parquet | deal 推導出 DB（`syncstateful` 退役）——`house` 退役（現值＝最新 snapshot） | — | ＋`deals/<date>.parquet` |
-| 4e RDS 降級純 queue | RDS 只剩 queue 一張表，或換 SQLite-on-EFS（單寫者 $0）；export／statscheck 改 DuckDB 掃 S3 | queue 為 SQLite 時 `.db` 住 EFS | 成為唯一真相來源（北極星全樹到齊） |
+| 4e queue 出 DB、RDS 退役 | `request_ts` 退役——queue 改為 seeds 檔＋每 worker 一份終結紀錄（檔案化靜態分片，見已拍板 2026-09-04 項），DB 歸零；export／statscheck 改 DuckDB 掃 S3 | `seeds/<date>.jsonl`＋`terminals/<date>/run-<k>/worker-<i>.jsonl` 住 EFS scratch，finalize 併入 manifest | 成為唯一真相來源（北極星全樹到齊） |
 
-讀表要點：DB 欄的走向＝「先停止長大（3-1）→ 逐表退役（4b–4d）→ 只剩
-queue（4e）」，且每一步 DB 少掉的那塊都有一個工具同時退役（rerun／
-synthts／syncstateful／housekeep）——維護面積隨儲存收斂；S3 欄即北極星
-那棵樹的生長順序。
+讀表要點：DB 欄的走向＝「先停止長大（3-1）→ 逐表退役（4b–4d）→ 歸零
+（4e，queue 也出 DB）」，且每一步 DB 少掉的那塊都有一個工具同時退役
+（rerun／synthts／syncstateful／housekeep／request_ts 表）——維護面積
+隨儲存收斂；S3 欄即北極星那棵樹的生長順序。
 
 ---
 
@@ -439,6 +444,42 @@ synthts／syncstateful／housekeep）——維護面積隨儲存收斂；S3 欄�
   （落 assertions.yaml，不產第五套格式）。
 - **2-3 B 層提前**：queue 語意測試矩陣與 1-1 同做（原備註的觸發
   成立——它同時是 1-1 重構自身的安全網）。
+- **queue 終局＝檔案化靜態分片，不需 server**（2026-09-04 拍板，
+  落點 4e）：Postgres 被選上只因 `FOR UPDATE SKIP LOCKED` 順手，
+  queue 真正的需求只有三條——N 個 worker 不重複、每筆有顯式終結狀態、
+  收工能算 seeds==terminals——而 pipeline 一天只跑幾小時，為此養一台
+  DB server 不划算。北極星裡 seeds 由 list stage 之後的純函數一次算出、
+  事先已知，因此「認領」這個動作本身不需要：
+  - **分片**：worker i 對「剩餘集合」排序後依位置輪流分（不用
+    `hash % N`——剩餘集合小時取模明顯不均，位置輪分精確均等且所有
+    worker 無通訊算出同一結果）；首輪的剩餘集合就是 seeds 本身。
+  - **記帳按 house_id 不按 worker**：每個 worker 只寫自己的 append-only
+    終結檔 `terminals/<date>/run-<k>/worker-<i>.jsonl`（done／failed／
+    dead，每行帶 attempts），單寫者、無鎖，EFS 上安全。沒有 in_flight
+    狀態——「未終結」即「還要做」，crash 當下的請求自然重做，現制
+    「殘留 in_flight 要人清」的問題不存在。
+  - **續跑可改 N、不需各 worker 進度一致**：新一輪每個 worker 讀當日
+    **全部**終結檔（這步不能省），聯集即已終結集合，剩餘＝seeds 減
+    已終結（done、dead、attempts 達上限的 failed），再對剩餘集合重新
+    分片；舊進度多不均都只影響剩餘集合長什麼樣。新一輪寫新一代
+    `run-<k+1>/`，永不接續別人的檔。attempts 跨檔累計（取該 house
+    最大值往下加），否則改 N 重跑會把重試計數歸零、dead 永遠出不來。
+  - **primary 整理 checkpoint 是最佳化不是正確性條件**：可把各 shard
+    併成 `checkpoint.jsonl` 加速啟動，但**只增不刪**（原 shard 留著，
+    舊 worker 沒死透補寫也不丟）；舊新 worker 撞同一戶只是多抓一次，
+    finalize 按 house_id 去重取最終狀態，不會算錯帳。以本專案量級
+    （一日數萬 seed、MB 級檔案）全讀比整理便宜，先不做 checkpoint。
+  - **finalize**：合併所有世代、按 house_id 去重，seeds==terminals
+    變成算行數，結果直接就是 detail manifest 的 queue 終結統計。
+  - 代價：無動態 work-stealing——worker 同質、瓶頸在站方而非 worker，
+    影響可忽略。若日後被證明不夠，動態認領的 serverless 解是
+    DynamoDB 條件式 UpdateItem（按請求計費、閒置零成本），但引入 AWS
+    專屬相依、本機要跑 DynamoDB Local，與可攜性原則有衝突，列為
+    備案不列為路線。
+  - 過渡期（Phase 1–3）不動：DB 仍是 House／HouseTS 真相，queue 只是
+    搭便車，單獨換沒有收益。若只為省閒置費，便宜解＝RDS 排程
+    stop／start（EventBridge 前後各觸發一次），或 Postgres 當 ECS
+    sidecar、資料目錄放 EFS 讓 RDS 先退場。
 
 ### 仍開放
 
@@ -479,6 +520,11 @@ Phase 1＋3 全部程式面完成、本機開發場驗證通過；部署照拍�
 
 ## 編修紀錄
 
+- **2026-09-04** queue 終局拍板：檔案化靜態分片（seeds 檔＋每 worker
+  一份終結紀錄），不需 server；續跑可改 N、記帳按 house_id、attempts
+  跨檔累計、checkpoint 只增不刪；4e 改為「queue 出 DB、RDS 退役」；
+  建議不做加 SQLite-on-EFS 多寫者；DynamoDB 列備案、RDS stop／start
+  列過渡期省費解。
 - **2026-09-03（十四補）** Phase 1＋3 程式面全數完成（B 層→1-1→1-2→
   1-3→3-1→3-2→3-3，各自獨立 commit）；新增〈實作狀態〉節：部署階梯
   D1–D6、兩個日曆門檻（平行週、雙寫對帳）、驗收重演結果與偏離註記。
