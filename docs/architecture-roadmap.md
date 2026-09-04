@@ -487,8 +487,37 @@ Phase 1 一起做；順序由觸發時點決定，不硬性綁死。
 
 | # | 問題 | 歸屬 |
 |---|---|---|
-| 6 | **deals 語意 × #229**：成交訊號消失調查的結論影響事件類別設計（DEAL／NOT_FOUND／原因不明下架） | 調查先行 |
+| 6 | **deals 語意 × #229**：成交訊號消失調查的結論影響事件類別設計（DEAL／NOT_FOUND／原因不明下架） | **調查完成（2026-09-04，見下）**，事件設計待拍板 |
 | 8 | **queue 清理窗口長度**：預設 90 天，實跑後定案 | Phase 1 |
+
+#### #6 調查結論（2026-09-04）：成交訊號沒有消失，是搬到 list 端
+
+- **detail 端確已無成交訊號**：新版頁面的 Nuxt payload 雖仍有
+  `status`／`dealText`／`dealTime` 三欄，但成交後 detail 頁直接 404
+  （error 頁），能拿到 200 的頁面 `status` 一律 `open`——parser 的
+  `.tag-deal` 分支自改版起永遠不命中，issue 的觀察正確。
+- **成交資訊改由 list 端提供**：`rent.591.com.tw/list?region=<R>&shType=clinch`
+  是「已成交」列表，依成交時間倒序分頁，每項在 payload `dealDataList`
+  帶 `id`／`deal_total_day`（「N天成交」＝刊登到成交天數）／`deal_time`
+  （相對日：今日／昨日／N天前）／區域／型態／坪數／租金；每頁 50 筆，
+  各縣市皆可，且翻頁可回溯**兩個月以上**。
+- **抽驗（台北市，與本機 DB 交叉）**：本機判 NOT_FOUND 的關閉物件約
+  四分之一出現在成交列表（下限——本機 DB 已停更兩天）；591 的
+  `deal_total_day` 與我們「首見→關閉」天數的差集中在 0～＋1 天，
+  兩套量法對齊。其餘四分之三關閉＝下架／過期／自行撤，無法區分，
+  與改版前語意相同（DEAL 一向只來自 591 標記）。
+- **推論的形狀**（待拍板）：新增 **deals stage＝list 端純函數**——每日
+  走各縣市成交列表，翻到「成交日早於上次成功爬取日」為止（每縣市
+  每日個位數頁），產出成交事件（house_id、絕對成交日＝爬取日−N、
+  `deal_total_day`）；事件寫回 House／HouseTS 的 DEAL（sticky 語意不變），
+  `syncstateful` 既有的 DEAL 推導直接接上，`n_day_deal` 另可用 591 值
+  對帳。從未 list 到的物件（刊登與成交都落在兩次爬取之間）記事件但
+  不造 House。**2026-08-26 以來的成交可一次性回補**（列表回溯深度
+  足夠），#229 的語意斷層可補平、不需在資料集文件上記永久缺口。
+  package 端＝新增第三種 request 類型（deal list）與 payload parser，
+  Vendor Protocol（2-1）介面隨之加 `deal_requests`／`parse_deals`；
+  北極星的 `deals/<date>.parquet` 因此有了原生資料來源，不再只是
+  syncstateful 推導。
 
 ---
 
@@ -537,6 +566,10 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 
 ## 編修紀錄
 
+- **2026-09-04（二補）** #229 調查結論寫入開放問題 #6：成交訊號搬到
+  list 端（`shType=clinch` 成交列表，payload 帶 deal_total_day／
+  deal_time）、detail 頁成交後 404；抽驗關閉物件約四分之一為成交、
+  天數量法對齊；提議 deals stage＝list 端純函數＋一次性回補 8/26 起。
 - **2026-09-04（補）** 狀態列改「已多輪 review、部署進行中」；〈實作狀態〉
   補部署紀錄表（D1＋D2＋D4 於 09-03 部署、09-04 首跑驗收、pin commit）、
   D3 門檻改「連續 3 天一致即切」、202609 出貨改 AWS 與 publisher 雲化
