@@ -17,9 +17,36 @@
   --color-ink-soft: #4c5248;
   --color-rule: #c9c4b8;
 
-  --font-sans: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
-  --font-serif: "Noto Serif TC", "PingFang TC", serif;
+  --font-sans: "Noto Sans TC", "Noto Sans TC Fallback", sans-serif;
+  --font-serif: "Noto Serif TC", "Noto Serif TC Fallback", serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+/*
+ * 備用字型的垂直度量對齊 Noto（hhea ascent/descent，upm 1000；line-gap 0），
+ * 首次造訪用系統字時行高與 Noto 一致，之後快取命中換成 Noto 也不位移。
+ * 方塊字寬度本來就是 1em，不需要 size-adjust。
+ */
+@font-face {
+  font-family: "Noto Sans TC Fallback";
+  src:
+    local("PingFang TC"),
+    local("Microsoft JhengHei"),
+    local("Noto Sans CJK TC");
+  ascent-override: 116%;
+  descent-override: 28.8%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: "Noto Serif TC Fallback";
+  src:
+    local("Songti TC"),
+    local("PMingLiU"),
+    local("Noto Serif CJK TC");
+  ascent-override: 115.1%;
+  descent-override: 28.6%;
+  line-gap-override: 0%;
 }
 
 html {
@@ -34,4 +61,13 @@ h2,
 h3,
 h4 {
   font-family: var(--font-serif);
+}
+
+/* LQIP：模糊小圖墊底，真圖載完（onload 加 is-loaded）淡入；沒 JS 就直接顯示 */
+html.js .lqip {
+  opacity: 0;
+  transition: opacity 400ms ease-out;
+}
+html.js .lqip.is-loaded {
+  opacity: 1;
 }

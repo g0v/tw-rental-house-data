@@ -90,11 +90,15 @@ const currentPath = Astro.url.pathname
       title={SITE_NAME}
       href={new URL('rss.xml', Astro.site)}
     />
+    {/* 有 JS 才做 LQIP 淡入（見 global.css .lqip）；沒 JS 圖直接顯示 */}
+    <script is:inline>document.documentElement.classList.add('js')</script>
+    {/* 字型：display=optional，時限內沒到就這次用系統字、不中途換字（FOUT）；
+        字重只留有用到的（serif 500、mono 500 站內沒用） */}
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@500;700;900&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@700;900&display=optional"
     />
     <script
       is:inline

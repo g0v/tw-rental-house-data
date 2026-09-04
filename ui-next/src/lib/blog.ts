@@ -1,4 +1,6 @@
+import type { ImageMetadata } from 'astro'
 import { getImage } from 'astro:assets'
+import sharp from 'sharp'
 import { getCollection, type CollectionEntry } from 'astro:content'
 import { marked } from 'marked'
 
@@ -49,6 +51,28 @@ export interface CardCover {
   sizes: string
   width: number
   height: number
+  /** LQIP：20px 寬 WebP 的 data URI，放大加 blur 當佔位 */
+  placeholder: string
+}
+
+/** 圖片 LQIP（Low Quality Image Placeholder）：縮到 20px 寬轉 base64，約 300–600 bytes */
+const LQIP_WIDTH = 20
+const lqipCache = new Map<string, Promise<string>>()
+
+export function lqip(image: ImageMetadata): Promise<string> {
+  // fsPath 是 astro:assets 在 build 時掛上的原檔路徑，公開型別沒列但 image() 匯入一定有
+  const path = (image as ImageMetadata & { fsPath?: string }).fsPath
+  if (!path) throw new Error(`lqip: ${image.src} 沒有 fsPath，不是 src/ 內匯入的圖`)
+  let cached = lqipCache.get(path)
+  if (!cached) {
+    cached = sharp(path)
+      .resize(LQIP_WIDTH)
+      .webp({ quality: 30 })
+      .toBuffer()
+      .then((buf) => `data:image/webp;base64,${buf.toString('base64')}`)
+    lqipCache.set(path, cached)
+  }
+  return cached
 }
 
 /** 文章頁封面／og:image 用；og 抓 1200 寬 jpg，社群平台不一定吃 WebP */
@@ -65,12 +89,15 @@ export async function ogCoverUrl(post: BlogPost, site: URL | undefined) {
 
 /** BlogPostList 卡片需要的欄位 */
 export async function toCard(post: BlogPost) {
-  const cover = await getImage({
-    src: post.data.cover,
-    widths: CARD_COVER_WIDTHS,
-    sizes: CARD_COVER_SIZES,
-    format: 'webp'
-  })
+  const [cover, placeholder] = await Promise.all([
+    getImage({
+      src: post.data.cover,
+      widths: CARD_COVER_WIDTHS,
+      sizes: CARD_COVER_SIZES,
+      format: 'webp'
+    }),
+    lqip(post.data.cover)
+  ])
   return {
     id: post.id,
     title: post.data.title,
@@ -80,7 +107,8 @@ export async function toCard(post: BlogPost) {
       srcset: cover.srcSet.attribute,
       sizes: CARD_COVER_SIZES,
       width: cover.attributes.width,
-      height: cover.attributes.height
+      height: cover.attributes.height,
+      placeholder
     } satisfies CardCover,
     excerpt: excerptText(post),
     createdIso: post.data.created.toISOString(),
