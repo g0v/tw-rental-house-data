@@ -1,7 +1,9 @@
 # 架構演進計畫（好維護・橫向擴展・模組可抽換）
 
-> **狀態**：本文件由 Claude 起草（2026-09-03），**尚未經維護者完整 review**，
-> 內容可能隨時變動；歡迎以 issue / PR 回饋。
+> **狀態**：本文件由 Claude 起草（2026-09-03），已經維護者多輪 review 拍板
+> （見〈開放問題〉與〈編修紀錄〉）；Phase 1＋3 程式面已併入 master、部署
+> 階梯進行中（見〈實作狀態〉）。內容仍會隨部署與實跑回饋修訂；歡迎以
+> issue / PR 回饋。
 >
 > 目標：回答「如果為了**好維護、方便橫向擴展、可抽換模組**重新設計，這個專案
 > 該怎麼調整」，並為**支援多租屋平台、讓更多人參與開發與測試**鋪路。
@@ -490,19 +492,34 @@ Phase 1 一起做；順序由觸發時點決定，不硬性綁死。
 
 ---
 
-## 實作狀態（2026-09-03，分支 arch-phase1-3）
+## 實作狀態（2026-09-04 更新）
 
-Phase 1＋3 全部程式面完成、本機開發場驗證通過；部署照拍板逐步走，
-每步 pin commit。部署階梯與日曆門檻：
+Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）、本機
+開發場驗證通過；部署照拍板逐步走，每步 pin commit。部署階梯與日曆門檻：
 
 | 步 | 內容 | 門檻 |
 |---|---|---|
 | D1 | 1-1＋B 層：`request_ts` migration＋errback 終結狀態＋queuefinalize | 唯一一顆 RDS migration（純加欄，向後相容） |
 | D2 | 1-2 平行模式：manifest＋qualitycheck 與四套舊工具並行 | — |
-| D3 | 1-2 切換：退役 statscheck Slack／distcheck／fill-rate ext；跑 9 月 manifest 回補；baseline 重製落 assertions.yaml | **平行週滿** |
+| D3 | 1-2 切換：退役 statscheck Slack／distcheck／fill-rate ext；Stats 凍結（已查無其他消費者）；baseline 重製落 assertions.yaml | **平行期滿**——原定一週，2026-09-03 改為「連續 3 天逐項一致即切」 |
 | D4 | 3-1 雙寫：rawpack 上 S3＋terraform lifecycle（raw/ 30d Glacier IR＋365d 過期） | terraform apply |
 | D5 | 3-1 切換：DB 停寫 raw＋一次性清空；rawpack 失敗升硬紅；rawoffload／housekeep raw 半邊退役 | **雙寫對帳數日** |
 | D6 | 3-2：flow.py 取代 go.sh／orchestrate（EventBridge 改指 flow）；驗 ecs executor | flow 於 AWS 驗過 |
+
+部署紀錄（每步 pin commit，依拍板記於此）：
+
+| 日期 | 步 | 內容 | pin |
+|---|---|---|---|
+| 2026-09-03 晚 | D1＋D2＋D4 | RDS migration 0005（純加欄，適逢 `request_ts` 全空）；terraform task def rev 7（EFS 路徑 env、raw lifecycle 30d Glacier IR／365d 過期、manifests IAM）；run-task 回補 9/1–9/3 manifest 進 EFS＋S3 | master `8f394a23` |
+| 2026-09-04 凌晨 | 首跑驗收 | queuefinalize production 首次對帳一次過（全 done、零 dead 零殘留）；qualitycheck 全綠；日包落 `raw/591/`＋reconcile 抽樣一致；平行比對 Day 1 statscheck vs manifest 逐項一致。插曲兩件當夜收掉：rawpack 於 image 內 ModuleNotFoundError（raw 佈局實作移入 django 樹）、日包 vendor 目錄改短名對齊月包 | master `83b3f747` |
+| 待 | D3 | 平行比對 9/4–9/6；9/5 baseline 重製落 assertions.yaml；三天一致即切 | — |
+| 待 | D5 | 雙寫對帳數日後 cutover | — |
+| 待 | D6 | flow ecs executor 於 AWS 驗過後切排程 | — |
+
+附帶影響：**09-04 起本機不再日跑、202609 出貨源改 AWS**（2026-09-03
+拍板）——月底雲上 `export -p` 產 zip；publisher 雲化的唯一設計項＝紅月
+補 blog 時 `--resume` 的暫存 state 銜接（EFS 或 S3），月底前拍板，
+記於 aws-deployment-plan。
 
 實作備註：
 - 驗收重演：403 全滅／殘留 → queuefinalize 當場紅（單元＋e2e）；
@@ -520,6 +537,10 @@ Phase 1＋3 全部程式面完成、本機開發場驗證通過；部署照拍�
 
 ## 編修紀錄
 
+- **2026-09-04（補）** 狀態列改「已多輪 review、部署進行中」；〈實作狀態〉
+  補部署紀錄表（D1＋D2＋D4 於 09-03 部署、09-04 首跑驗收、pin commit）、
+  D3 門檻改「連續 3 天一致即切」、202609 出貨改 AWS 與 publisher 雲化
+  設計項。
 - **2026-09-04** queue 終局拍板：檔案化靜態分片（seeds 檔＋每 worker
   一份終結紀錄），不需 server；續跑可改 N、記帳按 house_id、attempts
   跨檔累計、checkpoint 只增不刪；4e 改為「queue 出 DB、RDS 退役」；
