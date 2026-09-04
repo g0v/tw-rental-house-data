@@ -2,7 +2,7 @@
 title: 開放台灣租屋資料處理流程
 author: ddio
 created: 2024-03-10
-cover: /imgs/blog/pipeline-2024.jpeg
+cover: ./imgs/pipeline-2024.jpeg
 tags:
   - 關於
   - 技術文件
@@ -16,7 +16,7 @@ tags:
 
 ## 每日例行工作 - 儲存前日所有租屋平台的物件最新資訊
 
-![每日例行工作](/imgs/blog/twrh-daily-pipeline.png)
+![每日例行工作](./imgs/twrh-daily-pipeline.png)
 
 這是開租的核心工作，每日清晨，系統自動甦醒後，會以各租屋平台為單位
 
@@ -31,7 +31,7 @@ tags:
 
 ## 三種資料表 - 是否正規劃 x 每日或最新總覽
 
-![資料表圖例](/imgs/blog/twrh-table-types.png)
+![資料表圖例](./imgs/twrh-table-types.png)
 
 由每日例行工作可知，開租的資料表分為三種，並用兩項屬性來區分：
 
@@ -51,7 +51,7 @@ tags:
 
 ## 每月例行工作 - 整併當月所有租屋平台的物件資訊
 
-![每月例行工作](/imgs/blog/twrh-monthly-pipeline.png)
+![每月例行工作](./imgs/twrh-monthly-pipeline.png)
 
 每月例行工作，是為了將每日例行工作的資料，整併成一個月的資料，並將其轉換為最新總覽，以供使用者進行資料分析。
 
@@ -59,7 +59,7 @@ tags:
 
 ## 每季、年的例行工作 - 整併當季、年所有租屋平台的物件資訊
 
-![每季、年例行工作](/imgs/blog/twrh-quarterly-pipeline.png)
+![每季、年例行工作](./imgs/twrh-quarterly-pipeline.png)
 
 由於每季、年的資料量過大，從原始資料開始，我們就會使用 ClickHouse 進行資料整併，並將其轉換為最新總覽、消除重複住宅資料集，以供使用者進行資料分析。
 

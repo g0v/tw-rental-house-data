@@ -2,7 +2,7 @@
 title: 機器人與作者復原中！
 author: ddio
 created: 2024-08-29
-cover: /imgs/blog/2024-system-upgrading.jpeg
+cover: ./imgs/2024-system-upgrading.jpeg
 tags:
   - 資料品質
   - 封面圖片使用 AI 生成

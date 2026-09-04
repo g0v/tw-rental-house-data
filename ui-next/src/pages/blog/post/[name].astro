@@ -1,9 +1,15 @@
 ---
+import { Image } from 'astro:assets'
 import { render } from 'astro:content'
 import Base from '../../../layouts/Base.astro'
 import BlogTagList from '../../../components/BlogTagList.vue'
 import TwrhCusdis from '../../../components/TwrhCusdis.astro'
-import { excerptText, formatDate, sortedPosts } from '../../../lib/blog'
+import {
+  excerptText,
+  formatDate,
+  ogCoverUrl,
+  sortedPosts
+} from '../../../lib/blog'
 
 export async function getStaticPaths() {
   const posts = await sortedPosts()
@@ -18,13 +24,14 @@ const { Content } = await render(post)
 const created = post.data.created
 // meta description 用文章摘要，過長時截斷
 const description = excerptText(post).replace(/\s+/g, ' ').slice(0, 160)
+const ogImage = await ogCoverUrl(post, Astro.site)
 ---
 
 <Base
   title={post.data.title}
   description={description}
   license="ccby"
-  ogImage={`https://rentalhouse.g0v.ddio.io${post.data.cover}`}
+  ogImage={ogImage}
   ogType="article"
   articleMeta={{
     publishedTime: created.toISOString(),
@@ -34,10 +41,16 @@ const description = excerptText(post).replace(/\s+/g, ' ').slice(0, 160)
 >
   <main class="mx-auto w-full max-w-3xl px-4 pb-16">
     <article itemscope itemtype="http://schema.org/Article">
-      <img
+      {/* 封面是本頁 LCP：不 lazy、提高抓取優先權；內文 max-w-3xl 約 768px，給到 2x */}
+      <Image
         class="mt-8 w-full"
         itemprop="image"
         src={post.data.cover}
+        widths={[768, 1536]}
+        sizes="(min-width: 768px) 768px, 100vw"
+        format="webp"
+        loading="eager"
+        fetchpriority="high"
         alt={post.data.title}
       />
       <h1 class="mt-6 font-serif text-3xl font-black" itemprop="name headline">

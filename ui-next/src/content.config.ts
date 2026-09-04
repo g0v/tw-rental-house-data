@@ -3,17 +3,21 @@ import { glob } from 'astro/loaders'
 import { z } from 'zod'
 
 const blog = defineCollection({
-  loader: glob({ pattern: '**/*.md', base: './src/content/blog' }),
-  schema: z.object({
-    title: z.string(),
-    author: z.string(),
-    created: z.coerce.date(),
-    /** 站內絕對路徑，如 /imgs/blog/xxx.png */
-    cover: z.string().startsWith('/'),
-    tags: z.array(z.string()).default([]),
-    // 舊站 @nuxt/content 的殘留欄位（html: true）；Astro 本來就渲染行內 HTML，忽略即可
-    config: z.object({ html: z.boolean() }).optional()
-  })
+  // .mdx 給要嵌互動圖表的新文章（docs/ui-roadmap.md Phase 5），舊文維持 .md
+  loader: glob({ pattern: '**/*.{md,mdx}', base: './src/content/blog' }),
+  // 封面與內文圖放 src/content/blog/imgs/，由 astro:assets 在 build 時縮圖／轉 WebP；
+  // public/imgs/blog 是指向同一目錄的 symlink，讓舊站 /imgs/blog/* 絕對 URL 原樣保留
+  schema: ({ image }) =>
+    z.object({
+      title: z.string(),
+      author: z.string(),
+      created: z.coerce.date(),
+      /** 相對於文章檔的路徑，如 ./imgs/xxx.png */
+      cover: image(),
+      tags: z.array(z.string()).default([]),
+      // 舊站 @nuxt/content 的殘留欄位（html: true）；Astro 本來就渲染行內 HTML，忽略即可
+      config: z.object({ html: z.boolean() }).optional()
+    })
 })
 
 const aboutDataSet = defineCollection({

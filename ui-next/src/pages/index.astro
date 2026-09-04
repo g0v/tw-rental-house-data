@@ -9,7 +9,9 @@ import { sortedPosts, toCard } from '../lib/blog'
 
 const latestAnnual = latestRelease('annual')
 const latestMonthly = latestRelease('monthly')
-const recentPosts = (await sortedPosts()).slice(0, 3).map(toCard)
+const recentPosts = await Promise.all(
+  (await sortedPosts()).slice(0, 3).map(toCard)
+)
 
 const audiences = [
   {

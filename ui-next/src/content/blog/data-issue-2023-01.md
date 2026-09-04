@@ -2,7 +2,7 @@
 title: 2023 10 月資料更新異常情況解釋 （2023-01 號爬蟲錯誤）
 author: ddio
 created: 2023-12-03
-cover: /imgs/blog/data-issue-2023-01.jpg
+cover: ./imgs/data-issue-2023-01.jpg
 tags:
   - 資料品質
   - 591租屋網

@@ -2,7 +2,7 @@
 title: 第 2021-00 號爬蟲錯誤說明
 author: ddio
 created: 2020-04-02
-cover: /imgs/blog/data-issue-2021-00.png
+cover: ./imgs/data-issue-2021-00.png
 tags:
   - 資料品質
   - 591租屋網

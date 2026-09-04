@@ -6,7 +6,7 @@ import { collectTags, sortedPosts, toCard } from '../../lib/blog'
 
 const posts = await sortedPosts()
 const tags = collectTags(posts)
-const cards = posts.map(toCard)
+const cards = await Promise.all(posts.map(toCard))
 ---
 
 <Base title="部落格" license="ccby">
