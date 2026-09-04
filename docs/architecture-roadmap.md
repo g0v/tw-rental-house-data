@@ -487,7 +487,7 @@ Phase 1 一起做；順序由觸發時點決定，不硬性綁死。
 
 | # | 問題 | 歸屬 |
 |---|---|---|
-| 6 | **deals 語意 × #229**：成交訊號消失調查的結論影響事件類別設計（DEAL／NOT_FOUND／原因不明下架） | **調查完成（2026-09-04，見下）**，事件設計待拍板 |
+| 6 | **deals 語意 × #229**：成交訊號消失調查的結論影響事件類別設計（DEAL／NOT_FOUND／原因不明下架） | **已結案（2026-09-04）**：deals stage 落地（package 2.4.0 DealMixin＋dataset `deal591`，DEAL 為第三種 queue 類型），8/26 起回補 |
 | 8 | **queue 清理窗口長度**：預設 90 天，實跑後定案 | Phase 1 |
 
 #### #6 調查結論（2026-09-04）：成交訊號沒有消失，是搬到 list 端
@@ -566,6 +566,12 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 
 ## 編修紀錄
 
+- **2026-09-04（三補）** #6 結案：deals stage 實作——package 2.4.0
+  `DealMixin`／`deal_list_parser`（讀 payload dealDataList，相對成交日
+  對 pin 日期換算）、dataset `deal591`（DEAL 第三種 queue 類型、只寫
+  已知物件）、syncstateful 照抄站方 deal_time／n_day_deal、deals manifest
+  ＋兩條斷言、go.sh／orchestrate／flow 三處排在 finalize 前。發現
+  591 該列表分頁為 50 筆窗、30 筆步距（相鄰頁重疊 20），逐頁不漏。
 - **2026-09-04（二補）** #229 調查結論寫入開放問題 #6：成交訊號搬到
   list 端（`shType=clinch` 成交列表，payload 帶 deal_total_day／
   deal_time）、detail 頁成交後 404；抽驗關閉物件約四分之一為成交、
