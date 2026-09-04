@@ -16,9 +16,14 @@
           <img
             class="h-full w-full object-cover"
             itemprop="image"
-            :src="post.cover"
+            :src="post.cover.src"
+            :srcset="post.cover.srcset"
+            :sizes="post.cover.sizes"
+            :width="post.cover.width"
+            :height="post.cover.height"
             :alt="post.title"
             loading="lazy"
+            decoding="async"
           />
         </div>
         <div class="flex-auto px-4 pt-3">
@@ -58,11 +63,14 @@
 </template>
 
 <script setup lang="ts">
+import type { CardCover } from '../lib/blog'
+
 export interface BlogPostCard {
   id: string
   title: string
   author: string
-  cover: string
+  /** build 時由 astro:assets 產好的 srcset，見 lib/blog.ts toCard */
+  cover: CardCover
   excerpt: string
   createdIso: string
   createdLabel: string

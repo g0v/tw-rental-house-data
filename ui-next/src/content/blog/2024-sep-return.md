@@ -2,7 +2,7 @@
 title: 機器人短暫回歸（然後又倒了）
 author: ddio
 created: 2024-11-09
-cover: /imgs/blog/2024-sep-return.jpg
+cover: ./imgs/2024-sep-return.jpg
 tags:
   - 資料品質
   - 封面圖片使用 AI 生成

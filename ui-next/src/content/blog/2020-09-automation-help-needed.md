@@ -2,7 +2,7 @@
 title: 拖稿半年資料釋出，徵求自動化小幫手
 author: ddio
 created: 2020-09-03
-cover: /imgs/blog/2020-09.png
+cover: ./imgs/2020-09.png
 config: 
   html: true
 tags:

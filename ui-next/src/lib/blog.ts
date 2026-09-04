@@ -1,3 +1,4 @@
+import { getImage } from 'astro:assets'
 import { getCollection, type CollectionEntry } from 'astro:content'
 import { marked } from 'marked'
 
@@ -37,13 +38,50 @@ export function collectTags(posts: BlogPost[]): string[] {
   return [...new Set(posts.flatMap((post) => post.data.tags))]
 }
 
+/** 列表卡片的封面：三欄 grid 最寬約 380px，給 2x 螢幕到 800 就夠，build 時轉 WebP */
+const CARD_COVER_WIDTHS = [400, 800]
+const CARD_COVER_SIZES =
+  '(min-width: 1024px) 380px, (min-width: 768px) 50vw, 100vw'
+
+export interface CardCover {
+  src: string
+  srcset: string
+  sizes: string
+  width: number
+  height: number
+}
+
+/** 文章頁封面／og:image 用；og 抓 1200 寬 jpg，社群平台不一定吃 WebP */
+export const OG_COVER_WIDTH = 1200
+
+export async function ogCoverUrl(post: BlogPost, site: URL | undefined) {
+  const image = await getImage({
+    src: post.data.cover,
+    width: OG_COVER_WIDTH,
+    format: 'jpg'
+  })
+  return new URL(image.src, site).toString()
+}
+
 /** BlogPostList 卡片需要的欄位 */
-export function toCard(post: BlogPost) {
+export async function toCard(post: BlogPost) {
+  const cover = await getImage({
+    src: post.data.cover,
+    widths: CARD_COVER_WIDTHS,
+    sizes: CARD_COVER_SIZES,
+    format: 'webp'
+  })
   return {
     id: post.id,
     title: post.data.title,
     author: post.data.author,
-    cover: post.data.cover,
+    cover: {
+      src: cover.src,
+      srcset: cover.srcSet.attribute,
+      sizes: CARD_COVER_SIZES,
+      width: cover.attributes.width,
+      height: cover.attributes.height
+    } satisfies CardCover,
     excerpt: excerptText(post),
     createdIso: post.data.created.toISOString(),
     createdLabel: formatDate(post.data.created)

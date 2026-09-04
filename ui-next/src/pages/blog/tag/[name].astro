@@ -17,7 +17,7 @@ export async function getStaticPaths() {
 
 const { name: tag } = Astro.params
 const { posts, otherTags } = Astro.props
-const cards = posts.map(toCard)
+const cards = await Promise.all(posts.map(toCard))
 ---
 
 <Base title={`包含 ${tag} 的貼文`} license="ccby">

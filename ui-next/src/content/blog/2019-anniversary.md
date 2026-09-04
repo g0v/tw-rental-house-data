@@ -2,7 +2,7 @@
 title: 開放租屋滿一歲了！
 author: ddio
 created: 2019-05-05
-cover: /imgs/blog/2019-anniversary.png
+cover: ./imgs/2019-anniversary.png
 config: 
   html: true
 tags:

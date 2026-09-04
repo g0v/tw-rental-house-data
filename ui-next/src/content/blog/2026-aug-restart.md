@@ -2,7 +2,7 @@
 title: 開租八月重啟，九月正式恢復
 author: ddio
 created: 2026-08-31
-cover: /imgs/blog/2026-aug-restart.jpg
+cover: ./imgs/2026-aug-restart.jpg
 tags:
   - 定期紀錄
   - 資料品質

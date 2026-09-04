@@ -2,7 +2,7 @@
 title: 2021 591 改版影響評估（2021-01 號爬蟲錯誤）
 author: ddio
 created: 2022-09-11
-cover: /imgs/blog/591-migration.png
+cover: ./imgs/591-migration.png
 tags:
   - 資料品質
   - 591租屋網

@@ -2,7 +2,7 @@
 title: 2021 年度資料修正推估
 author: ddio
 created: 2022-09-19
-cover: /imgs/blog/2021-annual-y2y-sum.png
+cover: ./imgs/2021-annual-y2y-sum.png
 tags:
   - 資料品質
   - 591租屋網
@@ -22,7 +22,7 @@ tags:
 
 由於 2021 的資料修正，是在 10 月時執行，因次若比較逐年、逐月資料間的差異，就能了解資料復原的狀況。這裡使用全部的 26 個資料集的「物件首次發現時間」，計算各資料集每月各出現多少物件後，再將「逐年資料」除以「逐月資料」，就能得到「年度逐月比」：
 
-![年度逐月比](/imgs/blog/2021-annual-y2m-ratio.png)
+![年度逐月比](./imgs/2021-annual-y2m-ratio.png)
 
 詳細資料如下表：
 
@@ -58,7 +58,7 @@ tags:
 
 純就數量而言，我們可以將年度資料的每月統計，以逐月資料 + 每月推估遺失率回推，就能得到推估的逐年資料總數。
 
-![年度資料推估](/imgs/blog/2021-annual-y2y-sum.png)
+![年度資料推估](./imgs/2021-annual-y2y-sum.png)
 
 詳細資料如下表，計算公式可見[此試算表](https://docs.google.com/spreadsheets/d/1DWBE4aJ_mFf1p5hv5KzU9aHDWCRxmZKC3a59CiL4rF4/edit#gid=560405193)：
 

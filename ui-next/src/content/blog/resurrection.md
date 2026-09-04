@@ -2,7 +2,7 @@
 title: 開放租屋資料即將復活！
 author: ddio
 created: 2022-08-16
-cover: /imgs/blog/resurrection-og.jpg
+cover: ./imgs/resurrection-og.jpg
 config: 
   html: true
 tags:

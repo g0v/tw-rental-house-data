@@ -2,7 +2,7 @@
 title: 第 2019-02 號爬蟲錯誤說明
 author: ddio
 created: 2019-11-05
-cover: /imgs/blog/data-issue-2019-02.png
+cover: ./imgs/data-issue-2019-02.png
 tags:
   - 資料品質
   - 591租屋網

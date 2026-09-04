@@ -2,7 +2,7 @@
 title: 消除重複住宅邏輯更新
 author: ddio
 created: 2023-12-11
-cover: /imgs/blog/clickhouse-local.jpg
+cover: ./imgs/clickhouse-local.jpg
 tags:
   - 定期紀錄
   - 封面圖片使用 AI 生成

@@ -2,7 +2,7 @@
 title: 測試用資料，十月版釋出
 author: ddio
 created: 2025-11-03
-cover: /imgs/blog/2025-oct-release.png
+cover: ./imgs/2025-oct-release.png
 tags: 
   - 定期紀錄
   - 封面圖片使用 AI 生成

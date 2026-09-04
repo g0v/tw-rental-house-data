@@ -2,7 +2,7 @@
 title: 開租即將再次復活
 author: ddio
 created: 2025-10-28
-cover: /imgs/blog/2025-back-to-beta.png
+cover: ./imgs/2025-back-to-beta.png
 tags:
   - 資料品質
   - 封面圖片使用 AI 生成  
