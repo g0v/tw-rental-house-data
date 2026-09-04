@@ -3,7 +3,8 @@ import { glob } from 'astro/loaders'
 import { z } from 'zod'
 
 const blog = defineCollection({
-  loader: glob({ pattern: '**/*.md', base: './src/content/blog' }),
+  // .mdx 給要嵌互動圖表的新文章（docs/ui-roadmap.md Phase 5），舊文維持 .md
+  loader: glob({ pattern: '**/*.{md,mdx}', base: './src/content/blog' }),
   schema: z.object({
     title: z.string(),
     author: z.string(),

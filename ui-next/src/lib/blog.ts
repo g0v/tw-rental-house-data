@@ -3,12 +3,16 @@ import { marked } from 'marked'
 
 export type BlogPost = CollectionEntry<'blog'>
 
-const EXCERPT_SEPARATOR = '<!--more-->'
+// .md 用 HTML 註解；MDX 不接受 HTML 註解，改用 JSX 註解 `{/* more */}`
+const EXCERPT_SEPARATOR = /<!--more-->|\{\/\*\s*more\s*\*\/\}/
 
-/** `<!--more-->` 之前的段落作為摘要（19 篇舊文全都有這個分隔） */
+/** 分隔符之前的段落作為摘要（19 篇舊文全都有這個分隔）；MDX 開頭的 import 行不算內文 */
 export function excerptMarkdown(post: BlogPost): string {
   const body = post.body ?? ''
-  return body.split(EXCERPT_SEPARATOR)[0]!.trim()
+  return body
+    .split(EXCERPT_SEPARATOR)[0]!
+    .replace(/^import\s.*$/gm, '')
+    .trim()
 }
 
 /** 摘要的純文字版，給列表卡片用（卡片本身是連結，不能再包連結） */
