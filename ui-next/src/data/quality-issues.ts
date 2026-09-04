@@ -13,11 +13,26 @@ export interface QualityIssue {
   scope: string
   /** 狀態 */
   status: string
-  /** 詳細說明的 blog 文章 slug */
-  post: string
+  /** 詳細說明的 blog 文章 slug；沒有文章時改給 link */
+  post?: string
+  /** 沒有 blog 文章時的外部連結（例如 GitHub issue） */
+  link?: { href: string; label: string }
 }
 
 export const qualityIssues: QualityIssue[] = [
+  {
+    id: 'deal-signal-2026',
+    title: '成交訊號改由 591 已成交列表取得',
+    period: '2026-08-26 ~ 2026-09-04',
+    scope:
+      '591 改版後成交資訊不再出現在物件頁（成交即下架），八月重啟至 9/3 的每日資料中「已成交」一律為 0、n_day_deal 一律為空，所有關閉都記為「已消失」。9/4 起改自 591「已成交」列表每日取得成交事件，並回補 8/25 起的成交。語意變更：自此 n_day_deal 直接採 591 的「N天成交」（刊登到成交的天數，含本站首次看到之前的天數），與歷年「首次看到到標記成交」的觀測天數通常相差 0 ~ 1 天；「已消失」仍無法區分下架、過期或自行撤除，與改版前相同。',
+    status:
+      '已於 2026-09-04 回補 8/25 起成交並恢復每日偵測；2026-08 資料集出版時尚未含成交資料',
+    link: {
+      href: 'https://github.com/g0v/tw-rental-house-data/issues/229',
+      label: 'GitHub issue #229'
+    }
+  },
   {
     id: 'restart-2026-08',
     title: '2026 重啟過渡期',

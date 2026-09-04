@@ -58,12 +58,23 @@ import { qualityIssues } from '../data/quality-issues'
                   )}
                 </td>
                 <td class="px-3 py-3">
-                  <a
-                    class="text-tile-deep underline"
-                    href={`/blog/post/${issue.post}/`}
-                  >
-                    部落格全文
-                  </a>
+                  {issue.post ? (
+                    <a
+                      class="text-tile-deep underline"
+                      href={`/blog/post/${issue.post}/`}
+                    >
+                      部落格全文
+                    </a>
+                  ) : issue.link ? (
+                    <a
+                      class="text-tile-deep underline"
+                      href={issue.link.href}
+                      target="_blank"
+                      rel="noopener"
+                    >
+                      {issue.link.label}
+                    </a>
+                  ) : null}
                 </td>
               </tr>
             ))
