@@ -11,6 +11,8 @@ devop/*
 !devop/workers.py
 !devop/housekeep.sh
 datas/*.zip
+# publish.sh 的 --resume marker 與 monthreport 月報，跑一次一組，非版控物
+datas/publish/
 js_cache
 ocr_cache
 # 1-2 觀測層 artifact（本機／EFS 落地，非版控物；正式歸宿是 S3）
