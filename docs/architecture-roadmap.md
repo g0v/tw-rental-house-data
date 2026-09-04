@@ -541,6 +541,7 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 |---|---|---|---|
 | 2026-09-03 晚 | D1＋D2＋D4 | RDS migration 0005（純加欄，適逢 `request_ts` 全空）；terraform task def rev 7（EFS 路徑 env、raw lifecycle 30d Glacier IR／365d 過期、manifests IAM）；run-task 回補 9/1–9/3 manifest 進 EFS＋S3 | master `8f394a23` |
 | 2026-09-04 凌晨 | 首跑驗收 | queuefinalize production 首次對帳一次過（全 done、零 dead 零殘留）；qualitycheck 全綠；日包落 `raw/591/`＋reconcile 抽樣一致；平行比對 Day 1 statscheck vs manifest 逐項一致。插曲兩件當夜收掉：rawpack 於 image 內 ModuleNotFoundError（raw 佈局實作移入 django 樹）、日包 vendor 目錄改短名對齊月包 | master `83b3f747` |
+| 2026-09-04 傍晚 | deals stage（#229） | package 2.4.0 發版；dataset `deal591`＋DEAL queue 類型隨 CI image 上線（日跑自 9/5 02:10 起排在 finalize 前）；run-task 回補 lookback 10 天：全台 409 頁全 done、零殘留，寫入約一萬筆成交事件（成交日 8/25–9/4），syncstateful／manifest／qualitycheck 重跑全綠。插曲：一次 Bash 誤發兩個 run-task 搶同一 queue、停錯 task 遭 SIGKILL 未釋放 in_flight，以新 task 先 `manage.py shell` 放回 failed 再續跑收復；qualitycheck 的 STAGES 漏列 deals 誤報「manifest 不存在」，補修 | master `9303caa9` |
 | 待 | D3 | 平行比對 9/4–9/6；9/5 baseline 重製落 assertions.yaml；三天一致即切 | — |
 | 待 | D5 | 雙寫對帳數日後 cutover | — |
 | 待 | D6 | flow ecs executor 於 AWS 驗過後切排程 | — |
@@ -566,6 +567,8 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 
 ## 編修紀錄
 
+- **2026-09-04（四補）** 部署紀錄補 deals stage 上線與 8/26 起回補結果（含
+  run-task 誤發兩個的教訓：一次只發一個、發完即 list-tasks 確認）。
 - **2026-09-04（三補）** #6 結案：deals stage 實作——package 2.4.0
   `DealMixin`／`deal_list_parser`（讀 payload dealDataList，相對成交日
   對 pin 日期換算）、dataset `deal591`（DEAL 第三種 queue 類型、只寫
