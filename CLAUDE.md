@@ -53,6 +53,7 @@ poetry run python django/manage.py loaddata vendors   # required: pipeline looks
 # Individual spiders
 poetry run scrapy crawl list591 -L INFO
 poetry run scrapy crawl detail591 -L INFO -a batch_size=2000
+poetry run scrapy crawl deal591 -L INFO -a lookback_days=2      # #229 deals stage：走 591「已成交」列表產成交事件；回補時開大 lookback
 
 # flow runner（arch 3-2）：一份 stage 定義跑整條 pipeline，--from 從任一 stage 續跑；
 # 完成判據＝artifact（rawpack 日包／manifest）或 logs/flow/<date>/ stamp 檔。
@@ -136,6 +137,7 @@ When a change touches `scrapy-tw-rental-house/`:
    poetry run twrh parse <saved-detail.html>       # offline: run parser on a saved page
    poetry run twrh detail <house-id>               # fetch + parse one detail page
    poetry run twrh list 金門縣                      # fetch + parse one list page
+   poetry run twrh deals 台北市 --lookback 2        # walk the 已成交 list, print deal events (#229)
    poetry run twrh survey 金門縣 --save-html        # full city sweep → completeness report
    poetry run twrh harvest 花蓮縣                   # stratified fixture harvest + manifest
    poetry run twrh probe 花蓮縣 --baseline scrapy-tw-rental-house/baselines/hualien-fill-rate.json
@@ -189,12 +191,19 @@ delete or replace it with a copy.
 1. `list591` spider walks 591 search pages per city, sorted by post date, writing `House`/`HouseTS`
    rows plus one detail request per listing.
 2. `detail591` spider crawls each open listing's detail page.
-3. `CrawlerPipeline` (the only item pipeline) stores items via Django ORM into PostgreSQL.
-4. `syncstateful -ts` derives deal status / `n_day_deal` and pushes it into the time series.
-5. `statscheck` writes `Stats` rows and posts a summary to Slack (errors also go to Sentry).
-6. `export -p` writes `[YYYYMM][CSV][Raw] TW-Rental-Data.zip` into `twrh-dataset/datas/`.
-7. `csv-aggregator` merges monthly ZIPs into quarterly/yearly ones.
-8. ZIPs are published to S3 (`https://twrh.s3.ap-northeast-3.amazonaws.com/<year>/…`); `ui-next`
+3. `deal591` spider (#229, deals stage) walks each city's 已成交 list (`list?shType=clinch`,
+   newest deal first, 50/page with a 30-row page step so adjacent pages overlap by 20) down to
+   `lookback_days` and emits one DEAL item per known house with 591's own deal date and
+   「N天成交」 as `n_day_deal`. Since the 2026 redesign a dealt listing's detail page is a 404,
+   so this is the **only** deal signal; houses never seen by list are counted, not created.
+4. `CrawlerPipeline` (the only item pipeline) stores items via Django ORM into PostgreSQL.
+5. `syncstateful -ts` derives deal status / `n_day_deal` from the time series for houses the
+   crawler only flagged; rows that already carry vendor-provided `deal_time` + `n_day_deal`
+   (the deals stage) are copied as-is.
+6. `statscheck` writes `Stats` rows and posts a summary to Slack (errors also go to Sentry).
+7. `export -p` writes `[YYYYMM][CSV][Raw] TW-Rental-Data.zip` into `twrh-dataset/datas/`.
+8. `csv-aggregator` merges monthly ZIPs into quarterly/yearly ones.
+9. ZIPs are published to S3 (`https://twrh.s3.ap-northeast-3.amazonaws.com/<year>/…`); `ui-next`
    links to them via `ui-next/src/lib/download.ts`.
 
 ### Spider design (scrapy-tw-rental-house)
@@ -263,6 +272,8 @@ Set it manually (or use `go.sh --date`) when re-running part of a pipeline for a
 - `RequestTS` / `Stats` (crawlerrequest app) — crawl queue and per-run statistics.
 - GeoDjango `PointField` (WGS84 / SRID 4326) for `rough_coordinate`.
 - Deal status is sticky: once a house is `DEAL`, the pipeline will not overwrite it with `NOT_FOUND`.
+- `RequestTS.request_type` has three values: `LIST` / `DETAIL` / `DEAL`; queuefinalize's zero-seed
+  rule applies to list/detail only (a day without a deals run is legal), residue rules to all.
 - Raw HTML 雙寫中（arch 3-1）：`HouseEtc` 照存（cutover 前），pipeline 同步落
   `raws/scratch/`，收尾 `rawpack` 打成 `raws/<vendor>/<date>.tar.zst`＋index。修完 parser bug 後
   用 `tools/rerun_from_raws.py` 對日包重放、**不需重爬**（舊 `rerun_detail_raw/dict.py` 已因

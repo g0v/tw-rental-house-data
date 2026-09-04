@@ -178,6 +178,19 @@ def stage_detail(ctx):
               ' queuefinalize will tell')
 
 
+def stage_deals(ctx):
+    # #229：走「已成交」列表產成交事件，detail 之後、finalize 之前（queue
+    # 的 DEAL 列一併對帳）。lookback 日跑 2 天；回補時 TWRH_DEAL_LOOKBACK_DAYS 開大
+    cmd = ['poetry', 'run', 'scrapy', 'crawl', 'deal591', '-L', 'INFO',
+           '-a', 'lookback_days=' + os.environ.get('TWRH_DEAL_LOOKBACK_DAYS', '2')]
+    if ctx.append:
+        cmd += ['-a', 'append=True']
+    run(cmd, check=True)
+    log = archive_scrapy_log(ctx, 'deals')
+    if breaker_tripped(log):
+        raise StageFailed('deals breaker tripped (error_rate_exceeded)')
+
+
 def stage_queuefinalize(_ctx):
     result = manage('queuefinalize', check=False)
     if result.returncode != 0:
@@ -239,7 +252,7 @@ def manifest_artifacts(date_str):
     base = os.environ.get('TWRH_MANIFEST_DIR',
                           os.path.join(BASE, 'manifests'))
     return [os.path.join(base, date_str, stage + '.json')
-            for stage in ('list', 'detail', 'snapshot')]
+            for stage in ('list', 'detail', 'deals', 'snapshot')]
 
 
 def rawpack_artifacts(date_str):
@@ -254,6 +267,7 @@ STAGES = [
     ('list', stage_list, None),
     ('seed', stage_seed, None),
     ('detail', stage_detail, None),
+    ('deals', stage_deals, None),
     ('queuefinalize', stage_queuefinalize, None),
     ('rawpack', stage_rawpack, rawpack_artifacts),
     ('synthts', stage_synthts, None),

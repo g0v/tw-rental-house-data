@@ -109,6 +109,15 @@ while true; do
 done
 rm -f "$BATCH_MARKER"
 
+# #229：成交事件——591 改版後只在「已成交」列表，detail 成交即 404。
+# 每縣市倒序翻頁到 lookback 窗外即停；日跑 2 天（今日＋昨日＋一天重疊，
+# 事件冪等），回補時 TWRH_DEAL_LOOKBACK_DAYS 開大。放 finalize 之前，
+# DEAL 類 queue 列一併對帳
+echo '===== DEALS ====='
+poetry run scrapy crawl deal591 -L INFO $APPEND_FLAG $START_EARLY_FLAG -a lookback_days=${TWRH_DEAL_LOOKBACK_DAYS:-2}
+mv scrapy.log ../logs/$now.deals.log
+abort_if_breaker_tripped ../logs/$now.deals.log
+
 # 1-1 收工鐵律：seeds == terminals（done+dead==seeds、無殘留）。
 # 紅＝資料殘缺（403 全滅、seed 零產出、spider 假 finished），當場中止，
 # 不讓 sync/stats/export 把殘缺的一輪當正常資料處理；順帶滾動清理舊終結列

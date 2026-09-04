@@ -3,6 +3,8 @@ from enum import IntEnum
 class RequestType(IntEnum):
     LIST = 0
     DETAIL = 1
+    # deals stage（#229）：走 591「已成交」列表產成交事件；只 append 不改值
+    DEAL = 2
 
 class RequestStatus(IntEnum):
     '''queue 顯式狀態機（architecture-roadmap 1-1）。

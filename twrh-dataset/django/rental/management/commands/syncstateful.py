@@ -80,8 +80,22 @@ class Command(BaseCommand):
 
         with transaction.atomic():
             try:
-                for house in houses.values('vendor', 'vendor_house_id'):
-                    deal_info = self.get_last_deal_info(house['vendor'], house['vendor_house_id'])
+                for house in houses.values(
+                        'vendor', 'vendor_house_id', 'deal_status', 'deal_time', 'n_day_deal'):
+                    # #229：deals stage 從 591「已成交」列表帶回成交日與
+                    # 「N天成交」，比從 TS 序列推導更準（含首見前的天數）。
+                    # 當日 TS 列若已帶齊三欄就照抄，不再推導——重跑冪等：
+                    # 推導結果也是寫回同一列，第二次跑看到的就是它自己
+                    if (house['deal_status'] == DealStatusType.DEAL
+                            and house['deal_time'] is not None
+                            and house['n_day_deal'] is not None):
+                        deal_info = {
+                            'deal_status': DealStatusType.DEAL,
+                            'deal_time': house['deal_time'],
+                            'n_day_deal': house['n_day_deal'],
+                        }
+                    else:
+                        deal_info = self.get_last_deal_info(house['vendor'], house['vendor_house_id'])
                     if deal_info:
                         do_update(house['vendor'], house['vendor_house_id'], deal_info, target_date)
 

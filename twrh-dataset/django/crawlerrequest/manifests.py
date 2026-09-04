@@ -12,6 +12,7 @@ manifest 是「對當日資料的純函數」：同一天重算結果相同，�
 stage 對應現制（3-2 flow 收斂前的過渡分界）：
   list     — list 爬取＋L-B 捕獲哨兵
   detail   — detail 爬取＋解析（fill_rate／dist 都量在這）
+  deals    — 「已成交」列表產出的成交事件（#229）：當日 TS 的 DEAL 列
   snapshot — syncstateful／synthts 之後的當日 TS 總覽
 '''
 from datetime import datetime, timedelta
@@ -186,6 +187,40 @@ def build_detail_manifest(date_obj, source='live'):
     }
 
 
+def build_deals_manifest(date_obj, source='live'):
+    '''deals stage：當日寫入的 DEAL 列＝成交事件。
+
+    成交日分佈（by_deal_date）看 lookback 窗口有沒有蓋滿；n_day_deal 中位數
+    是 591「N天成交」的分佈哨兵。事件對未知物件不建檔，故這裡只數落地的。
+    '''
+    ts = _ts_of(date_obj)
+    rows = list(HouseTS.objects.filter(**ts, deal_status=DealStatusType.DEAL)
+                .values('deal_time', 'n_day_deal'))
+    by_date = {}
+    for row in rows:
+        # 成交日是台灣日曆日（deals stage 寫 TST 午夜），依本地時區取日期，
+        # 直接 .date() 會拿到 UTC 的前一天
+        key = (timezone.localtime(row['deal_time']).date().isoformat()
+               if row['deal_time'] else 'unknown')
+        by_date[key] = by_date.get(key, 0) + 1
+    n_days = sorted(r['n_day_deal'] for r in rows if r['n_day_deal'] is not None)
+    median = n_days[len(n_days) // 2] if n_days else None
+    return {
+        **_base('deals', date_obj, source),
+        'queue': _queue_stats(ts, RequestType.DEAL, source),
+        'counts': {
+            'n_events': len(rows),
+            'n_with_deal_time': sum(1 for r in rows if r['deal_time']),
+            'n_with_n_day_deal': len(n_days),
+        },
+        'by_deal_date': dict(sorted(by_date.items())),
+        'dist': {
+            'n': len(n_days),
+            'median_n_day_deal': median,
+        },
+    }
+
+
 def build_snapshot_manifest(date_obj, source='live'):
     ts = _ts_of(date_obj)
     day_rows = HouseTS.objects.filter(**ts)
@@ -207,6 +242,7 @@ def build_snapshot_manifest(date_obj, source='live'):
 BUILDERS = {
     'list': build_list_manifest,
     'detail': build_detail_manifest,
+    'deals': build_deals_manifest,
     'snapshot': build_snapshot_manifest,
 }
 

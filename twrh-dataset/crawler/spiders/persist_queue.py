@@ -29,6 +29,7 @@ class PersistQueue(object):
         start_early=False,
         batch_size=0,
         spider=None,
+        request_type=None,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -78,7 +79,10 @@ class PersistQueue(object):
         except Vendor.DoesNotExist:
             raise Exception('Vendor "{}" is not defined.'.format(vendor))
 
-        if is_list:
+        # request_type 顯式優先（deals stage 等第三種類型）；is_list 為舊介面
+        if request_type is not None:
+            self.request_type = RequestType(request_type)
+        elif is_list:
             self.request_type = RequestType.LIST
         else:
             self.request_type = RequestType.DETAIL
@@ -175,6 +179,22 @@ class PersistQueue(object):
         )[:1]
 
         return today_houses.count() > 0
+
+    def has_seed(self, **seed_filters):
+        '''當日此類型是否已生過種子（seed JSON 欄位過濾，如 seed__id=<city id>）。
+
+        給不寫 HouseTS 的 stage（deals）判斷「同日重跑」：has_record 看的是
+        TS，deals stage 不一定有產出（當天沒成交也是正常）。
+        '''
+        return RequestTS.objects.filter(
+            year=self.ts['y'],
+            month=self.ts['m'],
+            day=self.ts['d'],
+            hour=self.ts['h'],
+            vendor=self.vendor,
+            request_type=self.request_type,
+            **seed_filters
+        )[:1].count() > 0
 
     def release_claims(self):
         """行程收工時，把自己認領但未終結的列標 failed 放回 queue。

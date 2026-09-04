@@ -48,6 +48,18 @@ checks:
     metric: queue.dead_ratio
     max: 0.05
 
+  # --- deals stage（#229：成交事件來自 591「已成交」列表） ---
+  # 沒有零種子規則：stage 未排程的日子合法為零；有列就要收斂
+  - id: deals.queue.converged
+    stage: deals
+    metric: queue.residue
+    max: 0
+  - id: deals.counts.n_events
+    stage: deals
+    metric: counts.n_events
+    rolling_median_within: 0.5
+    advisory: true
+
   # --- L-B list 完整度哨兵（門檻待實據校準，暫 advisory） ---
   - id: list.capture.ratio
     stage: list

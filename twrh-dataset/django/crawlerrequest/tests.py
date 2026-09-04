@@ -792,3 +792,167 @@ class ConcurrentClaimTests(QueueTestMixin, TransactionTestCase):
         flat = [row_id for chunk in claims for row_id in chunk]
         self.assertEqual(len(flat), len(set(flat)), '同一列被認領兩次')
         self.assertEqual(set(flat), all_ids, '有列沒被任何 worker 認領')
+
+
+class DealStageTests(QueueTestMixin, TestCase):
+    '''deals stage（#229）：DEAL 類 queue 種子／續跑、未知物件過濾、
+    syncstateful 照抄站方成交值、queuefinalize 對第三類型的處理。'''
+
+    DEAL_BODY = (
+        '<html><body><script>window.__NUXT__=(function(a,b,c){return {data:{x:{'
+        'data:{dealDataList:['
+        '{id:c,url:"https:\\u002F\\u002Frent.591.com.tw\\u002Fknown1",deal_total_day:"9天成交",deal_time:"今日"},'
+        '{id:"ghost1",url:"https:\\u002F\\u002Frent.591.com.tw\\u002Fghost1",deal_total_day:"3天成交",deal_time:"昨日"},'
+        '{id:"known2",url:"https:\\u002F\\u002Frent.591.com.tw\\u002Fknown2",deal_total_day:"5天成交",deal_time:"9天前"}'
+        '],total:3}}}}}(0,"","known1"))</script></body></html>'
+    )
+
+    def setUp(self):
+        super().setUp()
+        self.vendor = Vendor.objects.get(name=VENDOR_NAME)
+        from crawler.spiders.deal591_spider import Deal591Spider
+        self.spider_cls = Deal591Spider
+        from scrapy_twrh.spiders.rental591.util import DealRequestMeta
+        self.meta_cls = DealRequestMeta
+
+    def make_spider(self, **kwargs):
+        kwargs.setdefault('target_cities', '台北市')
+        return self.spider_cls(**kwargs)
+
+    def deal_rows(self):
+        return RequestTS.objects.filter(
+            year=2026, month=1, day=15, hour=0, request_type=RequestType.DEAL)
+
+    def test_seeds_page_one_per_city_with_pinned_base_date(self):
+        spider = self.make_spider(lookback_days=3)
+        requests = list(spider.start_deal_from_persist_queue())
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(self.deal_rows().count(), 1)
+        self.assertEqual(self.deal_rows().get().seed, {'id': '1', 'name': '台北市', 'page': 1})
+        self.assertEqual(spider.deal_lookback_days, 3)
+        # 基準日＝queue 的日期（TWRH_TARGET_DATE），不是今天
+        self.assertEqual(spider.deal_base_date.isoformat(), TEST_DATE)
+        self.assertIn('shType=clinch', requests[0].url)
+        self.assertIn('region=1&page=1', requests[0].url)
+
+    def test_same_day_rerun_does_not_reseed_but_append_does(self):
+        list(self.make_spider().start_deal_from_persist_queue())
+        first = self.deal_rows().get()
+        first.status = RequestStatus.DONE
+        first.owner = None
+        first.save()
+        # 同日重跑：queue 已終結、不重生種子、沒有請求
+        self.assertEqual(list(self.make_spider().start_deal_from_persist_queue()), [])
+        self.assertEqual(self.deal_rows().count(), 1)
+        # --append 強制重生
+        self.assertEqual(len(list(self.make_spider(append='True').start_deal_from_persist_queue())), 1)
+        self.assertEqual(self.deal_rows().count(), 2)
+
+    def test_parse_writes_known_houses_only_and_persists_next_page(self):
+        House.objects.create(vendor=self.vendor, vendor_house_id='known1')
+        House.objects.create(vendor=self.vendor, vendor_house_id='known2')
+        spider = self.make_spider(lookback_days=2)
+        queue = spider.persist_queue
+        queue.gen_persist_request({'id': '1', 'name': '台北市', 'page': 1})
+        db_request = self.deal_rows().get()
+        request = scrapy.Request(
+            url='https://rent.591.com.tw/list?shType=clinch&region=1&page=1',
+            meta={'rental': self.meta_cls('1', '台北市', 1), 'db_request': db_request})
+        response = TextResponse(
+            url=request.url, status=200, body=self.DEAL_BODY.encode('utf-8'),
+            request=request, encoding='utf-8')
+
+        out = list(spider.parse_deal_and_stop(response))
+        events = [o for o in out if not isinstance(o, bool)]
+        # known1 今日→事件；ghost1 未建檔→略過（計數）；known2 9 天前→窗外
+        self.assertEqual([e['vendor_house_id'] for e in events], ['known1'])
+        self.assertEqual(events[0]['deal_status'], enums.DealStatusType.DEAL)
+        self.assertEqual(events[0]['deal_time'].date().isoformat(), TEST_DATE)
+        self.assertEqual(events[0]['n_day_deal'], 9)
+        self.assertEqual(spider.n_events, 1)
+        self.assertEqual(spider.n_unknown, 1)
+        self.assertIs(out[-1], True)
+        # 本頁最舊已越過窗口（9 天前）→ 不再排下一頁
+        self.assertEqual(self.deal_rows().count(), 1)
+
+    def test_parse_persists_next_page_while_window_not_exhausted(self):
+        spider = self.make_spider(lookback_days=30)
+        spider.persist_queue.gen_persist_request({'id': '1', 'name': '台北市', 'page': 1})
+        db_request = self.deal_rows().get()
+        request = scrapy.Request(
+            url='https://x/1', meta={'rental': self.meta_cls('1', '台北市', 1),
+                                     'db_request': db_request})
+        response = TextResponse(url=request.url, status=200,
+                                body=self.DEAL_BODY.encode('utf-8'),
+                                request=request, encoding='utf-8')
+        list(spider.parse_deal_and_stop(response))
+        seeds = sorted(r.seed['page'] for r in self.deal_rows())
+        self.assertEqual(seeds, [1, 2])
+
+    def test_syncstateful_keeps_vendor_provided_deal_values(self):
+        from django.core.management import call_command
+        deal_time = timezone.make_aware(timezone.datetime(2026, 1, 12))
+        House.objects.create(vendor=self.vendor, vendor_house_id='h1',
+                             deal_status=enums.DealStatusType.DEAL,
+                             deal_time=deal_time, n_day_deal=17)
+        HouseTS.objects.create(vendor=self.vendor, vendor_house_id='h1',
+                               year=2026, month=1, day=15, hour=0,
+                               deal_status=enums.DealStatusType.DEAL,
+                               deal_time=deal_time, n_day_deal=17)
+        # 對照組：舊路徑（detail 標 DEAL、無站方值）仍由 TS 序列推導
+        HouseTS.objects.create(vendor=self.vendor, vendor_house_id='h2',
+                               year=2026, month=1, day=15, hour=0,
+                               deal_status=enums.DealStatusType.DEAL)
+        House.objects.create(vendor=self.vendor, vendor_house_id='h2',
+                             deal_status=enums.DealStatusType.DEAL)
+
+        call_command('syncstateful', '-ts')
+
+        h1 = House.objects.get(vendor_house_id='h1')
+        self.assertEqual(h1.deal_time, deal_time)
+        self.assertEqual(h1.n_day_deal, 17)
+        h2 = House.objects.get(vendor_house_id='h2')
+        self.assertEqual(h2.deal_status, enums.DealStatusType.DEAL)
+        self.assertEqual(h2.n_day_deal, 1)
+        self.assertIsNotNone(h2.deal_time)
+
+    def test_queuefinalize_handles_deal_type_without_zero_seed_rule(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+
+        def add(request_type, status, n=1):
+            for _ in range(n):
+                RequestTS.objects.create(
+                    year=2026, month=1, day=15, hour=0, request_type=request_type,
+                    vendor=self.vendor, seed={'id': 'x'}, status=status, attempts=1)
+
+        add(RequestType.LIST, RequestStatus.DONE, 2)
+        add(RequestType.DETAIL, RequestStatus.DONE, 50)
+        # deals 沒種子的日子合法（stage 未排程）
+        call_command('queuefinalize', '--no-cleanup')
+        # 有列就要收斂：殘留一列 → 紅，且訊息點名 deal
+        add(RequestType.DEAL, RequestStatus.DONE, 3)
+        add(RequestType.DEAL, RequestStatus.FAILED, 1)
+        with self.assertRaises(CommandError) as ctx:
+            call_command('queuefinalize', '--no-cleanup')
+        self.assertIn('deal', str(ctx.exception))
+        self.assertNotIn('deal: 零種子', str(ctx.exception))
+
+    def test_deals_manifest_counts_events_by_deal_date(self):
+        from crawlerrequest.manifests import build_deals_manifest
+        from datetime import date
+        for hid, day, n in (('a', 15, 9), ('b', 14, 3), ('c', 14, 5)):
+            HouseTS.objects.create(
+                vendor=self.vendor, vendor_house_id=hid,
+                year=2026, month=1, day=15, hour=0,
+                deal_status=enums.DealStatusType.DEAL,
+                deal_time=timezone.make_aware(timezone.datetime(2026, 1, day)),
+                n_day_deal=n)
+        HouseTS.objects.create(vendor=self.vendor, vendor_house_id='open',
+                               year=2026, month=1, day=15, hour=0)
+        manifest = build_deals_manifest(date(2026, 1, 15))
+        self.assertEqual(manifest['stage'], 'deals')
+        self.assertEqual(manifest['counts']['n_events'], 3)
+        self.assertEqual(manifest['by_deal_date'], {'2026-01-14': 2, '2026-01-15': 1})
+        self.assertEqual(manifest['dist']['median_n_day_deal'], 5)
+        self.assertEqual(manifest['queue']['seeds'], 0)

@@ -82,6 +82,8 @@ class Command(BaseCommand):
 
         problems = []
         lines = []
+        # 零種子規則只管 list／detail：deals stage（#229）當天可以合法沒
+        # 種子（stage 未排程／未上線），但有列就一樣要收斂
         totals_by_type = {RequestType.LIST: 0, RequestType.DETAIL: 0}
 
         for (vendor_id, request_type), by_status in sorted(matrix.items()):
@@ -89,7 +91,7 @@ class Command(BaseCommand):
             done = by_status.get(RequestStatus.DONE, 0)
             dead = by_status.get(RequestStatus.DEAD, 0)
             residue = seeds - done - dead
-            totals_by_type[request_type] += seeds
+            totals_by_type[request_type] = totals_by_type.get(request_type, 0) + seeds
 
             type_name = RequestType(request_type).name.lower()
             vendor_name = vendors.get(vendor_id, vendor_id)
@@ -114,8 +116,8 @@ class Command(BaseCommand):
 
         # 零產出：list／detail 各自連一顆種子都沒有＝上游靜默陣亡
         # （實案：scrapy 2.18 不呼叫 start_requests，2026-08-28）
-        for request_type, total in totals_by_type.items():
-            if total == 0:
+        for request_type in (RequestType.LIST, RequestType.DETAIL):
+            if totals_by_type[request_type] == 0:
                 problems.append(
                     '{}: 零種子——上游疑似靜默失敗'.format(
                         request_type.name.lower()))
