@@ -1,18 +1,16 @@
 #!/bin/bash
-# 月度 DB 瘦身（docs/aws-deployment-plan「三個節省槓桿」1＋2）：
-#   1. rawoffload：保留窗口外的 detail_raw/list_raw 打包 tar.zst、清欄位，
-#      包上傳 S3（tar.zst 走 Glacier IR、index json 走 STANDARD）
-#   2. archivehistory：窗口外的 HouseTS dump＋刪列，tgz 上傳 S3
+# 月度 DB 瘦身（docs/aws-deployment-plan「三個節省槓桿」2；槓桿 1 的 raw
+# offload 已於 D5 退役，raw 改由 rawpack 每日直寫 S3）：
+#   archivehistory：窗口外的 HouseTS dump＋刪列，tgz 上傳 S3
 # 上傳成功才刪 EFS 上的本地檔——上傳失敗時檔案留著，下次執行重送。
-# 排程須避開爬蟲時段（rawoffload 與爬蟲之間沒有鎖）；S3 端無 DeleteObject，
-# 刪除永遠人工（見 devop/aws/s3.tf）。
+# 排程須避開爬蟲時段；S3 端無 DeleteObject，刪除永遠人工（見 devop/aws/s3.tf）。
 set -uo pipefail
 cd "$(dirname "$0")/.."   # -> /app/twrh-dataset
 
 : "${TWRH_RAW_BUCKET:?}"
 WINDOW_DAYS="${TWRH_HOUSEKEEP_DAYS:-90}"
 OUT=/data/housekeep
-mkdir -p "$OUT/raw" "$OUT/ts"
+mkdir -p "$OUT/ts"
 failed=0
 
 s3put() {  # s3put <local-file> <s3-key> [STANDARD|GLACIER_IR]
@@ -25,26 +23,8 @@ print('uploaded s3://{}/{}'.format(os.environ['TWRH_RAW_BUCKET'], key))
 " "$1" "$2" "${3:-STANDARD}"
 }
 
-echo '===== RAW OFFLOAD ====='
-poetry run python django/manage.py rawoffload "$OUT/raw" --days-ago "$WINDOW_DAYS" --commit \
-  || { echo '!!! rawoffload failed'; failed=1; }
-
-for f in "$OUT"/raw/*/*; do
-  [ -e "$f" ] || continue
-  vendor_dir=$(basename "$(dirname "$f")")
-  vendor="${vendor_dir%% *}"   # '591 租屋網' -> '591'，對齊既有 raw/591/ 佈局
-  base=$(basename "$f")
-  case "$base" in
-    *.tar.zst) sc=GLACIER_IR ;;
-    *)         sc=STANDARD ;;
-  esac
-  if s3put "$f" "raw/$vendor/$base" "$sc"; then
-    rm "$f"
-  else
-    echo "!!! upload failed, keep $f for next run"
-    failed=1
-  fi
-done
+# raw 半邊已退役（D5，2026-09-05）：DB 不再存 raw，日包由 rawpack 每日直寫 S3；
+# 一次性清空既有 raw 欄位見 devop/rawcutover.sh
 
 echo '===== HOUSE_TS ARCHIVE ====='
 poetry run python django/manage.py archivehistory "$OUT/ts" -d "$WINDOW_DAYS" \

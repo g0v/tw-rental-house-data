@@ -24,6 +24,11 @@ class CrawlerPipeline(object):
         self.vendorMap = {}
         for vendor in Vendor.objects.all():
             self.vendorMap[vendor.name] = vendor
+        if not raw_sink.db_write() and not raw_sink.enabled():
+            # 兩邊都關＝raw 無處可去；不擋爬（資料仍入庫），但大聲講
+            logging.error(
+                'raw has no sink: TWRH_RAW_DB_WRITE=0 and TWRH_RAW_SINK=0 '
+                '— raw HTML of this run will be lost')
 
     def item_vendor (self, item):
         return self.vendorMap[item['vendor']]
@@ -46,12 +51,13 @@ class CrawlerPipeline(object):
                 )
 
                 if 'raw' in item:
-                    if item['is_list']:
-                        house_etc.list_raw = item['raw']
-                    else:
-                        house_etc.detail_raw = item['raw']
-                    # 3-1 雙寫：raw 同步落 scratch（收尾 rawpack 打日包）；
-                    # 對帳期過後 DB 停寫 raw、此處成為唯一去向
+                    # 3-1：D5 cutover 前雙寫（DB＋scratch）、後只寫 scratch
+                    # （TWRH_RAW_DB_WRITE=0），收尾 rawpack 打日包上 S3
+                    if raw_sink.db_write():
+                        if item['is_list']:
+                            house_etc.list_raw = item['raw']
+                        else:
+                            house_etc.detail_raw = item['raw']
                     if raw_sink.enabled():
                         raw_sink.write_raw(
                             item['vendor'],

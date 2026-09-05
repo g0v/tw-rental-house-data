@@ -545,7 +545,8 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 | D3 | 1-2 切換：退役 statscheck Slack／distcheck／fill-rate ext；Stats 凍結（已查無其他消費者）；baseline 重製落 assertions.yaml | **平行期滿**——原定一週，2026-09-03 改為「連續 3 天逐項一致即切」 |
 | D4 | 3-1 雙寫：rawpack 上 S3＋terraform lifecycle（raw/ 30d Glacier IR＋365d 過期） | terraform apply |
 | D5 | 3-1 切換：DB 停寫 raw＋一次性清空；rawpack 失敗升硬紅；rawoffload／housekeep raw 半邊退役 | **雙寫對帳數日** |
-| D6 | 3-2：flow.py 取代 go.sh／orchestrate（EventBridge 改指 flow）；驗 ecs executor；**`devop/sweep.sh` 一併收成 `flow.py sweep --vendor`**（09-05 sweep 上線後等於第三套 bash 編排），順手落 vendor profile、互斥加 vendor 條件（見 multi-vendor-plan〈營運政策層〉） | flow 於 AWS 驗過 |
+| D6a | 3-2：flow.py 取代 go.sh／orchestrate（EventBridge 改指 flow）；驗 ecs executor | flow 於 AWS 驗過（爬取後段先以 `--from rawpack` 驗、爬取段以次日日跑驗） |
+| D6b | **`devop/sweep.sh` 收成 `flow.py sweep --vendor`**（09-05 sweep 上線後等於第三套 bash 編排），順手落 vendor profile、互斥加 vendor 條件（見 multi-vendor-plan〈營運政策層〉）；三支 bash 退役 | D6a 綠後，新程式 |
 
 部署紀錄（每步 pin commit，依拍板記於此）：
 
@@ -556,8 +557,20 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 | 2026-09-04 傍晚 | deals stage（#229） | package 2.4.0 發版；dataset `deal591`＋DEAL queue 類型隨 CI image 上線（日跑自 9/5 02:10 起排在 finalize 前）；run-task 回補 lookback 10 天：全台 409 頁全 done、零殘留，寫入約一萬筆成交事件（成交日 8/25–9/4），syncstateful／manifest／qualitycheck 重跑全綠。插曲：一次 Bash 誤發兩個 run-task 搶同一 queue、停錯 task 遭 SIGKILL 未釋放 in_flight，以新 task 先 `manage.py shell` 放回 failed 再續跑收復；qualitycheck 的 STAGES 漏列 deals 誤報「manifest 不存在」，補修 | master `9303caa9` |
 | 2026-09-05 | deals 首航＋1-3 baseline 重製 | 02:10 日跑五項全綠（三型 queue 收斂、rawpack 流程內原生成功、distcheck、qualitycheck 0 advisory、deals 首航寫入成交事件）→ #229 關閉。發現 591 成交列表在成交後數日仍補列，日跑 lookback 改 7（task def rev 8）。baseline 重製：`dist.*` near 改為 9/1～9/5 五份 manifest 中位數、list 完整度哨兵轉硬斷言，`baselines/national.json` 待 D3 隨 distcheck 退場 | master `8c6795cb` |
 | 待 | D3 | 平行比對 9/4–9/6 三天一致即切（Day1、Day2 manifest 側綠，Slack 側由維護者比） | — |
-| 待 | D5 | 雙寫對帳數日後 cutover | — |
-| 待 | D6 | flow ecs executor 於 AWS 驗過後切排程 | — |
+| 待 | D5＋D6a | **壓縮時程（2026-09-05 拍板，見下）**：兩者不等日曆、用強度換天數 | — |
+| 待 | D6b | sweep 併入 flow＋vendor profile | — |
+
+**D5／D6a 壓縮時程**（門檻不是日曆是證據；指令見 devop/aws/README.md runbook）：
+
+| 日期 | 動作 | 綠的判準 |
+|---|---|---|
+| 9/6 早 | runcheck；D3 併入；對 9/4、9/5 日包各跑一次**全量** reconcile（抽樣數日→全量兩日）；`rerun_from_raws` 對雲上 9/5 日包 dry-run（09-05 已在本機做過：全數 parse 成功） | reconcile mismatch 0；flow 後段 `--from rawpack` 於雲上走通 |
+| 9/6 日 | D5 程式（`TWRH_RAW_DB_WRITE` 開關、rawpack 硬紅、housekeep raw 半邊退役、`rawcutover.sh`）＋D6a 排程切換（tfvars `crawler_command` 指 flow）同一顆 image 出貨；tfvars 翻 `raw_db_write=0` | CI 綠、apply 完成 |
+| 9/7 早 | 02:10 首次由 flow 跑、DB 已停寫 raw | runcheck 五項綠＋rawpack 流程內成功＝D5 停寫與 D6a 同時驗過；擇閒時 `rawcutover.sh --commit` 清空 raw 欄 |
+| 之後 | D6b：sweep 併入 flow、vendor profile；go.sh／orchestrate／sweep 退役 | Phase 3 結案 |
+
+代價＝9/7 一晚疊三個變更；緩解＝go.sh／orchestrate 留在 image、flow 可 `--from` 續跑、
+清空欄位延到綠了才做，回退只是 tfvars 翻回再 apply，沒有不可逆動作。
 
 附帶影響：**09-04 起本機不再日跑、202609 出貨源改 AWS**（2026-09-03
 拍板）——publisher 雲化已於 09-05 上線（state over S3，月度排程每月 1 日
@@ -577,9 +590,22 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
   檔案化時逐一收，env 傳遞在此前是唯一機制（偏離原註記，記錄在案）。
 - 舊 rerun 工具（rerun_detail_raw/dict）實測早因改組失效；重放路徑
   由 tools/rerun_from_raws.py（讀日包）接手，DB 模式不再修。
+- **同日多次 run 的日包＝聯集**（09-05 D5 備妥時發現的洞）：sweep 上線首日
+  沒打包，各輪 sweep 抓的 raw 只留在 EFS scratch——cutover 後就沒了。修法＝
+  rawpack 先把當日既有日包（本地／S3）合併回來、scratch 同名 member 蓋舊
+  （後爬者勝），再覆寫；scratch 裡早於目標日的孤兒目錄一併各自打包；sweep
+  收尾也跑 rawpack。這正是北極星「list stage 同一天多次 run 追加到同一分區」
+  的 raw 版。
 
 ## 編修紀錄
 
+- **2026-09-05（五補）** D5／D6 壓縮時程拍板（用強度換天數：全量對帳兩日、
+  flow 後段先以 `--from rawpack` 雲上驗、D5 停寫與 D6a 切 flow 同一顆 image
+  於 9/7 日跑一起驗）；D6 拆 D6a（切排程）／D6b（sweep 併 flow）。D5 程式
+  備妥於分支 `arch-d5-d6`：`TWRH_RAW_DB_WRITE` 開關、四處 rawpack 硬紅、
+  housekeep raw 半邊退役、`rawcutover.sh`、terraform `raw_db_write`／
+  `crawler_command`、`run-cloud.sh`；rawpack 改同日聯集（見實作備註）＋
+  `--reconcile-only --full`；B 層加 RawPackTests 3 例。
 - **2026-09-05（四補）** D6 加註：sweep.sh 併入 flow、vendor profile 同動
   （multi-vendor-plan 新增〈營運政策層〉分層）。
 - **2026-09-05（三補）** list 完整度哨兵重定義（分母＝detail 確認開放，

@@ -19,6 +19,14 @@ def enabled():
     return os.environ.get('TWRH_RAW_SINK', '1') == '1'
 
 
+def db_write():
+    '''D5 cutover 開關：1＝雙寫（HouseEtc 仍存 raw）、0＝DB 停寫 raw，
+    scratch／日包成為唯一去向，rawpack 失敗升硬紅（go.sh／orchestrate／
+    flow／sweep 四處同讀此值）。預設 1；cutover 於部署層（terraform
+    raw_db_write）翻成 0，回退＝翻回 1，不需改 image。'''
+    return os.environ.get('TWRH_RAW_DB_WRITE', '1') == '1'
+
+
 def scratch_dir():
     return os.environ.get('TWRH_RAW_SCRATCH_DIR', DEFAULT_SCRATCH)
 

@@ -34,6 +34,19 @@ Apply 後仍需人工做的事：
 3. 排程已預設開啟（A4 上線 2026-08-29；時間等 per-env 參數見 terraform.tfvars，
    不入版控）；要暫停用 `terraform apply -var enable_schedule=false`。
 
+## 一次性指令與 D5／D6 切換 runbook（2026-09-05）
+
+`run-cloud.sh <command...>`：用 crawler image 起一個 task 跑任意指令、等收工、印 log
+（一次只起一個；要爬站的指令先 `-var enable_sweep_schedule=false` 暫停 sweep）。
+
+| 步 | 指令 | 綠的判準 |
+|---|---|---|
+| 對帳補強（D5 前） | `run-cloud.sh poetry run python django/manage.py rawpack --reconcile-only --full --date 2026-09-04`（9/5 同） | `reconcile OK (full)`，mismatch 0；superseded＝之後重爬過、屬正常 |
+| flow 雲上驗（D6a 前） | 日跑收工後 `run-cloud.sh poetry run python flow.py run --date <今天> --from rawpack` | `=== flow done`；manifest／日包重出、qualitycheck 綠 |
+| D5 停寫＋D6a 切 flow | tfvars：`raw_db_write = "0"`、`crawler_command = ["poetry","run","python","flow.py","run"]` → `terraform apply` | 次日 02:10 `runcheck` 五項綠、rawpack 流程內成功（此時失敗＝硬紅） |
+| D5 清空 | 綠後、避開爬蟲時段：`run-cloud.sh ./devop/rawcutover.sh`（dry-run）→ `--commit` | 包上 `raw/591/<YYYY-MM>*.tar.zst`，`house_etc` raw 欄位全 NULL；空間回收另 `VACUUM (FULL) house_etc`（可不做） |
+| 回退 | tfvars 翻回 `raw_db_write = "1"`／`crawler_command = ["./devop/orchestrate.sh"]` → apply | image 不需重出 |
+
 ## 刻意不做（見 aws-deployment-plan「刻意避開的費用陷阱」）
 
 NAT Gateway（task 用 public subnet 直接出網）、常駐 EC2、K8s、Multi-AZ RDS。

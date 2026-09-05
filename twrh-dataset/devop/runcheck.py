@@ -22,7 +22,7 @@ BUCKET = os.environ.get('TWRH_RAW_BUCKET', 'twrh-w2')
 TZ = timezone(timedelta(hours=8))
 
 KEY_LINES = re.compile(
-    r'^=====|^=== orchestrate|seeds \d+ = |零種子|seeds == terminals|'
+    r'^=====|^=== orchestrate|^=== flow|^----- |seeds \d+ = |零種子|seeds == terminals|'
     r'rawpack|reconcile|packed|distribution invariants|distcheck|'
     r'hard failure|all assertions|wrote manifests|error_rate|'
     r'diff seeds:|seed-only mode|\[deal\] \d+ events|\[deal\] seeding|'
@@ -78,7 +78,7 @@ def summarize_stream(logs, stream):
     lines, last_progress, deal_pages, n_error, n_fillrate = [], {}, {}, 0, 0
     is_primary = False
     for ts, msg in stream_events(logs, name):
-        if '=== orchestrate' in msg:
+        if '=== orchestrate' in msg or '=== flow run' in msg:
             is_primary = True
         if '=== sweep' in msg and not is_primary:
             is_primary = 'sweep'
