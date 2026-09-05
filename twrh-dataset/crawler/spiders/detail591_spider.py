@@ -5,6 +5,8 @@ from django.db.models import F, Q
 from django.utils import timezone
 from scrapy import signals
 from rental.models import House, HouseTS
+from crawlerrequest.models import RequestTS
+from crawlerrequest.enums import RequestType
 from rental import enums
 from scrapy_twrh.spiders.rental591 import Rental591Spider, util
 from .persist_queue import PersistQueue
@@ -74,7 +76,8 @@ class Detail591Spider(Rental591Spider):
         # 核心包的 errback 只留 log（vendor 中立）；1-1：dataset 側必寫
         # 終結狀態——failed／attempts＋1、達上限 dead，收工由 queuefinalize 對帳
         super().error_handler(failure)
-        self.persist_queue.handle_errback(failure)
+        # 回傳補餵的 Request（errback 斷餵修正，見 persist_queue.handle_errback）
+        return self.persist_queue.handle_errback(failure)
 
     def parse_seed(self, seed):
         # dx 4-3：種子是有 key 的 dict；list 為升級前殘留列（--date 重跑舊日）
@@ -101,10 +104,17 @@ class Detail591Spider(Rental591Spider):
 
         用 detail_crawled_at 而非 append 模式的 etc.detail_raw——D5 後 DB 不存 raw。
         '''
-        return list(House.objects.filter(
+        ts = self.persist_queue.ts
+        already = set(RequestTS.objects.filter(
+            year=ts['y'], month=ts['m'], day=ts['d'], hour=ts['h'],
+            vendor=self.persist_queue.vendor, request_type=RequestType.DETAIL,
+        ).values_list('seed__id', flat=True))
+        # 當日已有 detail 列者（含 dead）不重排：同日多輪 sweep 不能把
+        # 重試計數歸零、也不製造重複列
+        return [h for h in House.objects.filter(
             deal_status=enums.DealStatusType.OPENED,
             detail_crawled_at__isnull=True,
-        ).values_list('vendor_house_id', flat=True))
+        ).values_list('vendor_house_id', flat=True) if h not in already]
 
     def gen_diff_seeds(self):
         '''L-C(6)(7)：list diff 驅動的 detail 種子（docs/dx-roadmap.md）。

@@ -332,6 +332,33 @@ class PersistQueue(object):
         # errback 的請求不會再進 parser_wrapper，名額在這裡釋放——
         # 舊制 errback 佔著 queue_length 名額不放，是「斷餵」的成因之一
         self.n_live_spider -= 1
+        # 斷餵的另一半（2026-09-05 sweep 試跑實踩）：補貨只在 parser_wrapper
+        # 的迴圈裡，收尾若最後一批全數 errback（591 連續 403），沒有任何
+        # callback 會再補貨、start_requests 也早已耗盡 mercy，spider 在 queue
+        # 還有 pending 時「正常 finished」。errback 一樣要補餵——scrapy 的
+        # errback 可以回傳 Request 序列，caller 把它 return 出去即可
+        return list(self.replenish())
+
+    def replenish(self):
+        '''從 queue 補認領到 queue_length 名額滿或無可認領列（含 batch 額滿即停）。'''
+        if self.is_batch_complete():
+            return
+        # quick fix for concurrency issue
+        mercy = 10
+        while True:
+            # 這個 generator 每次 yield 都會懸掛，item pipeline 是非同步的，
+            # 所以觸頂前懸掛在迴圈中間的 wrapper 會在觸頂後恢復並繼續認領——
+            # 迴圈內也要檢查，僅靠迴圈前那次檢查擋不住（2026-08-26 batch 13 實測：
+            # 觸頂後仍多爬 2,559 筆，enqueue 全由懸掛中的補貨迴圈餵出）
+            if self.is_batch_complete():
+                break
+            next_request = self.next_request()
+            if next_request:
+                yield next_request
+            elif mercy < 0:
+                break
+            else:
+                mercy -= 1
 
     def parser_wrapper(self, response):
         db_request = response.meta['db_request']
@@ -377,19 +404,4 @@ class PersistQueue(object):
             )
             return
 
-        # quick fix for concurrency issue
-        mercy = 10
-        while True:
-            # 這個 generator 每次 yield 都會懸掛，item pipeline 是非同步的，
-            # 所以觸頂前懸掛在迴圈中間的 wrapper 會在觸頂後恢復並繼續認領——
-            # 迴圈內也要檢查，僅靠迴圈前那次檢查擋不住（2026-08-26 batch 13 實測：
-            # 觸頂後仍多爬 2,559 筆，enqueue 全由懸掛中的補貨迴圈餵出）
-            if self.is_batch_complete():
-                break
-            next_request = self.next_request()
-            if next_request:
-                yield next_request
-            elif mercy < 0:
-                break
-            else:
-                mercy -= 1
+        yield from self.replenish()

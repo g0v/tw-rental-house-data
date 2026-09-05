@@ -476,10 +476,17 @@ class StateMachineTests(QueueTestMixin, TestCase):
         return q.next_request()
 
     def _fail_via_errback(self, q, request, exception):
+        '''觸發 errback 並回傳該列。名額先填滿：errback 會補餵（2026-09-05 修正），
+        單列 queue 下會把剛 failed 的列立刻重新認領，要觀察 failed 中間態就不能
+        留名額給它。回傳前把名額歸零，讓後續 next_request 照常。'''
         from twisted.python.failure import Failure
         failure = Failure(exception)
         failure.request = request
-        q.handle_errback(failure)
+        q.n_live_spider = q.queue_length + 1
+        replenished = q.handle_errback(failure)
+        self.assertEqual(replenished, [])        # 名額滿 → 不補餵
+        self.assertEqual(q.n_live_spider, q.queue_length)  # errback 釋放了一個名額
+        q.n_live_spider = 0
         return request.meta['db_request']
 
     def test_http_errback_writes_failed_with_classification(self):
@@ -494,7 +501,22 @@ class StateMachineTests(QueueTestMixin, TestCase):
         self.assert_retriable_failure(row.id, error='http_403')
         row.refresh_from_db()
         self.assertEqual(row.last_status, 403)
-        self.assertEqual(q.n_live_spider, 0)  # errback 必須釋放 in-memory 名額
+
+    def test_errback_replenishes_from_queue(self):
+        '''收尾整批 errback 時不能斷餵：errback 要回傳補認領的 Request。'''
+        queue = make_queue()
+        for i in range(3):
+            queue.gen_persist_request({'id': 'r{}'.format(i)})
+        first = queue.next_request()
+        queue.n_live_spider = queue.queue_length   # 模擬名額滿、其餘尚未認領
+        failure = mock.Mock()
+        failure.request = first
+        failure.check.return_value = False
+        failure.type = ValueError
+        replenished = queue.handle_errback(failure)
+        self.assertGreaterEqual(len(replenished), 1)
+        self.assertTrue(all(isinstance(r, scrapy.Request) for r in replenished))
+        self.assert_retriable_failure(first.meta['db_request'].id, 'ValueError')
 
     def test_network_errback_writes_type_name(self):
         from twisted.internet.error import TimeoutError as TxTimeoutError

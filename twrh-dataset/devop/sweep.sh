@@ -12,6 +12,8 @@ echo "=== sweep $now (frontier pages<=${TWRH_SWEEP_PAGES:-30}) ==="
 breaker_tripped() { grep -q 'error_rate_exceeded' "$1"; }
 
 echo '===== FRONTIER LIST ====='
+export TWRH_CONCURRENT_REQUESTS="${TWRH_SWEEP_CONCURRENCY:-2}"
+export TWRH_DOWNLOAD_DELAY="${TWRH_SWEEP_DELAY:-0.5}"
 poetry run scrapy crawl list591 -L INFO -a frontier_pages="${TWRH_SWEEP_PAGES:-30}"
 mv scrapy.log "../logs/$now.sweep-list.log"
 if breaker_tripped "../logs/$now.sweep-list.log"; then
@@ -19,12 +21,21 @@ if breaker_tripped "../logs/$now.sweep-list.log"; then
 fi
 grep -o '\[frontier\] [0-9]* unseen houses discovered' "../logs/$now.sweep-list.log" || true
 
+# 保守速率：白天與使用者共用站方資源，且 sweep 試跑（09-05）在 1,500 筆
+# 全速 detail 後吃到連續 403——比主跑的速率參數更溫和
+export TWRH_CONCURRENT_REQUESTS="${TWRH_SWEEP_CONCURRENCY:-2}"
+export TWRH_DOWNLOAD_DELAY="${TWRH_SWEEP_DELAY:-0.5}"
+
 echo '===== NEW DETAIL ====='
-poetry run scrapy crawl detail591 -L INFO -a seed_mode=new
-mv scrapy.log "../logs/$now.sweep-detail.log"
-if breaker_tripped "../logs/$now.sweep-detail.log"; then
-  echo '!!! sweep detail breaker tripped — abort before finalize'; exit 1
-fi
+# 兩趟：第二趟只會撿第一趟 failed 的重試（seed_mode=new 不重排當日已有列的物件）
+for pass in 1 2; do
+  poetry run scrapy crawl detail591 -L INFO -a seed_mode=new
+  mv scrapy.log "../logs/$now.sweep-detail.$pass.log"
+  if breaker_tripped "../logs/$now.sweep-detail.$pass.log"; then
+    echo '!!! sweep detail breaker tripped — abort before finalize'; exit 1
+  fi
+  grep -E 'generating request|response_status_count|item_scraped_count' "../logs/$now.sweep-detail.$pass.log" | sed 's/^.*INFO: //' | tr -d ' ,' | tr '\n' ' '; echo
+done
 
 # 同日 queue 一併對帳（含清晨那輪，已全 done）；紅＝本輪殘留，Slack 有訊息
 echo '===== QUEUE FINALIZE ====='

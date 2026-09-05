@@ -70,7 +70,8 @@ class Deal591Spider(Rental591Spider):
 
     def error_handler(self, failure):
         super().error_handler(failure)
-        self.persist_queue.handle_errback(failure)
+        # 回傳補餵的 Request（errback 斷餵修正，見 persist_queue.handle_errback）
+        return self.persist_queue.handle_errback(failure)
 
     def parse_seed(self, seed):
         if isinstance(seed, dict):
