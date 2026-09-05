@@ -1089,3 +1089,106 @@ class ListManifestCaptureTests(QueueTestMixin, TestCase):
         self.assertEqual(m['ratio'], 0.6667)
         self.assertEqual(m['ratio_all_open'], 0.5)
         self.assertEqual(m['n_pending_absent'], 2)
+
+
+class RawPackTests(QueueTestMixin, TestCase):
+    '''3-1 rawpack：同日多次 run 聯集（sweep 上線後）、孤兒日期、vendor 目錄
+    正規化、雙寫對帳 byte 比對與 D5 cutover（TWRH_RAW_DB_WRITE=0）只報量。'''
+
+    def setUp(self):
+        super().setUp()
+        import tempfile
+        self.tmp = tempfile.mkdtemp(prefix='twrh-rawpack-')
+        self.env = mock.patch.dict(os.environ, {
+            'TWRH_RAW_SCRATCH_DIR': os.path.join(self.tmp, 'scratch'),
+            'TWRH_RAW_DIR': os.path.join(self.tmp, 'raws'),
+            'TWRH_RAW_BUCKET': '',
+            'TWRH_RAW_DB_WRITE': '1',
+        })
+        self.env.start()
+        self.vendor = Vendor.objects.get(name=VENDOR_NAME)
+
+    def tearDown(self):
+        import shutil
+        self.env.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        super().tearDown()
+
+    def scratch(self, vendor_dir, date_str, house_id, html):
+        day = os.path.join(self.tmp, 'scratch', vendor_dir, date_str)
+        os.makedirs(day, exist_ok=True)
+        with open(os.path.join(day, '{}.detail.html'.format(house_id)), 'w') as f:
+            f.write(html)
+
+    def db_house(self, house_id, raw, crawled_at=None):
+        from rental.models import HouseEtc
+        house = House.objects.create(
+            vendor=self.vendor, vendor_house_id=house_id,
+            detail_crawled_at=crawled_at)
+        HouseEtc.objects.create(house=house, vendor=self.vendor,
+                                vendor_house_id=house_id, detail_raw=raw)
+
+    def members(self, date_str):
+        import subprocess
+        pack = os.path.join(self.tmp, 'raws', '591', date_str + '.tar.zst')
+        out = subprocess.run(['tar', '-I', 'zstd', '-tf', pack],
+                             capture_output=True, text=True, check=True)
+        return sorted(out.stdout.split())
+
+    def member(self, date_str, name):
+        import subprocess
+        pack = os.path.join(self.tmp, 'raws', '591', date_str + '.tar.zst')
+        return subprocess.run(['tar', '-I', 'zstd', '-xOf', pack, name],
+                              capture_output=True, check=True).stdout
+
+    def rawpack(self, *args):
+        from django.core.management import call_command
+        call_command('rawpack', '--date', TEST_DATE, '--keep-local', *args)
+
+    def test_same_day_runs_union_and_orphan_dates(self):
+        # 日跑：A、B
+        self.scratch('591', TEST_DATE, 'A', '<a1>')
+        self.scratch('591', TEST_DATE, 'B', '<b1>')
+        self.rawpack()
+        self.assertEqual(self.members(TEST_DATE),
+                         ['A.detail.html', 'B.detail.html'])
+        # sweep：B 重爬（新內容）＋C；舊版全名目錄也要併；前一天孤兒 D
+        self.scratch('591 租屋網', TEST_DATE, 'B', '<b2>')
+        self.scratch('591 租屋網', TEST_DATE, 'C', '<c1>')
+        self.scratch('591', '2026-01-14', 'D', '<d1>')
+        self.rawpack()
+        self.assertEqual(self.members(TEST_DATE),
+                         ['A.detail.html', 'B.detail.html', 'C.detail.html'])
+        self.assertEqual(self.member(TEST_DATE, 'B.detail.html'), b'<b2>')
+        self.assertEqual(self.member(TEST_DATE, 'A.detail.html'), b'<a1>')
+        self.assertEqual(self.members('2026-01-14'), ['D.detail.html'])
+        # scratch 清空（含孤兒）
+        self.assertFalse(os.path.exists(
+            os.path.join(self.tmp, 'scratch', '591', '2026-01-14')))
+        with open(os.path.join(self.tmp, 'raws', '591',
+                               TEST_DATE + '.index.jsonl')) as f:
+            self.assertEqual(len(f.read().splitlines()), 3)
+
+    def test_reconcile_full_detects_mismatch_and_skips_superseded(self):
+        from django.core.management.base import CommandError
+        later = timezone.make_aware(
+            timezone.datetime.strptime('2026-01-20', '%Y-%m-%d'))
+        self.db_house('A', '<a1>')
+        self.db_house('B', '<b-newer>', crawled_at=later)   # 之後又爬過
+        self.scratch('591', TEST_DATE, 'A', '<a1>')
+        self.scratch('591', TEST_DATE, 'B', '<b1>')
+        self.rawpack('--reconcile', '--full')                 # 綠：B superseded
+        self.scratch('591', TEST_DATE, 'A', '<a-tampered>')
+        with self.assertRaises(CommandError):
+            self.rawpack('--reconcile', '--full')
+
+    def test_reconcile_only_and_cutover_mode(self):
+        self.db_house('A', '<a1>')
+        self.scratch('591', TEST_DATE, 'A', '<a1>')
+        self.rawpack()
+        self.rawpack('--reconcile-only', '--full')            # 對既有包
+        # cutover 後 DB 無 raw：只報量、不比 byte，即使內容不同也綠
+        self.scratch('591', TEST_DATE, 'A', '<a-changed>')
+        with mock.patch.dict(os.environ, {'TWRH_RAW_DB_WRITE': '0'}):
+            self.rawpack('--reconcile', '--full')
+        self.assertEqual(self.member(TEST_DATE, 'A.detail.html'), b'<a-changed>')
