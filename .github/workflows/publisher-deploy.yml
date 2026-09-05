@@ -1,0 +1,50 @@
+# publisher 雲化（docs/aws-deployment-plan〈publisher 雲化〉）：publish.sh／csv-aggregator／
+# 月報相關檔案動到就 build publisher target（crawler＋clickhouse/awscli/git）推 ECR :latest；
+# 月度排程與 devop/aws/publish-cloud.sh 拉 :latest。clickhouse 下載較重，故與 crawler
+# 分開、只在相關路徑變動時 build。
+name: publisher-deploy
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'twrh-dataset/publish.sh'
+      - 'twrh-dataset/tools/publish_ui_stats.py'
+      - 'twrh-dataset/django/crawlerrequest/management/commands/monthreport.py'
+      - 'twrh-dataset/pyproject.toml'
+      - 'twrh-dataset/poetry.lock'
+      - 'csv-aggregator/**'
+      - 'Dockerfile'
+      - '.github/workflows/publisher-deploy.yml'
+
+permissions:
+  id-token: write   # OIDC
+  contents: read
+
+concurrency:
+  group: publisher-deploy
+  cancel-in-progress: true
+
+jobs:
+  build-push:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::846793362148:role/twrh-ci-ecr-push
+          aws-region: us-west-2
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      - name: Build and push publisher image
+        env:
+          ECR: ${{ steps.ecr.outputs.registry }}
+        run: |
+          docker build --target publisher \
+            -t "$ECR/twrh-publisher:latest" \
+            -t "$ECR/twrh-publisher:${GITHUB_SHA::12}" .
+          docker push "$ECR/twrh-publisher:latest"
+          docker push "$ECR/twrh-publisher:${GITHUB_SHA::12}"

@@ -84,7 +84,7 @@ resource "aws_iam_role_policy" "crawler_orchestrate" {
       {
         Effect   = "Allow"
         Action   = ["iam:PassRole"]
-        Resource = [aws_iam_role.execution.arn, aws_iam_role.crawler_task.arn]
+        Resource = [aws_iam_role.execution.arn, aws_iam_role.crawler_task.arn, aws_iam_role.publisher_task.arn]
       },
     ]
   })
@@ -115,7 +115,7 @@ resource "aws_iam_role_policy" "scheduler_run_task" {
       {
         Effect   = "Allow"
         Action   = ["ecs:RunTask"]
-        Resource = [aws_ecs_task_definition.crawler.arn]
+        Resource = [aws_ecs_task_definition.crawler.arn, aws_ecs_task_definition.publisher.arn]
       },
       {
         Effect   = "Allow"

@@ -102,7 +102,8 @@ resource "aws_efs_mount_target" "shared" {
 
 # ---- SSM 機密佔位（value 人工填，terraform 不管內容）----
 resource "aws_ssm_parameter" "secrets" {
-  for_each = toset(["db-password", "slack-webhook", "sentry-dsn"])
+  # github-deploy-key：publisher 雲化（2026-09-05）——publish.sh 步驟 5 以此 clone／push
+  for_each = toset(["db-password", "slack-webhook", "sentry-dsn", "github-deploy-key"])
   name     = "/twrh/${each.value}"
   type     = "SecureString"
   value    = "CHANGEME"

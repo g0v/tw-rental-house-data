@@ -133,6 +133,34 @@ variable "deal_lookback_days" {
   default     = "7"
 }
 
+variable "enable_publish_schedule" {
+  description = "月度出貨排程（publisher 雲化，2026-09-05）：每月 1 日跑 publish.sh 出上個月。雲上 dry-run 驗過後於 tfvars 開"
+  type        = bool
+  default     = false
+}
+
+variable "publish_schedule" {
+  description = "月度出貨 cron（Asia/Taipei）；須在 1 日的日爬（含月底 export -p）收工之後"
+  type        = string
+  default     = "cron(0 7 1 * ? *)"
+}
+
+variable "public_bucket" {
+  description = "公開資料集 bucket（publish.sh 步驟 3 的上傳目標；ap-northeast-3）"
+  type        = string
+  default     = "twrh"
+}
+
+variable "publisher_cpu" {
+  type    = number
+  default = 1024
+}
+
+variable "publisher_memory" {
+  type    = number
+  default = 4096 # clickhouse local 聚合月 zip；2 GB 邊緣，給 4
+}
+
 variable "housekeep_schedule" {
   description = "月度 housekeep（raw offload＋HouseTS 歸檔）的 cron（Asia/Taipei）；避開爬蟲時段"
   type        = string

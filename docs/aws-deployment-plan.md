@@ -154,6 +154,40 @@ GitHub push ──▶ GitHub Actions build ──▶ ECR image
 - UI stats json 的 commit/push 需要 GitHub 憑證（deploy key 或 fine-grained PAT），
   放 SSM，只注入 publisher task。
 
+### publisher 雲化（2026-09-05 拍板：state over S3，已實作）
+
+**拍板**：`--resume` 的暫存 state 放 **S3**（`s3://twrh-w2/publish-state/`），
+不綁 EFS——任何環境（雲上 task、本機）都能接同一份 state 續跑；EFS 只是
+月 zip 的出生地。
+
+**形狀**：
+- `publish.sh` 不分本機／雲上，行為由 env 決定：`TWRH_PUBLISH_STATE_BUCKET`
+  有值→state／report／聚合產物同步到 `publish-state/<YYYYMM>…`，本機缺 zip 時
+  自 S3 拉回；`..` 不是 git repo（publisher image 內）→步驟 5 以
+  `TWRH_GITHUB_DEPLOY_KEY`（SSM `/twrh/github-deploy-key`）淺 clone master
+  再 commit／push（dry-run 無 key 走唯讀 https clone）；AWS CLI 在 ECS 內走
+  task role、本機沿用 `--profile twrh`。
+- terraform（`devop/aws/publisher.tf`）：`twrh-publisher` task def（publisher
+  image、同一份 EFS、crawler env＋state bucket、secrets＋deploy key）、專屬
+  task role（公開 bucket `/2*/*` put/get、`publish-state/*` 讀寫、無刪除）、
+  log group `/twrh/publisher`（90 天）、月度排程 `twrh-monthly-publish`
+  （每月 1 日 07:00 Asia/Taipei，`enable_publish_schedule` 預設 false，雲上
+  dry-run 驗過後於 tfvars 開）。
+- CI：`.github/workflows/publisher-deploy.yml` 只在 publish.sh／csv-aggregator
+  ／月報相關路徑變動時 build publisher target（clickhouse 下載重，與 crawler
+  分開）。
+- 人工入口：`devop/aws/publish-cloud.sh [YYYYMM] [--dry-run|--resume --quality-issue <id>]`
+  ——起一個 publisher task、等收工、印 log；一次只起一個。
+
+**流程**：每月 1 日 07:00 排程 → `publish.sh`（預設上月）→ 綠燈全自動出貨
+（S3 zip、UI stats json commit 直 push master、Slack ✅）；紅燈→Slack ⚠️
+附 report 的 S3 路徑並停（exit 2）→ 人工寫 blog／quality-issues.ts 推 master
+→ `publish-cloud.sh YYYYMM --resume --quality-issue <id>` 續跑 3–5。
+
+**上線步驟**（202609 為首月）：deploy key（write）加到 GitHub repo、私鑰填
+SSM `/twrh/github-deploy-key`；`terraform apply`；CI build publisher image；
+`publish-cloud.sh 202608 --dry-run` 雲上演練；tfvars `enable_publish_schedule = true`。
+
 ---
 
 ## 建議不做

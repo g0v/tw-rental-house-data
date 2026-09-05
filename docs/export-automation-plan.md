@@ -120,6 +120,10 @@ publish.sh [YYYYMM]（預設上個月；冪等，可 --resume 從斷點續跑）
 
 ## 編修紀錄
 
+- **2026-09-05** publisher 雲化實作（state over S3 拍板）：publish.sh 加
+  S3 state 同步／缺 zip 拉回／image 內 clone-push、terraform publisher task
+  ＋月度排程（預設關）、publisher-deploy CI、publish-cloud.sh 人工入口。
+  設計與上線步驟見 aws-deployment-plan〈publisher 雲化〉。
 - **2026-09-03** 開放問題 3、5 拍板（見各條 ✅）：月底自動接跑（隨 publisher
   雲化）、JSON zip 不上傳。至此五個開放問題全數結案，本計畫剩餘＝
   publisher 雲化實作（門檻：雲上穩定 ~兩週＋9 月出貨走順一次）。
