@@ -41,6 +41,8 @@ FROM crawler AS publisher
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git openssh-client zip unzip awscli locales \
     && rm -rf /var/lib/apt/lists/* \
+    # 光裝 locales 不夠：要 locale-gen 出 locale-archive，zip 才認得 UTF-8（雲上實測）
+    && sed -i 's/^# en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen && locale-gen \
     && curl -fsSL https://clickhouse.com/ | sh \
     && mv clickhouse /usr/local/bin/
 
