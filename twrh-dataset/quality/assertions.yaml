@@ -15,8 +15,10 @@
 # 引擎行為：rolling 檢查 history 不足 min_history 份時自動降 advisory；
 # metric 缺席（如 backfill manifest 沒有 queue 節）時降 advisory 並註記。
 #
-# dist.* 基準值：baselines/national.json（2026-08-26 全台全量），
-# 1-3 baseline 重製時在此檔更新，不再產第五套 baseline 格式。
+# dist.* 基準值：2026-09-05 重製（1-3）——取 2026-09-01～09-05 五份 detail
+# manifest（每日 65k～72k 樣本，9/1～9/3 為 DB 回補）各 metric 的中位數；
+# 原 baselines/national.json（2026-08-26 全台全量 55k）退場。下次重製同法：
+# 疊近 N 份 manifest 取中位數、直接改這裡的 near，不產第五套 baseline 格式。
 
 version: 1
 
@@ -60,12 +62,11 @@ checks:
     rolling_median_within: 0.5
     advisory: true
 
-  # --- L-B list 完整度哨兵（門檻待實據校準，暫 advisory） ---
+  # --- L-B list 完整度哨兵（2026-09-05 校準：9/2～9/5 實測 0.91～0.99，轉硬斷言） ---
   - id: list.capture.ratio
     stage: list
     metric: capture.ratio
     min: 0.85
-    advisory: true
 
   # --- 量的漂移（疊窗即算） ---
   - id: detail.counts.n_crawled
@@ -94,43 +95,43 @@ checks:
     stage: detail
     metric: dist.share_電梯大樓
     sample_n: dist.n
-    near: 0.546
+    near: 0.554
     tolerance: 0.10
   - id: detail.dist.share_公寓
     stage: detail
     metric: dist.share_公寓
     sample_n: dist.n
-    near: 0.221
+    near: 0.202
     tolerance: 0.10
   - id: detail.dist.share_整層住家
     stage: detail
     metric: dist.share_整層住家
     sample_n: dist.n
-    near: 0.569
+    near: 0.566
     tolerance: 0.10
   - id: detail.dist.share_套房
     stage: detail
     metric: dist.share_套房
     sample_n: dist.n
-    near: 0.382
+    near: 0.373
     tolerance: 0.10
   - id: detail.dist.rooftop_rate
     stage: detail
     metric: dist.rooftop_rate
     sample_n: dist.n
-    near: 0.022
+    near: 0.019
     tolerance: 0.10
   - id: detail.dist.fill_rough_coordinate
     stage: detail
     metric: dist.fill_rough_coordinate
     sample_n: dist.n
-    near: 0.993
+    near: 0.978
     tolerance: 0.05
   - id: detail.dist.fill_floor_ping
     stage: detail
     metric: dist.fill_floor_ping
     sample_n: dist.n
-    near: 1.0
+    near: 0.985
     tolerance: 0.05
   - id: detail.dist.fill_monthly_price
     stage: detail
