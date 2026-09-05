@@ -145,16 +145,9 @@ fi
 echo '===== STATEFUL UPDATE ====='
 poetry run python ./django/manage.py syncstateful -ts
 
-echo '===== GENERATE STATISTICS ====='
-poetry run python ./django/manage.py statscheck
-
-# 「值對不對」防線：當日分佈不變量 vs baselines/national.json（591 資料混淆哨兵）。
-# 只告警不擋 export——資料已入庫，出不出貨是月度 gate 的事
-echo '===== DISTRIBUTION CHECK ====='
-poetry run python ./django/manage.py distcheck
-
-# 1-2 新觀測通道（平行週：與 statscheck/distcheck/fill-rate 並行跑，
-# 驗證一致後切換、退役四套舊工具）：manifest 產出＋assertions.yaml 斷言
+# 1-2 觀測層（D3 起唯一通道；statscheck／distcheck／fill-rate 已退役）：
+# manifest 產出＋assertions.yaml 斷言，紅只告警不擋 export——資料已入庫，
+# 出不出貨是月度 gate（monthreport）的事
 echo '===== MANIFEST + QUALITY CHECK ====='
 poetry run python ./django/manage.py manifest
 poetry run python ./django/manage.py qualitycheck

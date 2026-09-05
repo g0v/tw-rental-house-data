@@ -9,12 +9,14 @@
 - 紅綠只由「硬事實」決定（2026-08-30 拍板）：
     缺爬日 ＞0 → 紅；單日 fail ratio > 門檻（預設 10%）→ 該日 fail，
     當月有任一 fail 日 → 紅。
-- 分佈不變量（與 distcheck 同一套 compare_invariants）**永遠 advisory**：
+- 分佈不變量（與 qualitycheck 同一組基準：quality/assertions.yaml 的
+  dist.* near 值，D3 起 baselines/national.json 退場）**永遠 advisory**：
     市場有季節性，跨月比對只進報告與敘事、不決定紅綠。
 
 用法（publish.sh 步驟 2c；手動跑亦可）：
   python django/manage.py monthreport [--month YYYYMM] [-o DIR]
-      [--fail-ratio 0.1] [--baseline PATH] [--logs-dir DIR]
+      [--fail-ratio 0.1] [--baseline PATH（national.json 格式，預設由 assertions.yaml 推導）]
+      [--logs-dir DIR]
 
 exit code：0=綠、2=紅；例外才是 1。
 """
@@ -34,9 +36,9 @@ from rental import enums
 from rental.enums import DealStatusType
 from rental.models import HouseTS
 
-BASELINE_DEFAULT = os.path.join(
+ASSERTIONS_DEFAULT = os.path.join(
     os.path.dirname(os.path.realpath(__file__)),
-    '../../../../baselines/national.json')
+    '../../../../quality/assertions.yaml')
 LOGS_DEFAULT = os.path.join(
     os.path.dirname(os.path.realpath(__file__)), '../../../../../logs')
 
@@ -48,6 +50,34 @@ def _enum_or_none(enum_cls, value):
         return enum_cls(value)
     except ValueError:
         return value
+
+
+def baseline_from_assertions(path=ASSERTIONS_DEFAULT):
+    '''assertions.yaml 的 detail dist.* near 值 → compare_invariants 的 baseline 形狀。
+
+    單一基準來源（1-2 觀測層原則）：qualitycheck 日檢與月報 advisory 對同一組
+    數字，baseline 重製只改 yaml。tolerance 取各類第一條的 tolerance。
+    '''
+    import yaml
+    with open(path, encoding='utf-8') as f:
+        spec = yaml.safe_load(f)
+    invariants_ = {}
+    tolerance = {}
+    for check in spec.get('checks', []):
+        metric = check.get('metric', '')
+        if check.get('stage') != 'detail' or not metric.startswith('dist.') or 'near' not in check:
+            continue
+        name = metric[len('dist.'):]
+        invariants_[name] = check['near']
+        kind = ('median' if name.startswith('median_') else
+                'fill' if name.startswith('fill_') else 'share')
+        tolerance.setdefault(kind, check.get('tolerance', 0))
+    return {
+        'source': os.path.relpath(path),
+        'min_samples': spec.get('defaults', {}).get('min_samples', 10000),
+        'tolerance': tolerance,
+        'invariants': invariants_,
+    }
 
 
 def _queue_fail(queue):
@@ -70,7 +100,8 @@ class Command(BaseCommand):
             '-o', '--output-dir', default='datas/publish',
             help='報告輸出目錄（default: datas/publish）')
         parser.add_argument('--fail-ratio', type=float, default=0.1)
-        parser.add_argument('--baseline', default=BASELINE_DEFAULT)
+        parser.add_argument('--baseline', default=None,
+                            help='national.json 格式的基準檔；預設由 quality/assertions.yaml 推導')
         parser.add_argument(
             '--logs-dir', default=LOGS_DEFAULT,
             help='掃 breaker 事件（error_rate_exceeded）的 log 目錄；不存在則跳過')
@@ -156,13 +187,18 @@ class Command(BaseCommand):
             'property_type': _enum_or_none(enums.PropertyType, row['property_type']),
         } for row in rows]
 
-        with open(options['baseline']) as f:
-            baseline = json.load(f)
+        if options['baseline']:
+            with open(options['baseline']) as f:
+                baseline = json.load(f)
+            baseline_name = os.path.basename(options['baseline'])
+        else:
+            baseline = baseline_from_assertions()
+            baseline_name = 'assertions.yaml dist.* near'
         current = invariants(generics)
         results, inv_passed, skipped_reason = compare_invariants(current, baseline)
         invariant_report = {
             'mode': 'advisory',
-            'baseline': os.path.basename(options['baseline']),
+            'baseline': baseline_name,
             'n_samples': current.get('n', 0),
             'skipped': skipped_reason or None,
             'passed': bool(inv_passed) if not skipped_reason else None,

@@ -43,6 +43,8 @@ class RequestTS(BaseTimeSeries):
         ]
 
 class Stats(BaseTimeSeries):
+    # D3（1-2 切換）起凍結：statscheck 退役、不再新增列；職責由
+    # manifests/<date>/<stage>.json 承接。表暫留（歷史查詢），不做 migration
     vendor = models.ForeignKey(Vendor, on_delete=models.PROTECT)
     n_list_fail = models.IntegerField(default=0)
     n_expected = models.IntegerField(default=0)

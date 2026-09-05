@@ -74,16 +74,17 @@ poetry run backend/manage.py export --help
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
 ```
 
-3. 執行 `statscheck` 指令時，系統會自動發送統計資訊到 Slack：
+3. 執行 `qualitycheck` 指令時，系統會把當日品質斷言結果發送到 Slack（單一通道）：
 
 ```bash
-poetry run django/manage.py statscheck
+poetry run python django/manage.py manifest        # 先產出當日 manifests/<date>/<stage>.json
+poetry run python django/manage.py qualitycheck    # 對 manifest 跑 quality/assertions.yaml 的斷言
 ```
 
 通知訊息包含：
-- 各租屋網站的爬取統計（成功/失敗數量）
-- 執行時間戳記（年/月/日/時段）
-- 錯誤時會發送警告訊息並同步回報到 Sentry（如有設定）
+- 當日摘要（總爬取數、已關閉／已成交／新增、list 完整度、成交事件）
+- 失敗的斷言：`[stage] 斷言 id 觀測值 vs 門檻`（綠燈只有摘要）
+- queue 收工對帳（`queuefinalize`）紅燈另有一則，並同步回報到 Sentry（如有設定）
 
 #### 注意事項
 
