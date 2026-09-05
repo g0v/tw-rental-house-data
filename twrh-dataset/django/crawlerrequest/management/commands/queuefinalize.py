@@ -10,7 +10,7 @@ spider「正常 finished」但少一批）都會在這裡現形，而不是事�
 紅燈條件：
   1. 零產出——當日 list 或 detail 連一顆種子都沒有
   2. 殘留——pending / in_flight / failed 未收斂
-  3. dead 比率 >= 門檻（沿用 STATSCHECK_FAIL_RATIO，預設 5%）；
+  3. dead 比率 >= 門檻（TWRH_QUEUE_DEAD_RATIO，預設 5%；舊名 STATSCHECK_FAIL_RATIO 仍認）；
      低於門檻的 dead 照列訊息，不當錯誤（告警疲勞對策，同 dx 2-3）
 
 附帶清理政策（1-1「不刪列」的容量對策）：終結列保留 N 天
@@ -69,7 +69,9 @@ class Command(BaseCommand):
         if not options['no_cleanup']:
             self.cleanup(options['cleanup_days'])
 
-        threshold = getattr(settings, 'STATSCHECK_FAIL_RATIO', 0.05)
+        threshold = float(os.environ.get(
+            'TWRH_QUEUE_DEAD_RATIO',
+            getattr(settings, 'STATSCHECK_FAIL_RATIO', 0.05)))
         vendors = {v.id: v.name for v in Vendor.objects.all()}
 
         # (vendor, type) → {status: count}

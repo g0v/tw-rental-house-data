@@ -217,12 +217,6 @@ def stage_sync(_ctx):
     manage('syncstateful', '-ts')
 
 
-def stage_stats(_ctx):
-    # 平行週的舊通道（statscheck＋distcheck）；切換日此 stage 整段退役
-    manage('statscheck', check=False)
-    manage('distcheck', check=False)
-
-
 def stage_manifest(_ctx):
     manage('manifest')
 
@@ -272,7 +266,6 @@ STAGES = [
     ('rawpack', stage_rawpack, rawpack_artifacts),
     ('synthts', stage_synthts, None),
     ('sync', stage_sync, None),
-    ('stats', stage_stats, None),
     ('manifest', stage_manifest, manifest_artifacts),
     ('quality', stage_quality, None),
     ('export', stage_export, None),

@@ -57,7 +57,6 @@ EXTENSIONS = {
     "crawler.extensions.sentry.SentryLogger": 10,
     # 熔斷與填充率機制在 package 側（dx 2-1/2-2，2026-08-25 上移）；門檻值在下面
     "scrapy_twrh.extensions.breaker.ErrorRateBreaker": 20,
-    "scrapy_twrh.extensions.fill_rate.FillRateMonitor": 30,
 }
 
 # 錯誤率熔斷（dx 2-1）：滑動視窗內樣本 >= MIN_SAMPLES 且失敗率 >= THRESHOLD 即關閉 spider
@@ -66,14 +65,10 @@ TWRH_BREAKER_WINDOW = 100
 TWRH_BREAKER_THRESHOLD = 0.5
 TWRH_BREAKER_MIN_SAMPLES = 20
 
-# 欄位填充率監控（dx 2-2）：與上一次報告比對，掉幅超過 DROP 即發 ERROR log（Sentry 會收）
-TWRH_FILL_RATE_ENABLED = True
-TWRH_FILL_RATE_DROP = 0.3
-TWRH_FILL_RATE_MIN_SAMPLES = 20
-TWRH_FILL_RATE_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), '..', '..', 'logs', 'fill-rates')
+# 欄位填充率監控（dx 2-2 的 FillRateMonitor）於 D3 退役：填充率改由 manifest
+# 的 fill_rate.* 斷言（qualitycheck，DB 層量法）承接——survey 層與 DB 層兩套
+# 量法的分歧（09-04 殭屍掃蕩 5,761 件 404 稀釋分母的假警報）從此不存在
 
-# Enable and configure the AutoThrottle extension (disabled by default)
 # See https://doc.scrapy.org/en/latest/topics/autothrottle.html
 AUTOTHROTTLE_ENABLED = True
 # The initial download delay

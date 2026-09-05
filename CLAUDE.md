@@ -66,9 +66,7 @@ poetry run python django/manage.py queuefinalize       # 1-1 收工鐵律 seeds=
 poetry run python django/manage.py synthts             # L-C diff 模式：合成被 skip 物件的當日 HouseTS（標 is_synthesized）
 poetry run python django/manage.py syncstateful -ts    # sync deal status into time-series
 poetry run python django/manage.py manifest            # 1-2：產 manifests/<date>/{list,detail,snapshot}.json（--from/--to --source backfill 可回補）
-poetry run python django/manage.py qualitycheck        # 1-2：quality/assertions.yaml × manifest 斷言，單一 Slack 通道
-poetry run python django/manage.py statscheck          # generate stats, notify Slack（平行週後由 qualitycheck 取代）
-poetry run python django/manage.py distcheck           # 當日分佈不變量（平行週後由 qualitycheck 取代）
+poetry run python django/manage.py qualitycheck        # 1-2：quality/assertions.yaml × manifest 斷言，單一 Slack 通道（D3 起唯一觀測通道；statscheck／distcheck／fill-rate ext 已退役）
 poetry run python django/manage.py rawpack --reconcile # 3-1：當日 raw scratch 打成 raws/<vendor>/<date>.tar.zst＋index；--reconcile 抽樣比對 DB
 poetry run python django/manage.py export -p           # periodic export (month-end only)
 poetry run python django/manage.py export --help       # manual export: -f/-t dates, -u, -j, -b6
@@ -200,7 +198,9 @@ delete or replace it with a copy.
 5. `syncstateful -ts` derives deal status / `n_day_deal` from the time series for houses the
    crawler only flagged; rows that already carry vendor-provided `deal_time` + `n_day_deal`
    (the deals stage) are copied as-is.
-6. `statscheck` writes `Stats` rows and posts a summary to Slack (errors also go to Sentry).
+6. `manifest` writes `manifests/<date>/{list,detail,deals,snapshot}.json`; `qualitycheck` asserts
+   `quality/assertions.yaml` against them and posts the single Slack summary/alert (errors also go
+   to Sentry). `Stats` rows are frozen since D3 (statscheck retired).
 7. `export -p` writes `[YYYYMM][CSV][Raw] TW-Rental-Data.zip` into `twrh-dataset/datas/`.
 8. `csv-aggregator` merges monthly ZIPs into quarterly/yearly ones.
 9. ZIPs are published to S3 (`https://twrh.s3.ap-northeast-3.amazonaws.com/<year>/…`); `ui-next`
@@ -254,7 +254,8 @@ date-keyed:
   （`TWRH_DETAIL_SEED_MODE=diff`，L-C list-diff skip 降頻：stale/指紋變/連續≥2天缺席/回列
   才入 queue，之後 `synthts` 合成被 skip 者的當日 HouseTS）。發布語意拍板前 production 走 full。
 - List pagination（package 端）不信 591 的 `total_page`：宣稱頁範圍當下限，前緣逐頁探測
-  直到空結果頁收單；statscheck 的「list 完整度」哨兵（`Stats.n_open_in_list`）監控捕獲率。
+  直到空結果頁收單；list manifest 的 `capture.ratio`（當日 OPENED 中出現在 list 的比率，
+  assertions `list.capture.ratio` min 0.85）監控捕獲率。
 - `--start-early`: when run at/after 22:00, bucket the data under tomorrow's date.
 
 ### TWRH_TARGET_DATE
@@ -269,7 +270,7 @@ Set it manually (or use `go.sh --date`) when re-running part of a pipeline for a
 - `HouseTS` — daily snapshot, unique on (year, month, day, hour, vendor, vendor_house_id). `hour` is
   currently always 0 (`current_stepped_hour` steps by 24).
 - `HouseEtc` — 1:1 with `House`, holds `list_raw` / `detail_raw` HTML and `detail_dict`.
-- `RequestTS` / `Stats` (crawlerrequest app) — crawl queue and per-run statistics.
+- `RequestTS` / `Stats` (crawlerrequest app) — crawl queue；`Stats` 自 D3 凍結（表留、不再寫）。
 - GeoDjango `PointField` (WGS84 / SRID 4326) for `rough_coordinate`.
 - Deal status is sticky: once a house is `DEAL`, the pipeline will not overwrite it with `NOT_FOUND`.
 - `RequestTS.request_type` has three values: `LIST` / `DETAIL` / `DEAL`; queuefinalize's zero-seed
