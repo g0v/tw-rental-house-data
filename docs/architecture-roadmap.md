@@ -257,7 +257,7 @@ fixture／scrub 方法論已成文、`twrh` CLI 讓 parser 開發不碰 DB——
 | `seed_mode=diff` skip 謂詞（散在三處 DB 狀態） | **seed 推導＝純函數**：今日 list＋前 N 日 list＋昨日 snapshot 三組檔案 → 四類 seeds（stale／指紋變／連續缺席／回列）→ 寫 queue |
 | `synthts`＋`is_synthesized` | 整支消失——snapshot stage 定義即 carry（`source=carry` 欄） |
 | 缺席 ≥2 天、`refresh_days`、回列窗口 | 政策參數進 `quality/`，per-vendor 可覆寫 |
-| `Stats.n_open_in_list` 哨兵 | 一行斷言：昨日 snapshot OPENED ∩ 今日 stubs 比率，入 list manifest |
+| `Stats.n_open_in_list` 哨兵 | 一行斷言：**當日 detail 確認開放** ∩ 今日 stubs 比率，入 list manifest（2026-09-05 重定義：分母不含 carry 列——carry 且不在 list 的那批 96% 是尚未確認的關閉，算進去會把每日下架量誤讀成漏抄；另報 `n_pending_absent` 當下架量代理，只觀測） |
 | 收斂驗證（人工 DB query） | detail manifest 自帶 `seeds_by_class`／`skipped`，疊時間窗即收斂曲線 |
 
 純函數化的三個紅利：**離線可測**（fixture 檔即可測四類 seeds 的邊界
@@ -268,6 +268,18 @@ fixture／scrub 方法論已成文、`twrh` CLI 讓 parser 開發不碰 DB——
 
 兩條實驗換來的判準原封保留：狀態變更永遠由 detail 判定（缺席只是種子）；
 bootstrap 自然退化為全量、逐日收斂——行為語意與儲存形狀無關。
+
+**前緣掃描（2026-09-05 補，短命物件）**：#229 追查發現刊登不到一天就成交
+的物件，一天一次 02:10 的 list 只看得到一半（住宅類「1 天成交」的 49.7%
+從未進資料集），而 list 本身完整度驗過 ≈100%——缺口是採樣頻率不是抓取。
+補法＝白天每數小時掃各縣市 list 前緣：排序鍵是刊登時間、新刊登連續排在
+最前，逐頁前進、整頁都是已知物件即收單（每縣市個位數到十幾頁），對沒見過
+的物件立刻抓 detail；與日跑同一日期 bucket、同一張 queue，被掃到的物件
+隔天因 detail 很新被 diff 判 skip（日跑反而更輕）。北極星下的形狀：list
+stage 同一天多次 run 追加到同一分區（與 4e 的 `run-<k>` 同構）、flow 的
+完成判據要有 run 維度、每次 run 自己收工對帳——Vendor Protocol 不變，
+`list_requests` 多一個頁數上限參數。3 小時內就成交的仍會漏，餘量以成交
+列表欄位建最小成交紀錄補（待做）。
 
 **snapshot 即摺疊狀態（冷啟同步深度＝1 天）**：謂詞所需的 per-house
 滾動狀態全部摺進 snapshot 當 carry 欄——`last_detail_at`（refresh_days）、
@@ -568,6 +580,18 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 
 ## 編修紀錄
 
+- **2026-09-05（三補）** list 完整度哨兵重定義（分母＝detail 確認開放，
+  另報 n_pending_absent）；前緣掃描落地（`list591 -a frontier_pages`、
+  `detail591 -a seed_mode=new`、`devop/sweep.sh`、排程 `twrh-frontier-sweep`
+  每 3 小時避開主跑）；雲上試跑抓到 1-1 型事故「收尾整批 403 → errback
+  斷餵 → spider 帶 pending 正常 finished」，finalize 當場紅——修法＝errback
+  也補餵（persist_queue.replenish），三支 spider 同修；修後第二次試跑全綠
+  （殘留 398 筆補完、新物件 71 筆、零 403），排程開啟（05／08／11／14／17／
+  20／23 時）。互斥：sweep 起跑先查當日 2 小時內更新的 in_flight 列，有則
+  讓路 exit 0；臨時上雲測試要乾淨隔離可 `terraform apply -var
+  enable_sweep_schedule=false` 暫停。
+- **2026-09-05（二補）** D3 程式備妥於分支 `arch-d3`（等 9/6 第三天一致
+  再併）；publisher 雲化上線（state over S3，見 aws-deployment-plan）。
 - **2026-09-05** deals 首航驗收全綠、#229 關閉；lookback 2→7 拍板（591
   補列延遲）；1-3 baseline 重製完成（近五日 manifest 中位數，list 哨兵
   轉硬斷言）——D3 前置齊備，只等平行比對第三天。

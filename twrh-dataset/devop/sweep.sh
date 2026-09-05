@@ -11,6 +11,29 @@ now=$(date +%Y%m%d-%H%M)
 echo "=== sweep $now (frontier pages<=${TWRH_SWEEP_PAGES:-30}) ==="
 breaker_tripped() { grep -q 'error_rate_exceeded' "$1"; }
 
+# 互斥：同一張 queue、同一日期 bucket，別人（拖長的日跑、臨時 run-task 測試）
+# 正在爬就讓路——以「當日有 2 小時內更新過的 in_flight 列」判定，避免被
+# SIGKILL 殘留的舊 in_flight 永久擋住。讓路＝exit 0 不告警，下一輪再來。
+if poetry run python ./django/manage.py shell -c '
+import sys
+from datetime import timedelta
+from django.utils import timezone
+from crawlerrequest.models import RequestTS
+from crawlerrequest.enums import RequestStatus
+import os
+from datetime import datetime
+override = os.environ.get("TWRH_TARGET_DATE")
+today = datetime.strptime(override, "%Y-%m-%d").date() if override else timezone.localtime().date()
+y, m, d, h = today.year, today.month, today.day, 0
+busy = RequestTS.objects.filter(
+    year=y, month=m, day=d, hour=h, status=RequestStatus.IN_FLIGHT,
+    updated__gte=timezone.now() - timedelta(hours=2)).count()
+print("in_flight(<2h):", busy)
+sys.exit(1 if busy else 0)
+'; then :; else
+  echo '=== sweep skipped: another crawl is in flight on this queue ==='; exit 0
+fi
+
 echo '===== FRONTIER LIST ====='
 export TWRH_CONCURRENT_REQUESTS="${TWRH_SWEEP_CONCURRENCY:-2}"
 export TWRH_DOWNLOAD_DELAY="${TWRH_SWEEP_DELAY:-0.5}"
