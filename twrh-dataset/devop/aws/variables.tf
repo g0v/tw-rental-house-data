@@ -127,6 +127,12 @@ variable "detail_refresh_days" {
   default     = "7"
 }
 
+variable "deal_lookback_days" {
+  description = "TWRH_DEAL_LOOKBACK_DAYS：deals stage 回看天數（#229）。591 成交列表會在成交後數日持續補列，日跑取 7 保守（2026-09-05 拍板）"
+  type        = string
+  default     = "7"
+}
+
 variable "housekeep_schedule" {
   description = "月度 housekeep（raw offload＋HouseTS 歸檔）的 cron（Asia/Taipei）；避開爬蟲時段"
   type        = string

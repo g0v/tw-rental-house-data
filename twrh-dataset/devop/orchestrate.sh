@@ -91,7 +91,7 @@ poetry run python devop/workers.py wait $ARNS || timed_out=1
 
 # #229：成交事件——走「已成交」列表（同 go.sh）；finalize 之前，DEAL 列一併對帳
 echo '===== DEALS ====='
-poetry run scrapy crawl deal591 -L INFO -a lookback_days="${TWRH_DEAL_LOOKBACK_DAYS:-2}"
+poetry run scrapy crawl deal591 -L INFO -a lookback_days="${TWRH_DEAL_LOOKBACK_DAYS:-7}"
 mv scrapy.log "../logs/$now.deals.log"
 if breaker_tripped "../logs/$now.deals.log"; then
   echo '!!! deals breaker tripped — abort before finalize'

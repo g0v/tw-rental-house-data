@@ -133,6 +133,7 @@ locals {
     # L-C skip 降頻（go.sh／orchestrate.sh 讀，dx-roadmap L-C）
     { name = "TWRH_DETAIL_SEED_MODE", value = var.detail_seed_mode },
     { name = "TWRH_DETAIL_REFRESH_DAYS", value = var.detail_refresh_days },
+    { name = "TWRH_DEAL_LOOKBACK_DAYS", value = var.deal_lookback_days },
     # housekeep.sh（raw offload / HouseTS 歸檔）與 3-1 rawpack／1-2 manifest 上傳目標
     { name = "TWRH_RAW_BUCKET", value = aws_s3_bucket.raw.bucket },
     # 1-2 manifest 與 3-1 raw 落 EFS：manifest 的疊窗即算要跨日留存；

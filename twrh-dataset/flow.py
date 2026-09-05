@@ -180,9 +180,9 @@ def stage_detail(ctx):
 
 def stage_deals(ctx):
     # #229：走「已成交」列表產成交事件，detail 之後、finalize 之前（queue
-    # 的 DEAL 列一併對帳）。lookback 日跑 2 天；回補時 TWRH_DEAL_LOOKBACK_DAYS 開大
+    # 的 DEAL 列一併對帳）。lookback 日跑 7 天（591 成交後數日仍補列）；回補時 TWRH_DEAL_LOOKBACK_DAYS 開大
     cmd = ['poetry', 'run', 'scrapy', 'crawl', 'deal591', '-L', 'INFO',
-           '-a', 'lookback_days=' + os.environ.get('TWRH_DEAL_LOOKBACK_DAYS', '2')]
+           '-a', 'lookback_days=' + os.environ.get('TWRH_DEAL_LOOKBACK_DAYS', '7')]
     if ctx.append:
         cmd += ['-a', 'append=True']
     run(cmd, check=True)

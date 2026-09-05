@@ -53,7 +53,7 @@ poetry run python django/manage.py loaddata vendors   # required: pipeline looks
 # Individual spiders
 poetry run scrapy crawl list591 -L INFO
 poetry run scrapy crawl detail591 -L INFO -a batch_size=2000
-poetry run scrapy crawl deal591 -L INFO -a lookback_days=2      # #229 deals stage：走 591「已成交」列表產成交事件；回補時開大 lookback
+poetry run scrapy crawl deal591 -L INFO -a lookback_days=7      # #229 deals stage：走 591「已成交」列表產成交事件；591 成交後數日仍補列，日跑取 7；回補時再開大
 
 # flow runner（arch 3-2）：一份 stage 定義跑整條 pipeline，--from 從任一 stage 續跑；
 # 完成判據＝artifact（rawpack 日包／manifest）或 logs/flow/<date>/ stamp 檔。
