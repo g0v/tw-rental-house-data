@@ -40,7 +40,8 @@ class Detail591Spider(Rental591Spider):
         # 重啟下一個 batch——取代 grep log 字串當控制流
         self.stop_marker = stop_marker
         # L-C：'full'＝全量 open（現行）；'diff'＝list diff 驅動的 skip 降頻。
-        # 發布語意（skip 物件的合成快照）拍板前，production 保持 full
+        # 'new'＝只排從未抓過 detail 的 OPENED 物件（前緣掃描 devop/sweep.sh：
+        # 同日多輪、不受 progress 檔的重生成防呆限制）
         self.seed_mode = seed_mode
         self.refresh_days = int(refresh_days)
 
@@ -94,6 +95,16 @@ class Detail591Spider(Rental591Spider):
             query = query.filter(etc__detail_raw__isnull=True)
 
         return list(query.values_list('vendor_house_id', flat=True))
+
+    def gen_new_seeds(self):
+        '''前緣掃描用：OPENED 且 detail 從未爬過（detail_crawled_at 為空）。
+
+        用 detail_crawled_at 而非 append 模式的 etc.detail_raw——D5 後 DB 不存 raw。
+        '''
+        return list(House.objects.filter(
+            deal_status=enums.DealStatusType.OPENED,
+            detail_crawled_at__isnull=True,
+        ).values_list('vendor_house_id', flat=True))
 
     def gen_diff_seeds(self):
         '''L-C(6)(7)：list diff 驅動的 detail 種子（docs/dx-roadmap.md）。
@@ -169,7 +180,7 @@ class Detail591Spider(Rental591Spider):
             # 同日重跑：種子已在，不重生成（gen_persist_request 是 create 非 upsert）
             self.logger.info('seed-only mode: queue not empty, nothing to generate')
         elif not self.persist_queue.has_request() \
-                and self.persist_queue.has_run_today():
+                and self.persist_queue.has_run_today() and self.seed_mode != 'new':
             # queue 耗盡 + 今天已跑過 = batch 重啟／同日重跑時的正常收尾，
             # 不是新的一天。少了這個判斷，恰好在 batch 邊界耗盡 queue 會觸發
             # 下面的全量重生成（2026-08-26 實測 55,943 筆）。seed_only 也適用
@@ -181,6 +192,8 @@ class Detail591Spider(Rental591Spider):
         elif not self.persist_queue.has_request():
             if self.seed_mode == 'diff':
                 house_ids = self.gen_diff_seeds()
+            elif self.seed_mode == 'new':
+                house_ids = self.gen_new_seeds()
             else:
                 house_ids = self.gen_full_seeds()
 

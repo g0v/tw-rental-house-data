@@ -118,6 +118,18 @@ def build_list_manifest(date_obj, source='live'):
     opened = HouseTS.objects.filter(**ts, deal_status=DealStatusType.OPENED)
     n_open = opened.count()
     n_in_list = opened.filter(list_crawled_at__isnull=False).count()
+    # L-B 完整度哨兵（2026-09-05 重定義）：分母只取「detail 當日確認開放」
+    # （非合成列）。合成列＝今天沒爬 detail、狀態未知，其中不在 list 的那批
+    # 96% 是尚未確認的關閉（第一天缺席，隔天由 absent>=2d 種子 404 確認），
+    # 算進分母會把每日下架量誤讀成漏抓（09-05 實測 0.92 vs 確認開放 1.00）。
+    # 已知偏差：diff 模式下活著卻缺席的物件要缺席滿兩天才排 detail，同日
+    # 漏抄要兩天後才反映；full 模式下兩者相同。
+    confirmed = opened.exclude(is_synthesized=True)
+    n_confirmed = confirmed.count()
+    n_confirmed_in_list = confirmed.filter(list_crawled_at__isnull=False).count()
+    # 待確認關閉存量：合成且不在 list——市場每日下架量的代理，只觀測不判紅
+    n_pending_absent = opened.filter(
+        is_synthesized=True, list_crawled_at__isnull=True).count()
     return {
         **_base('list', date_obj, source),
         'queue': _queue_stats(ts, RequestType.LIST, source),
@@ -125,12 +137,16 @@ def build_list_manifest(date_obj, source='live'):
             'n_in_list': HouseTS.objects.filter(
                 **ts, list_crawled_at__isnull=False).count(),
         },
-        # L-B 完整度哨兵：當日 OPENED 中出現在 list 的比率，
-        # 持續偏低＝list 掃描漏尾頁
         'capture': {
             'n_open': n_open,
             'n_open_in_list': n_in_list,
-            'ratio': round(n_in_list / n_open, 4) if n_open else None,
+            'n_confirmed_open': n_confirmed,
+            'n_confirmed_open_in_list': n_confirmed_in_list,
+            'ratio': (round(n_confirmed_in_list / n_confirmed, 4)
+                      if n_confirmed else None),
+            # 舊定義留檔對照（分母含合成列）
+            'ratio_all_open': round(n_in_list / n_open, 4) if n_open else None,
+            'n_pending_absent': n_pending_absent,
         },
     }
 

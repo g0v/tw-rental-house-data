@@ -62,11 +62,19 @@ checks:
     rolling_median_within: 0.5
     advisory: true
 
-  # --- L-B list 完整度哨兵（2026-09-05 校準：9/2～9/5 實測 0.91～0.99，轉硬斷言） ---
+  # --- L-B list 完整度哨兵（2026-09-05 重定義：分母＝detail 當日確認開放，
+  #     實測 9/4、9/5 皆 1.00；舊分母含合成列會把每日下架量誤讀成漏抓） ---
   - id: list.capture.ratio
     stage: list
     metric: capture.ratio
-    min: 0.85
+    min: 0.98
+  # 待確認關閉存量（合成且不在 list）：市場每日下架量的代理，只觀測——
+  # 相對近 30 日中位數暴增才值得看（bootstrap 期自動 advisory）
+  - id: list.capture.pending_absent
+    stage: list
+    metric: capture.n_pending_absent
+    rolling_median_within: 1.0
+    advisory: true
 
   # --- 量的漂移（疊窗即算） ---
   - id: detail.counts.n_crawled

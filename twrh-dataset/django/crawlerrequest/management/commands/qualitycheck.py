@@ -42,9 +42,10 @@ class Command(BaseCommand):
                 counts.get('n_new_item', '?')),
         ]
         if capture.get('ratio') is not None:
-            lines.append('• list 完整度: `{}/{}` (`{:.1%}`)'.format(
-                capture.get('n_open_in_list'), capture.get('n_open'),
-                capture['ratio']))
+            lines.append('• list 完整度（確認開放）: `{}/{}` (`{:.1%}`)，待確認關閉 `{}`'.format(
+                capture.get('n_confirmed_open_in_list', capture.get('n_open_in_list')),
+                capture.get('n_confirmed_open', capture.get('n_open')),
+                capture['ratio'], capture.get('n_pending_absent', '?')))
         n_synth = snapshot.get('counts', {}).get('n_synthesized')
         if n_synth:
             lines.append('• 合成快照: `{}`'.format(n_synth))

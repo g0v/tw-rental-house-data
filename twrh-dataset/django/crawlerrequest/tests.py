@@ -956,3 +956,114 @@ class DealStageTests(QueueTestMixin, TestCase):
         self.assertEqual(manifest['by_deal_date'], {'2026-01-14': 2, '2026-01-15': 1})
         self.assertEqual(manifest['dist']['median_n_day_deal'], 5)
         self.assertEqual(manifest['queue']['seeds'], 0)
+
+
+class FrontierSweepTests(QueueTestMixin, TestCase):
+    '''前緣掃描（短命物件）：list 前緣逐頁、整頁已知即收單；detail seed_mode=new。'''
+
+    def setUp(self):
+        super().setUp()
+        self.vendor = Vendor.objects.get(name=VENDOR_NAME)
+        from crawler.spiders.list591_spider import List591Spider
+        from crawler.spiders.detail591_spider import Detail591Spider
+        self.list_cls, self.detail_cls = List591Spider, Detail591Spider
+
+    @staticmethod
+    def list_body(ids):
+        return ''.join(
+            '<div class="item"><div class="item-info-title">'
+            '<a href="https://rent.591.com.tw/{}">t</a></div></div>'.format(h)
+            for h in ids)
+
+    def frontier_parse(self, spider, page, ids):
+        from scrapy_twrh.spiders.rental591.util import ListRequestMeta
+        # parse_list_and_stop 不碰 db_request（那是 parser_wrapper 的事），直接餵 meta
+        request = scrapy.Request(
+            url='https://rent.591.com.tw/list?region=1&page={}'.format(page + 1),
+            meta={'rental': ListRequestMeta('1', '台北市', page)})
+        response = TextResponse(url=request.url, status=200,
+                                body=self.list_body(ids).encode('utf-8'),
+                                request=request, encoding='utf-8')
+        out = list(spider.parse_list_and_stop(response))
+        self.assertIs(out[-1], True)
+        return [o for o in out if not isinstance(o, bool)]
+
+    def list_rows(self):
+        return RequestTS.objects.filter(
+            year=2026, month=1, day=15, hour=0, request_type=RequestType.LIST)
+
+    def test_frontier_seeds_every_city_even_when_day_has_records(self):
+        HouseTS.objects.create(vendor=self.vendor, vendor_house_id='x',
+                               year=2026, month=1, day=15, hour=0,
+                               top_region=enums.TopRegionType['台北市'])
+        spider = self.list_cls(target_cities='台北市', frontier_pages=5)
+        requests = list(spider.start_list_from_persist_queue())
+        self.assertEqual(len(requests), 1)   # 非 append 且當日已有紀錄，仍重生種子
+
+    def test_frontier_pages_next_page_only_while_unseen(self):
+        House.objects.create(vendor=self.vendor, vendor_house_id='k1')
+        House.objects.create(vendor=self.vendor, vendor_house_id='k2')
+        spider = self.list_cls(target_cities='台北市', frontier_pages=5)
+        # 第 1 頁有沒見過的 → 排第 2 頁
+        items = self.frontier_parse(spider, 0, ['n1', 'k1', 'n2'])
+        self.assertEqual(len([i for i in items if isinstance(i, scrapy.Item)]) >= 3, True)
+        self.assertEqual(sorted(r.seed['page'] for r in self.list_rows()), [1])
+        self.assertEqual(spider.frontier_new, 2)
+        # 第 2 頁整頁已知 → 收單，不排第 3 頁
+        self.frontier_parse(spider, 1, ['k1', 'k2'])
+        self.assertEqual(sorted(r.seed['page'] for r in self.list_rows()), [1])
+        self.assertEqual(spider.frontier_new, 2)
+
+    def test_frontier_page_cap_stops_even_with_unseen(self):
+        spider = self.list_cls(target_cities='台北市', frontier_pages=2)
+        self.frontier_parse(spider, 1, ['n1', 'n2'])   # 第 2 頁＝上限
+        self.assertEqual(list(self.list_rows()), [])
+
+    def test_frontier_empty_page_stops(self):
+        spider = self.list_cls(target_cities='台北市', frontier_pages=5)
+        with self.assertRaises(Exception):
+            # 空頁沒有 .item／.paging／.empty → package 判版式不明、丟例外
+            self.frontier_parse(spider, 0, [])
+
+    def test_new_seed_mode_ignores_progress_guard_and_seeds_only_never_detailed(self):
+        House.objects.create(vendor=self.vendor, vendor_house_id='new1')
+        House.objects.create(vendor=self.vendor, vendor_house_id='new2')
+        House.objects.create(vendor=self.vendor, vendor_house_id='old',
+                             detail_crawled_at=timezone.now())
+        House.objects.create(vendor=self.vendor, vendor_house_id='closed',
+                             deal_status=enums.DealStatusType.NOT_FOUND)
+        spider = self.detail_cls(seed_mode='new')
+        self.assertEqual(sorted(spider.gen_new_seeds()), ['new1', 'new2'])
+        with mock.patch.object(spider.persist_queue, 'has_run_today', return_value=True):
+            requests = list(spider.start_detail_requests())
+        self.assertEqual(len(requests), 2)
+        # full 模式在同樣情境下會被 progress 防呆擋住（既有語意不變）
+        spider_full = self.detail_cls()
+        with mock.patch.object(spider_full.persist_queue, 'has_run_today', return_value=True):
+            self.assertEqual(list(spider_full.start_detail_requests()), [])
+
+
+class ListManifestCaptureTests(QueueTestMixin, TestCase):
+    '''list manifest 的完整度哨兵：分母＝detail 確認開放（非合成）。'''
+
+    def test_capture_uses_confirmed_open_and_reports_pending_absent(self):
+        from crawlerrequest.manifests import build_list_manifest
+        from datetime import date
+        vendor = Vendor.objects.get(name=VENDOR_NAME)
+        def row(hid, **kw):
+            HouseTS.objects.create(vendor=vendor, vendor_house_id=hid,
+                                   year=2026, month=1, day=15, hour=0, **kw)
+        now = timezone.now()
+        row('c1', list_crawled_at=now)                              # 確認開放、在 list
+        row('c2', list_crawled_at=now)
+        row('c3')                                                   # 確認開放、缺席（真漏抓）
+        row('s1', is_synthesized=True, list_crawled_at=now)         # 合成、在 list（skip）
+        row('s2', is_synthesized=True)                              # 合成、缺席（待確認關閉）
+        row('s3', is_synthesized=True)
+        row('x', deal_status=enums.DealStatusType.NOT_FOUND)
+        m = build_list_manifest(date(2026, 1, 15))['capture']
+        self.assertEqual((m['n_open'], m['n_open_in_list']), (6, 3))
+        self.assertEqual((m['n_confirmed_open'], m['n_confirmed_open_in_list']), (3, 2))
+        self.assertEqual(m['ratio'], 0.6667)
+        self.assertEqual(m['ratio_all_open'], 0.5)
+        self.assertEqual(m['n_pending_absent'], 2)

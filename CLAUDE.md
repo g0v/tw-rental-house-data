@@ -53,6 +53,8 @@ poetry run python django/manage.py loaddata vendors   # required: pipeline looks
 # Individual spiders
 poetry run scrapy crawl list591 -L INFO
 poetry run scrapy crawl detail591 -L INFO -a batch_size=2000
+poetry run scrapy crawl list591 -L INFO -a frontier_pages=30    # 前緣掃描：只走每縣市 list 最前面幾頁，整頁已知即收單（devop/sweep.sh）
+poetry run scrapy crawl detail591 -L INFO -a seed_mode=new      # 只排從未抓過 detail 的 OPENED（前緣掃描的後半）
 poetry run scrapy crawl deal591 -L INFO -a lookback_days=7      # #229 deals stage：走 591「已成交」列表產成交事件；591 成交後數日仍補列，日跑取 7；回補時再開大
 
 # flow runner（arch 3-2）：一份 stage 定義跑整條 pipeline，--from 從任一 stage 續跑；
@@ -250,9 +252,15 @@ date-keyed:
   `logs/progress/<YYYY-MM-DD>.detail.json` (`ProgressTracker.init_overall`).
 - `--append` mode: list spider always regenerates seeds; detail spider only picks houses never
   detail-crawled (`etc.detail_raw IS NULL` — `monthly_price` can't tell since the 2026 redesign).
-- Detail seeding has two modes: `full`（default，全量 OPENED）and `diff`
-  （`TWRH_DETAIL_SEED_MODE=diff`，L-C list-diff skip 降頻：stale/指紋變/連續≥2天缺席/回列
-  才入 queue，之後 `synthts` 合成被 skip 者的當日 HouseTS）。發布語意拍板前 production 走 full。
+- Detail seeding has three modes: `full`（全量 OPENED）、`diff`
+  （`TWRH_DETAIL_SEED_MODE=diff`，production 現行，L-C list-diff skip 降頻：stale/指紋變/
+  連續≥2天缺席/回列才入 queue，之後 `synthts` 合成被 skip 者的當日 HouseTS）、`new`
+  （只排 `detail_crawled_at IS NULL` 的 OPENED，前緣掃描用，不受同日 progress 檔防呆限制）。
+- **前緣掃描**（`devop/sweep.sh`，EventBridge 白天每 3 小時，避開 02:00–05:00 主跑）：
+  `list591 -a frontier_pages=N` 逐頁走每縣市 list 最前面（排序鍵＝刊登時間，新刊登連續），
+  整頁都是 DB 已知物件即收單；接 `detail591 -a seed_mode=new`＋`queuefinalize`。目的＝
+  補抓刊登不到一天就成交的短命物件（一天一次 02:10 只看得到一半）。同一日期 bucket、同一張
+  queue；被掃到的物件隔天早上因 detail 很新被 diff 判 skip。
 - List pagination（package 端）不信 591 的 `total_page`：宣稱頁範圍當下限，前緣逐頁探測
   直到空結果頁收單；statscheck 的「list 完整度」哨兵（`Stats.n_open_in_list`）監控捕獲率。
 - `--start-early`: when run at/after 22:00, bucket the data under tomorrow's date.

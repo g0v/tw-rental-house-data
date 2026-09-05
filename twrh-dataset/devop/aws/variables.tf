@@ -161,6 +161,18 @@ variable "publisher_memory" {
   default = 4096 # clickhouse local 聚合月 zip；2 GB 邊緣，給 4
 }
 
+variable "enable_sweep_schedule" {
+  description = "前緣掃描排程（短命物件，2026-09-05）：白天每數小時掃 list 前緣＋新物件 detail。雲上 run-task 驗過後開"
+  type        = bool
+  default     = false
+}
+
+variable "sweep_schedule" {
+  description = "前緣掃描 cron（Asia/Taipei）；須避開 02:00–05:00 日跑"
+  type        = string
+  default     = "cron(0 5,8,11,14,17,20,23 * * ? *)"
+}
+
 variable "housekeep_schedule" {
   description = "月度 housekeep（raw offload＋HouseTS 歸檔）的 cron（Asia/Taipei）；避開爬蟲時段"
   type        = string

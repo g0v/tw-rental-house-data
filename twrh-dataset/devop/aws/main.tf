@@ -231,6 +231,37 @@ resource "aws_scheduler_schedule" "daily_crawl" {
   }
 }
 
+# ---- 前緣掃描（短命物件，devop/sweep.sh）：同一顆 image、command override ----
+resource "aws_scheduler_schedule" "frontier_sweep" {
+  count                        = var.enable_sweep_schedule ? 1 : 0
+  name                         = "twrh-frontier-sweep"
+  schedule_expression          = var.sweep_schedule
+  schedule_expression_timezone = "Asia/Taipei"
+  flexible_time_window {
+    mode = "OFF"
+  }
+  target {
+    arn      = aws_ecs_cluster.twrh.arn
+    role_arn = aws_iam_role.scheduler.arn
+    ecs_parameters {
+      task_definition_arn    = aws_ecs_task_definition.crawler.arn
+      launch_type            = "FARGATE"
+      enable_execute_command = true
+      network_configuration {
+        subnets          = data.aws_subnets.default.ids
+        security_groups  = [aws_security_group.task.id]
+        assign_public_ip = true
+      }
+    }
+    input = jsonencode({
+      containerOverrides = [{
+        name    = "crawler"
+        command = ["./devop/sweep.sh"]
+      }]
+    })
+  }
+}
+
 # ---- 月度 housekeep（raw offload ＋ HouseTS 歸檔，節省槓桿 1＋2）----
 # 同一顆 image、command override；時間須避開爬蟲時段（rawoffload 無鎖）
 resource "aws_scheduler_schedule" "monthly_housekeep" {
