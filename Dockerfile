@@ -36,12 +36,15 @@ CMD ["./go.sh"]
 
 FROM crawler AS publisher
 
+# locales：沒有它 Info-ZIP 的 setlocale 失敗、不寫 UTF-8 檔名旗標，編碼表/ 在
+# zip 內變亂碼（2026-09-05 雲上 dry-run 實踩：publish_ui_stats 因此多算 CSV）
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        git openssh-client zip unzip awscli \
+        git openssh-client zip unzip awscli locales \
     && rm -rf /var/lib/apt/lists/* \
     && curl -fsSL https://clickhouse.com/ | sh \
     && mv clickhouse /usr/local/bin/
 
+ENV LC_ALL=C.UTF-8
 COPY csv-aggregator/ /app/csv-aggregator/
 
 CMD ["bash"]
