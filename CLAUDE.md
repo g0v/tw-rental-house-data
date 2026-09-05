@@ -84,6 +84,13 @@ poetry run python django/manage.py deduprequest        # drop duplicate rows in 
 poetry run python tools/quality_offline.py --date …    # 無 DB 跑斷言引擎（sync 回 manifests/ 即可）
 poetry run python tools/rerun_from_raws.py --from … --to …  # 從 raw 日包重放 detail parser（--commit 寫回；取代已失效的 rerun_detail_raw/dict）
 ./tools/sync-dev-data.sh                               # 成員用：拉 manifests/＋近 N 天 raw 日包（需 bucket 讀權限）
+
+# 雲上營運（AWS_PROFILE=twrh；四條 EventBridge 排程：日跑 02:10、前緣掃描 05/08/11/14/17/20/23、
+# 月度出貨每月 1 日 07:00、housekeep 每月 3 日 12:00，皆 Asia/Taipei；定義在 devop/aws/*.tf）
+poetry run python devop/runcheck.py [YYYY-MM-DD]        # 當日雲上驗收摘要：task／stage 時間軸／manifest／日包，不碰 RDS
+./devop/aws/publish-cloud.sh [YYYYMM] [--dry-run|--resume --quality-issue <id>]   # 起一個 publisher task 跑 publish.sh
+# 臨時上雲測 list/detail 前先暫停掃描：cd devop/aws && terraform apply -var enable_sweep_schedule=false
+# run-task 一次只發一個、發完 list-tasks 確認（09-04 誤發兩個搶同一 queue 的教訓）
 ```
 
 ### ui-next (frontend)

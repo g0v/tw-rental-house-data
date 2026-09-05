@@ -184,6 +184,11 @@ GitHub push ──▶ GitHub Actions build ──▶ ECR image
 附 report 的 S3 路徑並停（exit 2）→ 人工寫 blog／quality-issues.ts 推 master
 → `publish-cloud.sh YYYYMM --resume --quality-issue <id>` 續跑 3–5。
 
+**同日另一條排程**：`twrh-frontier-sweep`（每日 05／08／11／14／17／20／23 時，
+crawler image command override `./devop/sweep.sh`，`enable_sweep_schedule`）——
+短命物件前緣掃描，設計見 architecture-roadmap〈前緣掃描〉。至此雲上排程
+四條：日跑、掃描、月度出貨、月度 housekeep。
+
 **上線紀錄**（2026-09-05，202609 為首月）：deploy key「twrh-publisher」（write）
 已加到 GitHub repo、私鑰在 SSM `/twrh/github-deploy-key`；terraform 已 apply；
 `publish-cloud.sh 202608 --dry-run` 與 `--dry-run --resume --quality-issue …`

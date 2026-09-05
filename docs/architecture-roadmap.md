@@ -560,9 +560,9 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 | 待 | D6 | flow ecs executor 於 AWS 驗過後切排程 | — |
 
 附帶影響：**09-04 起本機不再日跑、202609 出貨源改 AWS**（2026-09-03
-拍板）——月底雲上 `export -p` 產 zip；publisher 雲化的唯一設計項＝紅月
-補 blog 時 `--resume` 的暫存 state 銜接（EFS 或 S3），月底前拍板，
-記於 aws-deployment-plan。
+拍板）——publisher 雲化已於 09-05 上線（state over S3，月度排程每月 1 日
+07:00；設計與上線紀錄見 aws-deployment-plan〈publisher 雲化〉）。同日
+另上線前緣掃描排程（每 3 小時）；雲上排程共四條，見 CLAUDE.md。
 
 實作備註：
 - 驗收重演：403 全滅／殘留 → queuefinalize 當場紅（單元＋e2e）；

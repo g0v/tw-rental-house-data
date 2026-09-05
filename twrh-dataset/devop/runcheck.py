@@ -26,6 +26,7 @@ KEY_LINES = re.compile(
     r'rawpack|reconcile|packed|distribution invariants|distcheck|'
     r'hard failure|all assertions|wrote manifests|error_rate|'
     r'diff seeds:|seed-only mode|\[deal\] \d+ events|\[deal\] seeding|'
+    r'=== sweep|\[frontier\] \d+ unseen houses|sweep skipped|generatingrequest|'
     r'workers:|NOTE|Traceback|!!!|CommandError')
 PROGRESS = re.compile(r'\[(list591|detail591|deal591)\] INFO: Batch: (\S+) \(')
 DEAL_PAGE = re.compile(r'\[deal\] (\S+) page (\d+):')
@@ -79,6 +80,8 @@ def summarize_stream(logs, stream):
     for ts, msg in stream_events(logs, name):
         if '=== orchestrate' in msg:
             is_primary = True
+        if '=== sweep' in msg and not is_primary:
+            is_primary = 'sweep'
         if KEY_LINES.search(msg):
             lines.append('{} {}'.format(local(ts).strftime('%H:%M:%S'), msg.strip()[:160]))
         m = PROGRESS.search(msg)
@@ -138,7 +141,8 @@ def main():
         print('   （尚無）')
     summaries = [summarize_stream(logs, s) for s in streams]
     for s in sorted(summaries, key=lambda x: (not x['primary'], x['first'])):
-        tag = 'PRIMARY' if s['primary'] else 'worker/one-off'
+        tag = ('PRIMARY' if s['primary'] is True else
+               'SWEEP' if s['primary'] == 'sweep' else 'worker/one-off')
         print('   {} {} {}→{} errors={} fill-rate-errors={}'.format(
             s['stream'], tag, s['first'], s['last'], s['n_error'], s['n_fillrate_error']))
         if s['primary']:

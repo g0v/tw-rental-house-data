@@ -281,6 +281,10 @@ Phase 0 有兩項看起來不重要，但它們是**乘數**：working tree 髒�
     `House`/`HouseTS.list_crawled_at`（crawled_at 分不出 list/detail 來源）
     ＋statscheck「list 完整度」＝當日 OPENED 出現在今日 list 的比率，寫
     `Stats.n_open_in_list` 留歷史、進 Slack 日報，先 advisory 待實據定門檻。
+    **2026-09-05 重定義**（architecture-roadmap 1-2 manifest 版）：分母改「detail
+    當日確認開放」——原分母含合成列，其中不在 list 者 96% 是尚未確認的關閉，
+    把每日下架量誤讀成漏抓（0.92 vs 重定義後 1.00）；硬斷言 0.98，另報
+    `n_pending_absent` 只觀測。
     (5) 最大城台中重測（交叉表＋缺席者慢掃＋立即二掃）：單次掃描誤殺率較
     前置驗證大幅下降但未達個位數；殘餘誤殺者幾乎全為近 7 日新刊登、detail
     無隱藏標記，屬掃描期間頁面位移的暫時抖動——立即二掃絕大多數現身、
