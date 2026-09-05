@@ -545,7 +545,7 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 | D3 | 1-2 切換：退役 statscheck Slack／distcheck／fill-rate ext；Stats 凍結（已查無其他消費者）；baseline 重製落 assertions.yaml | **平行期滿**——原定一週，2026-09-03 改為「連續 3 天逐項一致即切」 |
 | D4 | 3-1 雙寫：rawpack 上 S3＋terraform lifecycle（raw/ 30d Glacier IR＋365d 過期） | terraform apply |
 | D5 | 3-1 切換：DB 停寫 raw＋一次性清空；rawpack 失敗升硬紅；rawoffload／housekeep raw 半邊退役 | **雙寫對帳數日** |
-| D6 | 3-2：flow.py 取代 go.sh／orchestrate（EventBridge 改指 flow）；驗 ecs executor | flow 於 AWS 驗過 |
+| D6 | 3-2：flow.py 取代 go.sh／orchestrate（EventBridge 改指 flow）；驗 ecs executor；**`devop/sweep.sh` 一併收成 `flow.py sweep --vendor`**（09-05 sweep 上線後等於第三套 bash 編排），順手落 vendor profile、互斥加 vendor 條件（見 multi-vendor-plan〈營運政策層〉） | flow 於 AWS 驗過 |
 
 部署紀錄（每步 pin commit，依拍板記於此）：
 
@@ -580,6 +580,8 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 
 ## 編修紀錄
 
+- **2026-09-05（四補）** D6 加註：sweep.sh 併入 flow、vendor profile 同動
+  （multi-vendor-plan 新增〈營運政策層〉分層）。
 - **2026-09-05（三補）** list 完整度哨兵重定義（分母＝detail 確認開放，
   另報 n_pending_absent）；前緣掃描落地（`list591 -a frontier_pages`、
   `detail591 -a seed_mode=new`、`devop/sweep.sh`、排程 `twrh-frontier-sweep`

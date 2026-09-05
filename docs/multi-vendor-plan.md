@@ -53,6 +53,45 @@
 - 發版節奏說明（parser 在 PyPI 套件內，外部貢獻者依賴維護者發版；
   期間可用 editable install 於 dataset 側驗證）。
 
+## 營運政策層：591 特有的爬法怎麼分層（2026-09-05 補）
+
+deals stage（#229）與前緣掃描（短命物件）上線後，cron 裡多了一批看似
+「591 專用」的東西。實際拆開是三層，只有第一層真的綁站方，管理方式各異：
+
+| 層 | 內容 | 現在住哪 | 多 vendor 時 |
+|---|---|---|---|
+| **站方特性** | 成交只在「已成交」列表、50 窗／30 步距、不信 `total_page`、detail 404 即成交、新刊登連續排在 list 最前 | package 的 `Rental591Spider`／DealMixin | 位置正確，不動；每個 vendor 自己的 spider 承擔 |
+| **機制（通用）** | `seed_mode=new`、逐頁走到整頁已知即收單、queue 互斥、breaker、queuefinalize | `persist_queue`、detail spider、`devop/sweep.sh` | 任何「list 依刊登時間排序」的站都能用；目前只是被 `list591`／`detail591` 這幾個 spider 名綁死 |
+| **營運政策（per-vendor）** | 要不要跑 deals、要不要前緣掃描、幾小時一次、幾頁、lookback 幾天、sweep 併發與延遲、預設 seed_mode | 散在 `sweep.sh` 預設值、`flow.py` STAGES、`devop/aws` 變數與排程三處 | **需要收成一份 vendor profile** |
+
+**目標形狀：vendor profile ＋ capability flags，機制不分家。**
+
+- 每個 vendor 一份 profile（資料而非程式碼，例如 `crawler/vendors/591.py`
+  或 yaml），六到八個 key：list／detail／deal 三個 spider 名、
+  `has_deals_stage`、`supports_frontier`、`frontier_pages`、`deal_lookback_days`、
+  sweep 速率、預設 seed_mode。
+- flow 的 STAGES 改成「stage × profile」：deals／sweep 這類 stage 由 profile
+  的 flag 決定要不要跑。低對抗的政府站就是 `has_deals_stage=false、
+  supports_frontier=false`，只跑日跑。
+- `devop/sweep.sh` 目前等於第三套 bash 編排，與 architecture-roadmap 3-2
+  「收斂編排」方向相反；D6 退役 go.sh／orchestrate.sh 時一併收成
+  `flow.py sweep --vendor <v>`（list-frontier → detail-new → queuefinalize）。
+- Terraform 排程改為對 vendor map `for_each`，一個 vendor 兩條排程
+  （`twrh-<vendor>-daily`／`twrh-<vendor>-sweep`）；節奏本就因站而異，
+  不該共用一組全域變數。
+- 哨兵 per-vendor 化（P1 既有項）要把 09-05 新加的 list 完整度哨兵
+  （`n_open_in_list`）一併算進去。
+
+**已經以 vendor 為維度、多一站免費的**：`RequestTS` queue 與 queuefinalize
+的 (vendor, type) 矩陣、`raws/<vendor>/` 日包、housekeep 的 S3 路徑。
+
+**已知洞**：`sweep.sh` 的互斥判斷看當日所有 in_flight 列、未過濾 vendor——
+多 vendor 後 B 站日跑會擋 A 站前緣掃描。單 vendor 無感；收進 flow 時加
+vendor 條件。
+
+**時機**：不提前抽象。2-1／4-6 由第二個 vendor 觸發（沒有第二個實作者時
+介面是猜的）；profile 於 D6 收編排時順手做，因為那時本來就要重寫這些 bash。
+
 ## 候選站評估原則（草案）
 
 - **優先低對抗性、格式穩定的來源**（如政府站）作為第二站試點——多站抽象第一次
@@ -69,4 +108,7 @@
 
 ## 編修紀錄
 
+- **2026-09-05** 補〈營運政策層〉：deals／前緣掃描進 cron 後，把「591 特有」
+  拆成站方特性／通用機制／per-vendor 營運政策三層，明訂 vendor profile 形狀、
+  sweep 併入 flow 的時點（D6）與 sweep 互斥未過濾 vendor 的已知洞。
 - **2026-08-30** Claude 起草（觸發：#29 認領意願）。尚未 review，歡迎回饋。
