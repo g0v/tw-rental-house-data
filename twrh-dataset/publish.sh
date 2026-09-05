@@ -165,7 +165,8 @@ if ! step_done upload; then
   echo '----- 3. upload -----'
   S3CP=("${AWS[@]}" s3 cp)
   [ "$DRYRUN" = 1 ] && S3CP+=(--dryrun)
-  for z in "$RAW_ZIP" "$DEDUP_ZIP" "$JSON_ZIP"; do
+  # JSON zip 不上傳（export-automation-plan 開放問題 5，2026-09-03 拍板）
+  for z in "$RAW_ZIP" "$DEDUP_ZIP"; do
     [ -f "$z" ] || continue
     "${S3CP[@]}" "$z" "s3://$S3_BUCKET/$YEAR/$(basename "$z")" || exit 1
     if [ "$DRYRUN" = 0 ]; then
@@ -206,7 +207,6 @@ if ! step_done ui; then
   UI_ARGS=(--stats-dir "$REPO/ui-next/src/data/stats" --year "$YEAR" \
            --period monthly --time "$((10#$MONTH))" \
            --zip "$RAW_ZIP" --zip "$DEDUP_ZIP")
-  [ -f "$JSON_ZIP" ] && UI_ARGS+=(--json-zip "$JSON_ZIP")
   [ -n "$QISSUE" ] && UI_ARGS+=(--quality-issue "$QISSUE")
   [ -n "$COMMENT" ] && UI_ARGS+=(--comment "$COMMENT")
   poetry run python tools/publish_ui_stats.py "${UI_ARGS[@]}" || exit 1

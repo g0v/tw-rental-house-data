@@ -37,7 +37,7 @@ CMD ["./go.sh"]
 FROM crawler AS publisher
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        git zip unzip awscli \
+        git openssh-client zip unzip awscli \
     && rm -rf /var/lib/apt/lists/* \
     && curl -fsSL https://clickhouse.com/ | sh \
     && mv clickhouse /usr/local/bin/
