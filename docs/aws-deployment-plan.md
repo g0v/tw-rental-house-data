@@ -184,9 +184,15 @@ GitHub push ──▶ GitHub Actions build ──▶ ECR image
 附 report 的 S3 路徑並停（exit 2）→ 人工寫 blog／quality-issues.ts 推 master
 → `publish-cloud.sh YYYYMM --resume --quality-issue <id>` 續跑 3–5。
 
-**上線步驟**（202609 為首月）：deploy key（write）加到 GitHub repo、私鑰填
-SSM `/twrh/github-deploy-key`；`terraform apply`；CI build publisher image；
-`publish-cloud.sh 202608 --dry-run` 雲上演練；tfvars `enable_publish_schedule = true`。
+**上線紀錄**（2026-09-05，202609 為首月）：deploy key「twrh-publisher」（write）
+已加到 GitHub repo、私鑰在 SSM `/twrh/github-deploy-key`；terraform 已 apply；
+`publish-cloud.sh 202608 --dry-run` 與 `--dry-run --resume --quality-issue …`
+雲上演練五步全通（聚合 clickhouse、月報讀 RDS、S3 dryrun、deploy key clone、
+UI stats、ship dry-run）；`enable_publish_schedule = true` 已開，10/1 07:00
+首跑出 202609。演練踩到兩個 image 坑已修：缺 openssh-client；缺 locale
+（要 `locale-gen`，僅裝 locales 套件不夠）否則 Info-ZIP 不寫 UTF-8 檔名
+旗標、編碼表/ 亂碼。202608 dry-run 的 monthreport 紅（8 月無 manifest，
+1-2 前的月份本就如此），9 月起 manifest 齊全。
 
 ---
 
