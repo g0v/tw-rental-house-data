@@ -557,6 +557,7 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 | 2026-09-04 傍晚 | deals stage（#229） | package 2.4.0 發版；dataset `deal591`＋DEAL queue 類型隨 CI image 上線（日跑自 9/5 02:10 起排在 finalize 前）；run-task 回補 lookback 10 天：全台 409 頁全 done、零殘留，寫入約一萬筆成交事件（成交日 8/25–9/4），syncstateful／manifest／qualitycheck 重跑全綠。插曲：一次 Bash 誤發兩個 run-task 搶同一 queue、停錯 task 遭 SIGKILL 未釋放 in_flight，以新 task 先 `manage.py shell` 放回 failed 再續跑收復；qualitycheck 的 STAGES 漏列 deals 誤報「manifest 不存在」，補修 | master `9303caa9` |
 | 2026-09-05 | deals 首航＋1-3 baseline 重製 | 02:10 日跑五項全綠（三型 queue 收斂、rawpack 流程內原生成功、distcheck、qualitycheck 0 advisory、deals 首航寫入成交事件）→ #229 關閉。發現 591 成交列表在成交後數日仍補列，日跑 lookback 改 7（task def rev 8）。baseline 重製：`dist.*` near 改為 9/1～9/5 五份 manifest 中位數、list 完整度哨兵轉硬斷言，`baselines/national.json` 待 D3 隨 distcheck 退場 | master `8c6795cb` |
 | 2026-09-06 早 | D3＋D5 停寫＋D6a 切排程 | 平行第三天 Slack 兩軌一致（僅新 list 完整度定義不同）→ `arch-d3` 併入；`arch-d5-d6` 併入、CI 四條綠、新 image 上線。雲上全量對帳 9/4（6432 一致、452 superseded）、9/5（6083 一致、274 superseded）皆 0 mismatch；`flow --from rawpack` 於 ecs 走通，順手把 9/5 sweep 孤兒 scratch 8192 頁併回日包。tfvars 翻 `raw_db_write=0`＋`crawler_command` 指 flow，apply（task def 新 rev；sweep 11:00 起即在停寫下跑）。**待 9/7 02:10 flow 首跑驗**，綠後 `rawcutover.sh --commit` | master `c0d50934` |
+| 2026-09-06 午 | 3-3 驗收 | 本機 docker 起 crawler image、**不給任何 `TWRH_DB_*`**、掛 `sync-dev-data.sh` 拉回的 manifests 三天＋日包兩天：`quality_offline` 綠；`rerun_from_raws` dry-run 起初炸在 Vendor 查詢與 Detail591Spider 建構（PersistQueue 查 Vendor）——改為 dry-run 不查 Vendor、改用 package 的 `Rental591Spider`，重跑 9/5＋9/6 共 11,896 頁全數 parse 成功。「新貢獻者不建 PostGIS 也能跑資料後段」成立 | master（本列 commit） |
 | 待（9/8 起） | D6b | sweep 併入 flow＋vendor profile；go.sh／orchestrate／sweep 退役——flow 日跑跑過一天（9/7）即可動工（2026-09-06 拍板） | — |
 
 **D5／D6a 壓縮時程**（門檻不是日曆是證據；指令見 devop/aws/README.md runbook）：
@@ -598,6 +599,7 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 
 ## 編修紀錄
 
+- **2026-09-06（補）** 3-3 驗收：無 DB 容器實測，修 rerun dry-run 兩處 DB 相依。
 - **2026-09-06** D3＋D5 停寫＋D6a 部署紀錄（pin `c0d50934`）；壓縮時程照表走，
   9/7 日跑驗收後補 rawcutover。
 - **2026-09-05（五補）** D5／D6 壓縮時程拍板（用強度換天數：全量對帳兩日、

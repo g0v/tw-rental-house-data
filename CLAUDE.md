@@ -81,7 +81,7 @@ poetry run python django/manage.py deduprequest        # drop duplicate rows in 
 
 # 離線／重放工具（arch 3-3／3-1）
 poetry run python tools/quality_offline.py --date …    # 無 DB 跑斷言引擎（sync 回 manifests/ 即可）
-poetry run python tools/rerun_from_raws.py --from … --to …  # 從 raw 日包重放 detail parser（--commit 寫回；取代已失效的 rerun_detail_raw/dict）
+poetry run python tools/rerun_from_raws.py --from … --to …  # 從 raw 日包重放 detail parser（dry-run 不連 DB；--commit 寫回；取代已失效的 rerun_detail_raw/dict）
 ./tools/sync-dev-data.sh                               # 成員用：拉 manifests/＋近 N 天 raw 日包（需 bucket 讀權限）
 
 # 雲上營運（AWS_PROFILE=twrh；四條 EventBridge 排程：日跑 02:10、前緣掃描 05/08/11/14/17/20/23、

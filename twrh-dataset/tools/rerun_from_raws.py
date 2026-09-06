@@ -5,8 +5,8 @@ production 在 S3 raw/ 樹；先 `aws s3 cp` 拉回本地目錄再跑——拍�
 debug／重算＝整包拉回，不做 S3 內部尋址）。修完 parser bug 後對歷史
 日期重放，更新 HouseEtc.detail_dict 與 House 欄位，**不需重爬**。
 
-DB 尚存 raw 的過渡期（cutover 前），舊列仍可用 rerun_detail_raw.py
-的 DB 模式；本工具只讀日包，是 cutover 後的唯一重放路徑。
+本工具只讀日包，是 D5 cutover（DB 不存 raw）後的唯一重放路徑；
+dry-run 完全不連 DB（沒有 PostGIS 的環境也能跑）。
 
 用法（在 twrh-dataset/ 下）：
   poetry run python tools/rerun_from_raws.py --from 2026-09-01 --to 2026-09-03
@@ -34,7 +34,7 @@ from scrapy.http import Request, HtmlResponse
 from scrapy_twrh.items import RawHouseItem, GenericHouseItem
 from scrapy_twrh.spiders.rental591 import util
 
-from crawler.spiders.detail591_spider import Detail591Spider
+from scrapy_twrh.spiders.rental591 import Rental591Spider
 from rental.models import Author, House, HouseEtc, Vendor
 
 DEFAULT_RAW_DIR = os.path.join(
@@ -93,10 +93,14 @@ def main():
                         help='寫回 HouseEtc.detail_dict 與 House 欄位（預設 dry-run）')
     options = parser.parse_args()
 
-    vendor = Vendor.objects.get(name=options.vendor)
+    # dry-run 不碰 DB（3-3 零雲相依：sync 日包即可離線重放；Vendor 只在
+    # --commit 寫回時才需要——2026-09-06 無 DB 容器實測踩到後改）
+    vendor = Vendor.objects.get(name=options.vendor) if options.commit else None
     # 日包目錄用 vendor 短名（raws/591/，與 S3 raw/591/ 對齊）
     vendor_dir = options.vendor.split()[0]
-    spider = Detail591Spider()
+    # 用 package 端的 spider（parser 就住在那），不用 dataset 的 Detail591Spider
+    # ——後者建構時 PersistQueue 會查 Vendor，dry-run 就得有 DB
+    spider = Rental591Spider()
     current = datetime.strptime(options.date_from, '%Y-%m-%d').date()
     end = datetime.strptime(options.date_to, '%Y-%m-%d').date()
 
