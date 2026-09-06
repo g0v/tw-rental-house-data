@@ -557,7 +557,7 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 | 2026-09-04 傍晚 | deals stage（#229） | package 2.4.0 發版；dataset `deal591`＋DEAL queue 類型隨 CI image 上線（日跑自 9/5 02:10 起排在 finalize 前）；run-task 回補 lookback 10 天：全台 409 頁全 done、零殘留，寫入約一萬筆成交事件（成交日 8/25–9/4），syncstateful／manifest／qualitycheck 重跑全綠。插曲：一次 Bash 誤發兩個 run-task 搶同一 queue、停錯 task 遭 SIGKILL 未釋放 in_flight，以新 task 先 `manage.py shell` 放回 failed 再續跑收復；qualitycheck 的 STAGES 漏列 deals 誤報「manifest 不存在」，補修 | master `9303caa9` |
 | 2026-09-05 | deals 首航＋1-3 baseline 重製 | 02:10 日跑五項全綠（三型 queue 收斂、rawpack 流程內原生成功、distcheck、qualitycheck 0 advisory、deals 首航寫入成交事件）→ #229 關閉。發現 591 成交列表在成交後數日仍補列，日跑 lookback 改 7（task def rev 8）。baseline 重製：`dist.*` near 改為 9/1～9/5 五份 manifest 中位數、list 完整度哨兵轉硬斷言，`baselines/national.json` 待 D3 隨 distcheck 退場 | master `8c6795cb` |
 | 2026-09-06 早 | D3＋D5 停寫＋D6a 切排程 | 平行第三天 Slack 兩軌一致（僅新 list 完整度定義不同）→ `arch-d3` 併入；`arch-d5-d6` 併入、CI 四條綠、新 image 上線。雲上全量對帳 9/4（6432 一致、452 superseded）、9/5（6083 一致、274 superseded）皆 0 mismatch；`flow --from rawpack` 於 ecs 走通，順手把 9/5 sweep 孤兒 scratch 8192 頁併回日包。tfvars 翻 `raw_db_write=0`＋`crawler_command` 指 flow，apply（task def 新 rev；sweep 11:00 起即在停寫下跑）。**待 9/7 02:10 flow 首跑驗**，綠後 `rawcutover.sh --commit` | master `c0d50934` |
-| 待 | D6b | sweep 併入 flow＋vendor profile；go.sh／orchestrate／sweep 退役 | — |
+| 待（9/8 起） | D6b | sweep 併入 flow＋vendor profile；go.sh／orchestrate／sweep 退役——flow 日跑跑過一天（9/7）即可動工（2026-09-06 拍板） | — |
 
 **D5／D6a 壓縮時程**（門檻不是日曆是證據；指令見 devop/aws/README.md runbook）：
 
@@ -566,7 +566,7 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 | 9/6 早 | runcheck；D3 併入；對 9/4、9/5 日包各跑一次**全量** reconcile（抽樣數日→全量兩日）；`rerun_from_raws` 對雲上 9/5 日包 dry-run（09-05 已在本機做過：全數 parse 成功） | reconcile mismatch 0；flow 後段 `--from rawpack` 於雲上走通 |
 | 9/6 日 | D5 程式（`TWRH_RAW_DB_WRITE` 開關、rawpack 硬紅、housekeep raw 半邊退役、`rawcutover.sh`）＋D6a 排程切換（tfvars `crawler_command` 指 flow）同一顆 image 出貨；tfvars 翻 `raw_db_write=0` | CI 綠、apply 完成 |
 | 9/7 早 | 02:10 首次由 flow 跑、DB 已停寫 raw | runcheck 五項綠＋rawpack 流程內成功＝D5 停寫與 D6a 同時驗過；擇閒時 `rawcutover.sh --commit` 清空 raw 欄 |
-| 之後 | D6b：sweep 併入 flow、vendor profile；go.sh／orchestrate／sweep 退役 | Phase 3 結案 |
+| 9/8 起 | D6b：sweep 併入 flow、vendor profile；go.sh／orchestrate／sweep 退役（flow 跑過一天即可動工） | Phase 3 結案 |
 
 代價＝9/7 一晚疊三個變更；緩解＝go.sh／orchestrate 留在 image、flow 可 `--from` 續跑、
 清空欄位延到綠了才做，回退只是 tfvars 翻回再 apply，沒有不可逆動作。
