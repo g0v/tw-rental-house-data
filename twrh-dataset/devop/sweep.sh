@@ -63,4 +63,15 @@ done
 # 同日 queue 一併對帳（含清晨那輪，已全 done）；紅＝本輪殘留，Slack 有訊息
 echo '===== QUEUE FINALIZE ====='
 poetry run python ./django/manage.py queuefinalize --no-cleanup || exit 1
+
+# 3-1：本輪抓到的 raw 也要進日包——rawpack 會把當日既有日包（S3）合併
+# 回來再加 scratch（同日多次 run 的日包＝聯集），否則 sweep 的 raw 只留在
+# scratch、D5 後就沒了（09-05 發現：sweep 首日沒打包）。
+echo '===== RAW PACK ====='
+if ! poetry run python ./django/manage.py rawpack --reconcile; then
+  if [ "${TWRH_RAW_DB_WRITE:-1}" != "1" ]; then
+    echo '!!! rawpack failed -- DB no longer keeps raw; scratch retained'; exit 1
+  fi
+  echo '!!! rawpack failed -- raw kept in scratch/DB, investigate before cutover'
+fi
 echo "=== sweep $now done ==="

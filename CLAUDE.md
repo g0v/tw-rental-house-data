@@ -69,7 +69,8 @@ poetry run python django/manage.py synthts             # L-C diff 模式：合�
 poetry run python django/manage.py syncstateful -ts    # sync deal status into time-series
 poetry run python django/manage.py manifest            # 1-2：產 manifests/<date>/{list,detail,snapshot}.json（--from/--to --source backfill 可回補）
 poetry run python django/manage.py qualitycheck        # 1-2：quality/assertions.yaml × manifest 斷言，單一 Slack 通道（D3 起唯一觀測通道；statscheck／distcheck／fill-rate ext 已退役）
-poetry run python django/manage.py rawpack --reconcile # 3-1：當日 raw scratch 打成 raws/<vendor>/<date>.tar.zst＋index；--reconcile 抽樣比對 DB
+poetry run python django/manage.py rawpack --reconcile # 3-1：當日 raw scratch 打成 raws/<vendor>/<date>.tar.zst＋index（同日多次 run＝與既有日包聯集）；--reconcile 抽樣比對 DB，--full 全量
+poetry run python django/manage.py rawpack --reconcile-only --full --date YYYY-MM-DD   # 對既有日包（本地／S3）補跑全量對帳，不打包
 poetry run python django/manage.py export -p           # periodic export (month-end only)
 poetry run python django/manage.py export --help       # manual export: -f/-t dates, -u, -j, -b6
 poetry run python django/manage.py monthreport         # 月報 quality gate：疊 manifest 出月窗（0=綠、2=紅）
@@ -87,6 +88,7 @@ poetry run python tools/rerun_from_raws.py --from … --to …  # 從 raw 日包
 # 月度出貨每月 1 日 07:00、housekeep 每月 3 日 12:00，皆 Asia/Taipei；定義在 devop/aws/*.tf）
 poetry run python devop/runcheck.py [YYYY-MM-DD]        # 當日雲上驗收摘要：task／stage 時間軸／manifest／日包，不碰 RDS
 ./devop/aws/publish-cloud.sh [YYYYMM] [--dry-run|--resume --quality-issue <id>]   # 起一個 publisher task 跑 publish.sh
+./devop/aws/run-cloud.sh <command...>                   # 用 crawler image 跑一次性指令（對帳補跑、flow --from、rawcutover），D5／D6 runbook 見 devop/aws/README.md
 # 臨時上雲測 list/detail 前先暫停掃描：cd devop/aws && terraform apply -var enable_sweep_schedule=false
 # run-task 一次只發一個、發完 list-tasks 確認（09-04 誤發兩個搶同一 queue 的教訓）
 ```
@@ -121,7 +123,7 @@ poetry run pytest
 ```
 
 `twrh-dataset` has the B-layer queue test matrix (arch 2-3，與 1-1 同做)：
-`django/crawlerrequest/tests.py` — 認領/釋放/batch/seed/狀態機/斷言引擎，
+`django/crawlerrequest/tests.py` — 認領/釋放/batch/seed/狀態機/斷言引擎/rawpack 聯集與對帳，
 needs PostGIS（吃 `.env` 的 `TWRH_DB_*`，test DB 自動建立）：
 
 ```bash
@@ -290,10 +292,13 @@ Set it manually (or use `go.sh --date`) when re-running part of a pipeline for a
 - Deal status is sticky: once a house is `DEAL`, the pipeline will not overwrite it with `NOT_FOUND`.
 - `RequestTS.request_type` has three values: `LIST` / `DETAIL` / `DEAL`; queuefinalize's zero-seed
   rule applies to list/detail only (a day without a deals run is legal), residue rules to all.
-- Raw HTML 雙寫中（arch 3-1）：`HouseEtc` 照存（cutover 前），pipeline 同步落
-  `raws/scratch/`，收尾 `rawpack` 打成 `raws/<vendor>/<date>.tar.zst`＋index。修完 parser bug 後
-  用 `tools/rerun_from_raws.py` 對日包重放、**不需重爬**（舊 `rerun_detail_raw/dict.py` 已因
-  改組失效，勿用）。
+- Raw HTML（arch 3-1）：pipeline 落 `raws/scratch/`，收尾 `rawpack` 打成
+  `raws/<vendor>/<date>.tar.zst`＋index 上 S3；**同日多次 run（日跑＋各輪 sweep）各自 rawpack，
+  與既有日包聯集、後爬者勝**。`TWRH_RAW_DB_WRITE`（預設 1）＝D5 開關：1 雙寫 `HouseEtc` raw 欄，
+  0 為 cutover（DB 停寫、rawpack 失敗升硬紅，go.sh／orchestrate／flow／sweep 四處同讀）；一次性
+  清空既有 raw 欄＝`devop/rawcutover.sh`（rawoffload 窗口 0 天，housekeep 的 raw 半邊已退役）。
+  修完 parser bug 後用 `tools/rerun_from_raws.py` 對日包重放、**不需重爬**（舊
+  `rerun_detail_raw/dict.py` 已因改組失效，勿用）。
 
 ### Scrapy settings layering (twrh-dataset)
 - `crawler/general_settings.py` — committed, shared. Calls `django.setup()` (adds `django/` to

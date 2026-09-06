@@ -200,8 +200,11 @@ def stage_queuefinalize(_ctx):
 def stage_rawpack(_ctx):
     result = manage('rawpack', '--reconcile', check=False)
     if result.returncode != 0:
-        # 雙寫對帳期：DB 仍有 raw、scratch 保留可重打，警告不中止；
-        # cutover（DB 停寫 raw）後升級為 StageFailed
+        # 雙寫對帳期（TWRH_RAW_DB_WRITE=1）：DB 仍有 raw、scratch 保留可
+        # 重打，警告不中止；D5 cutover（=0）後日包是 raw 唯一去向，升硬紅
+        if os.environ.get('TWRH_RAW_DB_WRITE', '1') != '1':
+            raise StageFailed('rawpack failed — DB no longer keeps raw, '
+                              'scratch retained; fix and rerun --from rawpack')
         print('!!! rawpack failed — raw kept in scratch/DB, '
               'investigate before cutover')
 

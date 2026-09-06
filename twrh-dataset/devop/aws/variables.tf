@@ -161,6 +161,18 @@ variable "publisher_memory" {
   default = 4096 # clickhouse local 聚合月 zip；2 GB 邊緣，給 4
 }
 
+variable "raw_db_write" {
+  description = "TWRH_RAW_DB_WRITE：1＝raw 雙寫（DB＋日包，對帳期）；0＝D5 cutover，DB 停寫 raw、rawpack 失敗升硬紅。回退＝翻回 1 再 apply"
+  type        = string
+  default     = "1"
+}
+
+variable "crawler_command" {
+  description = "日跑 task 的 command。D6a 切 flow：[\"poetry\", \"run\", \"python\", \"flow.py\", \"run\"]（executor 由 TWRH_CLUSTER 自動選 ecs）；回退＝改回 orchestrate.sh 再 apply"
+  type        = list(string)
+  default     = ["./devop/orchestrate.sh"]
+}
+
 variable "enable_sweep_schedule" {
   description = "前緣掃描排程（短命物件，2026-09-05）：白天每數小時掃 list 前緣＋新物件 detail。雲上 run-task 驗過後開"
   type        = bool

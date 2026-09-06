@@ -94,8 +94,9 @@ class Detail591Spider(Rental591Spider):
         # In append mode, only houses never detail-crawled. monthly_price
         # can't tell anymore — since the 2026 redesign the list page item
         # already carries the price, so it is never null for new houses.
+        # D5 後 DB 不存 raw，判準改 detail_crawled_at（與 seed_mode=new 同源）
         if self.append:
-            query = query.filter(etc__detail_raw__isnull=True)
+            query = query.filter(detail_crawled_at__isnull=True)
 
         return list(query.values_list('vendor_house_id', flat=True))
 
