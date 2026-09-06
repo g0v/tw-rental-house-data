@@ -560,7 +560,7 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 | 2026-09-06 午 | 3-3 驗收 | 本機 docker 起 crawler image、**不給任何 `TWRH_DB_*`**、掛 `sync-dev-data.sh` 拉回的 manifests 三天＋日包兩天：`quality_offline` 綠；`rerun_from_raws` dry-run 起初炸在 Vendor 查詢與 Detail591Spider 建構（PersistQueue 查 Vendor）——改為 dry-run 不查 Vendor、改用 package 的 `Rental591Spider`，重跑 9/5＋9/6 共 11,896 頁全數 parse 成功。「新貢獻者不建 PostGIS 也能跑資料後段」成立 | master（本列 commit） |
 | 2026-09-07 早 | flow 首跑＋**事故** | 02:10 flow 首跑（D5 停寫＋D6a）五項全綠、1h45m，05:00 sweep 與 flow 同 bucket 對帳合併正確。隨後 `rawcutover.sh` dry-run 於雲上打包 DB 剩餘 raw（2026-08 14,481 列 90 MB、2026-09 86,639 列 573 MB，驗證過）——**但 dry-run 也上傳，且沿用 housekeep 的 `<month>.tar.zst` 命名，把 S3 上 08-29 遷移時 strip 出的 `raw/591/2026-08.tar.zst`（557 MB、81,174 戶）覆蓋掉**；bucket 無 versioning、舊 RDS 已 destroy，**18,378 戶（8/1–8/28 更新、之後未再爬）的最後一版 raw HTML 永久遺失**，其餘 6 萬多戶 9 月已重爬、raw 在 DB／日包。遺失範圍＝debug／re-parse 素材，House／HouseTS 資料無損。舊 index 本機仍在，已另存 `2026-08.migration-20260829.index.json` 存證。修法已入版（`989da85c`）：dry-run 不上傳；commit 上傳走帶日期獨立 key＋head-object 拒絕覆蓋 | master `be0032f2`／`989da85c` |
 | 2026-09-07 06:26 | **D5 完成（清空）** | `rawcutover.sh --commit`（修正版）：DB 剩餘 raw 打成 `2026-08.cutover-20260907`（14,481 列、90 MB）與 `2026-09.cutover-20260907`（86,639 列、573 MB）上 S3 獨立 key，101,120 列 raw 欄位清空並蓋 `raw_archived_at`；**house_etc 自此不存 raw，DB 成長歸零**。事故補救：遺失的 18,378 戶在開發機 `twrh2025`（本機獨立爬到 9/2）全部找到——17,838 戶有 detail_raw、18,378 戶有 list_raw——打成 `2026-08.recovered-from-dev-20260907.tar.zst`（36,216 members、113 MB，member 以雲上 house_id 命名、與月包同格式）上 S3；版本是本機 8/25–9/1 抓的，非雲上最後一版，re-parse 兜底足夠。**遺失範圍歸零** | — |
-| 待（9/8 起） | D6b | sweep 併入 flow＋vendor profile；go.sh／orchestrate／sweep 退役——flow 日跑跑過一天（9/7）即可動工（2026-09-06 拍板） | — |
+| 待 | D6b | sweep 併入 flow＋vendor profile；go.sh／orchestrate／sweep 退役。**時程（2026-09-07 拍板）**：9/7 寫在分支；9/8 早日跑（flow 第二天）綠即併入上線，當天各輪 sweep 走 flow；9/9 早日跑綠＝**Phase 3 結案** | — |
 
 **D5／D6a 壓縮時程**（門檻不是日曆是證據；指令見 devop/aws/README.md runbook）：
 
@@ -569,7 +569,7 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 | 9/6 早 | runcheck；D3 併入；對 9/4、9/5 日包各跑一次**全量** reconcile（抽樣數日→全量兩日）；`rerun_from_raws` 對雲上 9/5 日包 dry-run（09-05 已在本機做過：全數 parse 成功） | reconcile mismatch 0；flow 後段 `--from rawpack` 於雲上走通 |
 | 9/6 日 | D5 程式（`TWRH_RAW_DB_WRITE` 開關、rawpack 硬紅、housekeep raw 半邊退役、`rawcutover.sh`）＋D6a 排程切換（tfvars `crawler_command` 指 flow）同一顆 image 出貨；tfvars 翻 `raw_db_write=0` | CI 綠、apply 完成 |
 | 9/7 早 | 02:10 首次由 flow 跑、DB 已停寫 raw | runcheck 五項綠＋rawpack 流程內成功＝D5 停寫與 D6a 同時驗過；擇閒時 `rawcutover.sh --commit` 清空 raw 欄 |
-| 9/8 起 | D6b：sweep 併入 flow、vendor profile；go.sh／orchestrate／sweep 退役（flow 跑過一天即可動工） | Phase 3 結案 |
+| 9/8 | D6b 上線（9/7 寫好、9/8 早日跑綠即併）；當天 sweep 各輪走 flow | 9/9 早日跑綠＝Phase 3 結案 |
 
 代價＝9/7 一晚疊三個變更；緩解＝go.sh／orchestrate 留在 image、flow 可 `--from` 續跑、
 清空欄位延到綠了才做，回退只是 tfvars 翻回再 apply，沒有不可逆動作。
