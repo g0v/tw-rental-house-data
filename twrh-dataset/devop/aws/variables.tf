@@ -27,7 +27,7 @@ variable "crawl_schedule" {
   default     = "cron(0 4 * * ? *)"
 }
 
-# ---- primary（orchestrate.sh）的 list 階段速率 ----
+# ---- primary（flow run）的 list 階段速率 ----
 variable "crawl_concurrency" {
   description = "primary list 階段 CONCURRENT_REQUESTS（per-env 於 terraform.tfvars 設定）"
   type        = string
@@ -40,7 +40,7 @@ variable "crawl_download_delay" {
   default     = "1"
 }
 
-# ---- 2.5-3 detail worker 群：orchestrate.sh 用 run-task 開 N 個（各自新 IP）----
+# ---- 2.5-3 detail worker 群：flow 的 detail stage（devop/workers.py）用 run-task 開 N 個（各自新 IP）----
 variable "detail_workers" {
   description = "consume-only detail worker 數（run-task --count）。0=orchestrate 只跑 list＋收尾不開 worker；per-env 於 terraform.tfvars 設定"
   type        = number
@@ -168,9 +168,9 @@ variable "raw_db_write" {
 }
 
 variable "crawler_command" {
-  description = "日跑 task 的 command。D6a 切 flow：[\"poetry\", \"run\", \"python\", \"flow.py\", \"run\"]（executor 由 TWRH_CLUSTER 自動選 ecs）；回退＝改回 orchestrate.sh 再 apply"
+  description = "日跑 task 的 command（D6b 起 flow.py 是唯一編排，orchestrate.sh 已退役；executor 由 TWRH_CLUSTER 自動選 ecs）"
   type        = list(string)
-  default     = ["./devop/orchestrate.sh"]
+  default     = ["poetry", "run", "python", "flow.py", "run"]
 }
 
 variable "enable_sweep_schedule" {

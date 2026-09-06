@@ -46,32 +46,32 @@ poetry run python django/manage.py loaddata vendors   # required: pipeline looks
 
 ### twrh-dataset
 ```bash
-# Full crawl pipeline (list -> detail -> sync -> stats -> export)
-./go.sh [--append] [--start-early] [--date YYYY-MM-DD]
-./gobg.sh [same flags]     # detached via setsid, logs to ../logs/<ts>.go.log
+# Full crawl pipeline（D6b 起唯一編排：flow.py；go.sh／gobg.sh／orchestrate.sh／sweep.sh 已退役 2026-09-07）
+poetry run python flow.py run [--date YYYY-MM-DD] [--from STAGE] [--executor local|ecs] [--append] [--vendor 591] [--dry-run]
+poetry run python flow.py sweep [--date YYYY-MM-DD] [--vendor 591] [--dry-run]   # 前緣掃描：busy→frontier→newdetail→queuefinalize→rawpack→logs
+poetry run python flow.py status [--date YYYY-MM-DD]                             # 日跑 stage 與各輪 sweep 的完成狀態
 
 # Individual spiders
 poetry run scrapy crawl list591 -L INFO
 poetry run scrapy crawl detail591 -L INFO -a batch_size=2000
-poetry run scrapy crawl list591 -L INFO -a frontier_pages=30    # 前緣掃描：只走每縣市 list 最前面幾頁，整頁已知即收單（devop/sweep.sh）
+poetry run scrapy crawl list591 -L INFO -a frontier_pages=30    # 前緣掃描：只走每縣市 list 最前面幾頁，整頁已知即收單（flow.py sweep）
 poetry run scrapy crawl detail591 -L INFO -a seed_mode=new      # 只排從未抓過 detail 的 OPENED（前緣掃描的後半）
 poetry run scrapy crawl deal591 -L INFO -a lookback_days=7      # #229 deals stage：走 591「已成交」列表產成交事件；591 成交後數日仍補列，日跑取 7；回補時再開大
 
-# flow runner（arch 3-2）：一份 stage 定義跑整條 pipeline，--from 從任一 stage 續跑；
-# 完成判據＝artifact（rawpack 日包／manifest）或 logs/flow/<date>/ stamp 檔。
-# go.sh／orchestrate.sh 仍是 production 路徑，flow 於 AWS 驗過後（D6）退役兩者
-poetry run python flow.py run [--date YYYY-MM-DD] [--from STAGE] [--executor local|ecs] [--append]
-poetry run python flow.py status [--date YYYY-MM-DD]
+# flow runner（arch 3-2）：完成判據＝artifact（rawpack 日包／manifest）或 logs/flow/<date>/ stamp 檔；
+# sweep 各輪的 stamp 在 logs/flow/<date>/sweep-<HHMM>/。vendor 維度來自 crawler/vendor_profiles.py
+#（spider 名、has_deals_stage、supports_frontier、頁數、lookback、sweep 速率；新 vendor＝加一個 dict）
 
 # Django management commands (all under django/, not backend/ as the README says)
 poetry run python django/manage.py queuefinalize       # 1-1 收工鐵律 seeds==terminals；紅→exit 1＋Slack；附終結列滾動清理（90d）
+poetry run python django/manage.py queuebusy --vendor "591 租屋網"   # 同 vendor 同日 bucket 2h 內有 in_flight 即 exit 1（flow sweep 互斥）
 poetry run python django/manage.py synthts             # L-C diff 模式：合成被 skip 物件的當日 HouseTS（標 is_synthesized）
 poetry run python django/manage.py syncstateful -ts    # sync deal status into time-series
 poetry run python django/manage.py manifest            # 1-2：產 manifests/<date>/{list,detail,snapshot}.json（--from/--to --source backfill 可回補）
 poetry run python django/manage.py qualitycheck        # 1-2：quality/assertions.yaml × manifest 斷言，單一 Slack 通道（D3 起唯一觀測通道；statscheck／distcheck／fill-rate ext 已退役）
 poetry run python django/manage.py rawpack --reconcile # 3-1：當日 raw scratch 打成 raws/<vendor>/<date>.tar.zst＋index（同日多次 run＝與既有日包聯集）；--reconcile 抽樣比對 DB，--full 全量
 poetry run python django/manage.py rawpack --reconcile-only --full --date YYYY-MM-DD   # 對既有日包（本地／S3）補跑全量對帳，不打包
-poetry run python django/manage.py export -p           # periodic export：每月 1 日出上月（flow／go.sh 第一個 stage，爬取前）
+poetry run python django/manage.py export -p           # periodic export：每月 1 日出上月（flow run 第一個 stage，爬取前）
 poetry run python django/manage.py export --help       # manual export: -f/-t dates, -u, -j, -b6
 poetry run python django/manage.py monthreport         # 月報 quality gate：疊 manifest 出月窗（0=綠、2=紅）
 poetry run python django/manage.py invalidate          # flag suspicious/unstable listing data
@@ -255,8 +255,8 @@ date-keyed:
 - At most `queue_length` (30) requests live in memory; `next_request()` claims one row atomically
   with raw SQL (`FOR UPDATE SKIP LOCKED` + `RETURNING`，`status→in_flight`、`attempts+1`)，
   so multiple spider processes can share a queue.
-- `detail591 -a batch_size=N` stops after N completions and logs `Batch limit reached`. `go.sh`
-  loops on that string, restarting the spider until it exits without it — this bounds memory over a
+- `detail591 -a batch_size=N` stops after N completions and touches the `stop_marker` file; flow's
+  consume loop restarts the spider until it exits without touching it — this bounds memory over a
   multi-hour detail crawl. Overall progress survives restarts via
   `logs/progress/<YYYY-MM-DD>.detail.json` (`ProgressTracker.init_overall`).
 - `--append` mode: list spider always regenerates seeds; detail spider only picks houses never
@@ -265,21 +265,22 @@ date-keyed:
   （`TWRH_DETAIL_SEED_MODE=diff`，production 現行，L-C list-diff skip 降頻：stale/指紋變/
   連續≥2天缺席/回列才入 queue，之後 `synthts` 合成被 skip 者的當日 HouseTS）、`new`
   （只排 `detail_crawled_at IS NULL` 的 OPENED，前緣掃描用，不受同日 progress 檔防呆限制）。
-- **前緣掃描**（`devop/sweep.sh`，EventBridge 白天每 3 小時，避開 02:00–05:00 主跑）：
+- **前緣掃描**（`flow.py sweep`，EventBridge 白天每 3 小時，避開 02:00–05:00 主跑）：
   `list591 -a frontier_pages=N` 逐頁走每縣市 list 最前面（排序鍵＝刊登時間，新刊登連續），
   整頁都是 DB 已知物件即收單；接 `detail591 -a seed_mode=new`＋`queuefinalize`。目的＝
   補抓刊登不到一天就成交的短命物件（一天一次 02:10 只看得到一半）。同一日期 bucket、同一張
-  queue；被掃到的物件隔天早上因 detail 很新被 diff 判 skip。
+  queue；被掃到的物件隔天早上因 detail 很新被 diff 判 skip。起跑先 `queuebusy`（同 vendor 同日
+  bucket 2h 內有 in_flight 即讓路 exit 0）；收尾 rawpack 把本輪 raw 併進當日日包。
 - List pagination（package 端）不信 591 的 `total_page`：宣稱頁範圍當下限，前緣逐頁探測
   直到空結果頁收單；list manifest 的 `capture.ratio`（當日 OPENED 中出現在 list 的比率，
   assertions `list.capture.ratio` min 0.85）監控捕獲率。
 - `--start-early`: when run at/after 22:00, bucket the data under tomorrow's date.
 
 ### TWRH_TARGET_DATE
-`go.sh` exports `TWRH_TARGET_DATE=YYYY-MM-DD` and pins it for the whole run so a crawl that spans
-midnight doesn't split across two date buckets. It is read by `rental.models` (the `current_*`
+`flow.py` exports `TWRH_TARGET_DATE=YYYY-MM-DD`（`--date`，預設今天）and pins it for the whole run so
+a crawl that spans midnight doesn't split across two date buckets. It is read by `rental.models` (the `current_*`
 time-series defaults), `crawler/utils.now_tuple`, `persist_queue`, `syncstateful`, and `statscheck`.
-Set it manually (or use `go.sh --date`) when re-running part of a pipeline for a past day.
+Set it manually (or use `flow.py run --date`) when re-running part of a pipeline for a past day.
 `export` honours it too (fixed 2026-08-28; it used to always take the real current date).
 
 ### Django models (twrh-dataset)
@@ -295,7 +296,7 @@ Set it manually (or use `go.sh --date`) when re-running part of a pipeline for a
 - Raw HTML（arch 3-1）：pipeline 落 `raws/scratch/`，收尾 `rawpack` 打成
   `raws/<vendor>/<date>.tar.zst`＋index 上 S3；**同日多次 run（日跑＋各輪 sweep）各自 rawpack，
   與既有日包聯集、後爬者勝**。`TWRH_RAW_DB_WRITE`（預設 1）＝D5 開關：1 雙寫 `HouseEtc` raw 欄，
-  0 為 cutover（DB 停寫、rawpack 失敗升硬紅，go.sh／orchestrate／flow／sweep 四處同讀）；一次性
+  0 為 cutover（DB 停寫、rawpack 失敗升硬紅）；一次性
   清空既有 raw 欄＝`devop/rawcutover.sh`（rawoffload 窗口 0 天，housekeep 的 raw 半邊已退役）。
   修完 parser bug 後用 `tools/rerun_from_raws.py` 對日包重放、**不需重爬**（舊
   `rerun_detail_raw/dict.py` 已因改組失效，勿用）。

@@ -131,7 +131,7 @@ locals {
     { name = "TWRH_DOWNLOAD_DELAY", value = var.crawl_download_delay },
     { name = "TWRH_CONCURRENT_REQUESTS", value = var.crawl_concurrency },
     { name = "DETAIL_BATCH_SIZE", value = "10000" },
-    # L-C skip 降頻（go.sh／orchestrate.sh 讀，dx-roadmap L-C）
+    # L-C skip 降頻（flow 讀，dx-roadmap L-C）
     { name = "TWRH_DETAIL_SEED_MODE", value = var.detail_seed_mode },
     { name = "TWRH_DETAIL_REFRESH_DAYS", value = var.detail_refresh_days },
     { name = "TWRH_DEAL_LOOKBACK_DAYS", value = var.deal_lookback_days },
@@ -144,7 +144,7 @@ locals {
     { name = "TWRH_RAW_DIR", value = "/data/raws" },
     # D5 cutover 開關（rental/raws.db_write）：tfvars 翻 0 即 DB 停寫 raw
     { name = "TWRH_RAW_DB_WRITE", value = var.raw_db_write },
-    # orchestrate.sh（模型 A）開/查 detail worker 所需
+    # flow detail stage（模型 A，devop/workers.py）開/查 detail worker 所需
     { name = "AWS_DEFAULT_REGION", value = var.region },
     { name = "TWRH_CLUSTER", value = aws_ecs_cluster.twrh.name },
     { name = "TWRH_TASK_DEF", value = "twrh-crawler" },
@@ -233,7 +233,7 @@ resource "aws_scheduler_schedule" "daily_crawl" {
   }
 }
 
-# ---- 前緣掃描（短命物件，devop/sweep.sh）：同一顆 image、command override ----
+# ---- 前緣掃描（短命物件，flow.py sweep；D6b 起 sweep.sh 退役）：同一顆 image、command override ----
 resource "aws_scheduler_schedule" "frontier_sweep" {
   count                        = var.enable_sweep_schedule ? 1 : 0
   name                         = "twrh-frontier-sweep"
@@ -258,7 +258,7 @@ resource "aws_scheduler_schedule" "frontier_sweep" {
     input = jsonencode({
       containerOverrides = [{
         name    = "crawler"
-        command = ["./devop/sweep.sh"]
+        command = ["poetry", "run", "python", "flow.py", "sweep"]
       }]
     })
   }

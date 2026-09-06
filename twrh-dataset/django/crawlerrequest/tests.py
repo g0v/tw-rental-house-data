@@ -1192,3 +1192,57 @@ class RawPackTests(QueueTestMixin, TestCase):
         with mock.patch.dict(os.environ, {'TWRH_RAW_DB_WRITE': '0'}):
             self.rawpack('--reconcile', '--full')
         self.assertEqual(self.member(TEST_DATE, 'A.detail.html'), b'<a-changed>')
+
+
+class VendorProfileTests(TestCase):
+    '''D6b：vendor profile 是資料、env 可覆寫；flow 依它組 stage。'''
+
+    def test_profile_values_and_env_override(self):
+        from crawler import vendor_profiles
+        p = vendor_profiles.get('591')
+        self.assertEqual(p.name, VENDOR_NAME)
+        self.assertEqual(p.list_spider, 'list591')
+        self.assertTrue(p.has_deals_stage)
+        self.assertTrue(p.supports_frontier)
+        self.assertEqual(p.frontier_pages, '30')
+        with mock.patch.dict(os.environ, {'TWRH_SWEEP_PAGES': '12',
+                                          'TWRH_DEAL_LOOKBACK_DAYS': '9'}):
+            self.assertEqual(p.frontier_pages, '12')
+            self.assertEqual(p.deal_lookback_days, '9')
+        with self.assertRaises(KeyError):
+            vendor_profiles.get('nope')
+        with self.assertRaises(AttributeError):
+            p.no_such_key
+
+
+class QueueBusyTests(QueueTestMixin, TestCase):
+    '''D6b：flow sweep 的互斥——同 vendor 同日 bucket、近期更新的 in_flight 才算忙。'''
+
+    def busy(self, **kw):
+        from django.core.management import call_command
+        try:
+            call_command('queuebusy', '--vendor', VENDOR_NAME, **kw)
+        except SystemExit as e:
+            return e.code
+        return 0
+
+    def test_idle_when_no_in_flight(self):
+        q = make_queue(); q.gen_persist_request({'id': 'a'})
+        self.assertEqual(self.busy(), 0)
+
+    def test_busy_when_recent_in_flight_same_vendor_only(self):
+        q = make_queue(); q.gen_persist_request({'id': 'a'})
+        RequestTS.objects.update(status=RequestStatus.IN_FLIGHT)
+        self.assertEqual(self.busy(), 1)
+        # 其他 vendor 的 in_flight 不擋
+        other = Vendor.objects.exclude(name=VENDOR_NAME).first()
+        RequestTS.objects.update(vendor=other)
+        self.assertEqual(self.busy(), 0)
+
+    def test_stale_in_flight_does_not_block(self):
+        q = make_queue(); q.gen_persist_request({'id': 'a'})
+        RequestTS.objects.update(
+            status=RequestStatus.IN_FLIGHT,
+            updated=timezone.now() - timedelta(hours=3))
+        self.assertEqual(self.busy(), 0)
+        self.assertEqual(self.busy(hours=4), 1)

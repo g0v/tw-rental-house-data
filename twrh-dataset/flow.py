@@ -1,25 +1,29 @@
 #!/usr/bin/env python
-'''flow：make 式 pipeline runner（architecture-roadmap 3-2）。
+'''flow：make 式 pipeline runner（architecture-roadmap 3-2；D6b 起唯一編排）。
 
-四套編排（go.sh／orchestrate.sh／batch marker／progress 檔）收斂成
-一份 stage 定義；本機與雲上同一條 DAG，差別只在 detail stage 的
-executor（local＝行程內 batch 迴圈；ecs＝開 N 個 worker task 搶同一個
-queue＋primary 陪跑）。完成判據＝artifact 存在（rawpack 日包、
-manifest）或 stamp 檔（DB 型 stage，Phase 4 檔案化後逐一改 artifact）。
+一份 stage 定義，本機與雲上同一條 DAG，差別只在 detail stage 的 executor
+（local＝行程內 batch 迴圈；ecs＝開 N 個 worker task 搶同一個 queue＋
+primary 陪跑）。完成判據＝artifact 存在（rawpack 日包、manifest）或
+stamp 檔（DB 型 stage，Phase 4 檔案化後逐一改 artifact）。
 
-    poetry run python flow.py run [--date YYYY-MM-DD] [--from STAGE]
-        [--executor local|ecs] [--append]
+    poetry run python flow.py run   [--date YYYY-MM-DD] [--from STAGE]
+        [--executor local|ecs] [--append] [--vendor 591] [--dry-run]
+    poetry run python flow.py sweep [--date YYYY-MM-DD] [--vendor 591] [--dry-run]
     poetry run python flow.py status [--date YYYY-MM-DD]
+
+`run`＝日跑（每月 1 日第一個 stage 先出上月 export）；`sweep`＝前緣掃描
+（白天每數小時：list 前緣 → 新物件 detail → 對帳 → 日包聯集），同一天多
+次 run，各自的 stamp 落在 `logs/flow/<date>/sweep-<HHMM>/`。起跑先問
+queuebusy：同 vendor 同日 bucket 有人在爬就讓路（exit 0，不告警）。
+
+vendor 維度（multi-vendor-plan〈營運政策層〉）：spider 名、要不要跑
+deals／sweep、頁數、lookback、sweep 速率都從 `crawler/vendor_profiles.py`
+的 profile 取，flow 本身不認識 591。
 
 日期 pin（拍板）：--date 是唯一日期來源，flow 開場寫進 TWRH_TARGET_DATE
 後所有 stage 繼承；--start-early 上移排程層——22:00 後的排程自己傳明日
-date，flow 不看時鐘。（現制五處 env 讀點的「stage 收參數」全面替換，
-隨 Phase 4 各 stage 檔案化時逐一收；env 傳遞在此前是唯一機制。）
-
-過渡期定位：go.sh／orchestrate.sh 續為 production 路徑，flow 驗證
-（一條指令從任一 stage 續跑，兩種 executor）後於部署日退役兩者。
-breaker 偵測仍走 scrapy.log 字串（LOG_FILE 是 repo 層契約）；
-log-grep 契約的退役需要 package 側配合，另案處理。
+date，flow 不看時鐘。breaker 偵測仍走 scrapy.log 字串（LOG_FILE 是 repo
+層契約）；log-grep 契約的退役需要 package 側配合，另案處理。
 '''
 import argparse
 import glob
@@ -28,10 +32,14 @@ import os
 import shutil
 import subprocess
 import sys
-from datetime import date as date_cls
+from datetime import date as date_cls, datetime
 
 BASE = os.path.dirname(os.path.realpath(__file__))
 LOGS_DIR = os.path.join(BASE, '..', 'logs')
+sys.path.insert(0, BASE)
+from crawler import vendor_profiles  # noqa: E402
+
+DRY_RUN = False
 
 
 def flow_state_dir(date_str):
@@ -55,12 +63,24 @@ def read_env_file():
 
 
 class Ctx:
-    def __init__(self, options):
+    def __init__(self, options, kind='run'):
+        self.kind = kind
         self.date = options.date
-        self.executor = options.executor
-        self.append = options.append
-        self.stamp = os.environ.get('TWRH_LOG_STAMP') or \
-            __import__('datetime').datetime.now().strftime('%Y.%m.%d.%H%M')
+        self.vendor = vendor_profiles.get(options.vendor)
+        self.executor = getattr(options, 'executor', 'local')
+        self.append = getattr(options, 'append', False)
+        now = datetime.now()
+        if kind == 'sweep':
+            # 同一天多次 run：stamp 帶時分，stamp 檔各自一個目錄
+            self.run_id = 'sweep-' + now.strftime('%H%M')
+            self.stamp = os.environ.get('TWRH_LOG_STAMP') or \
+                now.strftime('%Y.%m.%d.%H%M') + '.sweep'
+            self.state_dir = os.path.join(flow_state_dir(self.date), self.run_id)
+        else:
+            self.run_id = 'run'
+            self.stamp = os.environ.get('TWRH_LOG_STAMP') or \
+                now.strftime('%Y.%m.%d.%H%M')
+            self.state_dir = flow_state_dir(self.date)
         self.seed_mode = os.environ.get('TWRH_DETAIL_SEED_MODE', 'full')
         self.refresh_days = os.environ.get('TWRH_DETAIL_REFRESH_DAYS', '7')
 
@@ -70,9 +90,17 @@ class Ctx:
                     '-a', 'refresh_days={}'.format(self.refresh_days)]
         return []
 
+    def crawl(self, spider, *args):
+        cmd = ['poetry', 'run', 'scrapy', 'crawl', spider, '-L', 'INFO', *args]
+        if self.append:
+            cmd += ['-a', 'append=True']
+        return cmd
+
 
 def run(cmd, **kwargs):
     print('+ {}'.format(' '.join(cmd)))
+    if DRY_RUN:
+        return subprocess.CompletedProcess(cmd, 0, '', '')
     return subprocess.run(cmd, cwd=BASE, **kwargs)
 
 
@@ -102,22 +130,25 @@ class StageFailed(Exception):
     pass
 
 
-# --- stage bodies ---------------------------------------------------------
+class SweepYield(Exception):
+    '''互斥讓路：不是失敗，exit 0、下一輪再來。'''
+
+
+# --- 日跑 stage bodies -------------------------------------------------------
 
 def stage_list(ctx):
-    cmd = ['poetry', 'run', 'scrapy', 'crawl', 'list591', '-L', 'INFO']
-    if ctx.append:
-        cmd += ['-a', 'append=True']
-    run(cmd, check=True)
+    run(ctx.crawl(ctx.vendor.list_spider), check=True)
     log = archive_scrapy_log(ctx, 'list')
     if breaker_tripped(log):
         raise StageFailed('list breaker tripped (error_rate_exceeded)')
 
 
 def stage_seed(ctx):
-    run(['poetry', 'run', 'scrapy', 'crawl', 'detail591', '-L', 'INFO',
-         '-a', 'seed_only=True', *ctx.seed_mode_flags()], check=True)
+    run(ctx.crawl(ctx.vendor.detail_spider, '-a', 'seed_only=True',
+                  *ctx.seed_mode_flags()), check=True)
     log = archive_scrapy_log(ctx, 'seed')
+    if DRY_RUN:
+        return
     with open(log, errors='replace') as f:
         if not any('seed-only mode' in line for line in f):
             raise StageFailed('seed generation failed')
@@ -132,12 +163,14 @@ def consume_loop(ctx, batch_size, extra_env=None):
         if os.path.exists(marker):
             os.unlink(marker)
         env = {**os.environ, **(extra_env or {})}
-        result = subprocess.run(
-            ['poetry', 'run', 'scrapy', 'crawl', 'detail591', '-L', 'INFO',
-             '-a', 'consume_only=True',
-             '-a', 'batch_size={}'.format(batch_size),
-             '-a', 'stop_marker={}'.format(marker)],
-            cwd=BASE, env=env)
+        cmd = ctx.crawl(ctx.vendor.detail_spider,
+                        '-a', 'consume_only=True',
+                        '-a', 'batch_size={}'.format(batch_size),
+                        '-a', 'stop_marker={}'.format(marker))
+        print('+ {}'.format(' '.join(cmd)))
+        if DRY_RUN:
+            return
+        result = subprocess.run(cmd, cwd=BASE, env=env)
         if result.returncode != 0:
             raise StageFailed('detail batch {} exited {}'.format(
                 n, result.returncode))
@@ -158,10 +191,10 @@ def stage_detail(ctx):
     # ecs：開 N 個 consume-only worker（各自新公網 IP），primary 也陪跑
     # 消化 queue（套 worker 節流參數，見 orchestrate 08-31 首航教訓），
     # 最後等 worker 全停——「worker 全停」是唯一可靠收尾閘門
-    arns = subprocess.run(
-        ['poetry', 'run', 'python', 'devop/workers.py', 'launch'],
-        cwd=BASE, capture_output=True, text=True, check=True).stdout.strip()
-    if not arns:
+    launch = run(['poetry', 'run', 'python', 'devop/workers.py', 'launch'],
+                 capture_output=True, text=True, check=True)
+    arns = (launch.stdout or '').strip()
+    if not arns and not DRY_RUN:
         raise StageFailed('run-task returned no ARNs')
     print('workers: {}'.format(arns))
     consume_loop(
@@ -180,12 +213,13 @@ def stage_detail(ctx):
 
 def stage_deals(ctx):
     # #229：走「已成交」列表產成交事件，detail 之後、finalize 之前（queue
-    # 的 DEAL 列一併對帳）。lookback 日跑 7 天（591 成交後數日仍補列）；回補時 TWRH_DEAL_LOOKBACK_DAYS 開大
-    cmd = ['poetry', 'run', 'scrapy', 'crawl', 'deal591', '-L', 'INFO',
-           '-a', 'lookback_days=' + os.environ.get('TWRH_DEAL_LOOKBACK_DAYS', '7')]
-    if ctx.append:
-        cmd += ['-a', 'append=True']
-    run(cmd, check=True)
+    # 的 DEAL 列一併對帳）。profile 決定這個 vendor 有沒有這個 stage
+    if not ctx.vendor.has_deals_stage:
+        print('vendor {} has no deals stage — skip'.format(ctx.vendor.short))
+        return
+    run(ctx.crawl(ctx.vendor.deal_spider,
+                  '-a', 'lookback_days=' + str(ctx.vendor.deal_lookback_days)),
+        check=True)
     log = archive_scrapy_log(ctx, 'deals')
     if breaker_tripped(log):
         raise StageFailed('deals breaker tripped (error_rate_exceeded)')
@@ -243,7 +277,64 @@ def stage_logs(ctx):
              'ship_logs', LOGS_DIR, ctx.stamp], check=False)
 
 
-# --- stage table（本機與雲上同一份定義） -----------------------------------
+# --- 前緣掃描 stage bodies（devop/sweep.sh 退役，2026-09-07）-------------------
+
+def sweep_env(ctx):
+    # 保守速率：白天與使用者共用站方資源；sweep 試跑（09-05）在 1,500 筆全速
+    # detail 後吃到連續 403——比主跑的速率參數更溫和
+    return {
+        'TWRH_CONCURRENT_REQUESTS': str(ctx.vendor.sweep_concurrency),
+        'TWRH_DOWNLOAD_DELAY': str(ctx.vendor.sweep_delay),
+    }
+
+
+def stage_busy(ctx):
+    # 互斥：同 vendor 同日期 bucket，別人（拖長的日跑、臨時 run-task）正在爬
+    # 就讓路。以「N 小時內更新過的 in_flight 列」判定，避免被 SIGKILL 殘留
+    # 的舊 in_flight 永久擋住
+    result = manage('queuebusy', '--vendor', ctx.vendor.name,
+                    '--hours', str(ctx.vendor.busy_window_hours), check=False)
+    if result.returncode != 0:
+        raise SweepYield('another crawl is in flight on this queue')
+
+
+def stage_frontier(ctx):
+    if not ctx.vendor.supports_frontier:
+        raise SweepYield('vendor {} does not support frontier sweep'.format(
+            ctx.vendor.short))
+    os.environ.update(sweep_env(ctx))
+    run(ctx.crawl(ctx.vendor.list_spider,
+                  '-a', 'frontier_pages={}'.format(ctx.vendor.frontier_pages)),
+        check=True)
+    log = archive_scrapy_log(ctx, 'sweep-list')
+    if breaker_tripped(log):
+        raise StageFailed('sweep list breaker tripped')
+    if not DRY_RUN:
+        with open(log, errors='replace') as f:
+            for line in f:
+                if 'unseen houses discovered' in line:
+                    print(line.strip().split('INFO: ')[-1])
+
+
+def stage_newdetail(ctx):
+    os.environ.update(sweep_env(ctx))
+    # 兩趟：第二趟只撿第一趟 failed 的重試（seed_mode=new 不重排當日已有列的物件）
+    for n in range(1, int(ctx.vendor.sweep_detail_passes) + 1):
+        run(ctx.crawl(ctx.vendor.detail_spider, '-a', 'seed_mode=new'), check=True)
+        log = archive_scrapy_log(ctx, 'sweep-detail.{}'.format(n))
+        if breaker_tripped(log):
+            raise StageFailed('sweep detail breaker tripped at pass {}'.format(n))
+
+
+def stage_sweep_finalize(_ctx):
+    # 同日 queue 一併對帳（含清晨那輪）；紅＝本輪殘留，Slack 有訊息。
+    # 終結列清理留給日跑
+    result = manage('queuefinalize', '--no-cleanup', check=False)
+    if result.returncode != 0:
+        raise StageFailed('seeds != terminals')
+
+
+# --- stage tables（本機與雲上同一份定義） ------------------------------------
 
 def manifest_artifacts(date_str):
     base = os.environ.get('TWRH_MANIFEST_DIR',
@@ -259,7 +350,7 @@ def rawpack_artifacts(date_str):
     return glob.glob(os.path.join(base, '*', date_str + '.tar.zst'))
 
 
-STAGES = [
+RUN_STAGES = [
     # (name, body, artifact_fn 或 None＝stamp 檔)
     # export 排最前：每月 1 日出上月（export -p 自判），此刻 DB＝上月最後一天
     # 23:00 sweep 後的狀態，當日爬取尚未動到任何列（2026-09-07 拍板）
@@ -276,94 +367,163 @@ STAGES = [
     ('quality', stage_quality, None),
     ('logs', stage_logs, None),
 ]
-STAGE_NAMES = [name for name, _, _ in STAGES]
+RUN_STAGE_NAMES = [name for name, _, _ in RUN_STAGES]
+
+SWEEP_STAGES = [
+    ('busy', stage_busy, None),
+    ('frontier', stage_frontier, None),
+    ('newdetail', stage_newdetail, None),
+    ('queuefinalize', stage_sweep_finalize, None),
+    # 本輪 raw 併進當日日包（rawpack 合併既有包＋scratch，同日多次 run＝聯集）
+    ('rawpack', stage_rawpack, None),
+    ('logs', stage_logs, None),
+]
+SWEEP_STAGE_NAMES = [name for name, _, _ in SWEEP_STAGES]
+
+# 相容：外部（tests／tools）仍可用舊名
+STAGES = RUN_STAGES
+STAGE_NAMES = RUN_STAGE_NAMES
 
 
-def stamp_path(date_str, name):
-    return os.path.join(flow_state_dir(date_str), name + '.done')
+def stamp_path(state_dir, name):
+    return os.path.join(state_dir, name + '.done')
 
 
-def is_done(date_str, name, artifact_fn):
-    if os.path.exists(stamp_path(date_str, name)):
+def is_done(ctx, name, artifact_fn):
+    if os.path.exists(stamp_path(ctx.state_dir, name)):
         return True
     if artifact_fn:
-        artifacts = artifact_fn(date_str)
+        artifacts = artifact_fn(ctx.date)
         return bool(artifacts) and all(os.path.exists(p) for p in artifacts)
     return False
 
 
-def mark_done(date_str, name):
-    os.makedirs(flow_state_dir(date_str), exist_ok=True)
-    with open(stamp_path(date_str, name), 'w'):
+def mark_done(ctx, name):
+    if DRY_RUN:
+        return
+    os.makedirs(ctx.state_dir, exist_ok=True)
+    with open(stamp_path(ctx.state_dir, name), 'w'):
         pass
 
 
-def cmd_run(options):
-    ctx = Ctx(options)
-    os.environ['TWRH_TARGET_DATE'] = ctx.date
-    os.environ['TWRH_LOG_STAMP'] = ctx.stamp
-    print('=== flow run {} (executor: {}, seed mode: {}) ==='.format(
-        ctx.date, ctx.executor, ctx.seed_mode))
-
+def run_stages(ctx, stages, from_stage=None):
+    names = [name for name, _, _ in stages]
     start_index = 0
-    if options.from_stage:
-        start_index = STAGE_NAMES.index(options.from_stage)
+    if from_stage:
+        start_index = names.index(from_stage)
         # --from：該 stage 起全部重跑（清 stamp）
-        for name in STAGE_NAMES[start_index:]:
+        for name in names[start_index:]:
             try:
-                os.unlink(stamp_path(ctx.date, name))
+                os.unlink(stamp_path(ctx.state_dir, name))
             except OSError:
                 pass
-
-    for index, (name, body, artifact_fn) in enumerate(STAGES):
+    for index, (name, body, artifact_fn) in enumerate(stages):
         if index < start_index:
             print('----- {} (before --from, skip) -----'.format(name))
             continue
-        forced = options.from_stage is not None and index >= start_index
-        if not forced and is_done(ctx.date, name, artifact_fn):
+        forced = from_stage is not None and index >= start_index
+        if not forced and is_done(ctx, name, artifact_fn):
             print('----- {} (done, skip) -----'.format(name))
             continue
         print('===== {} ====='.format(name.upper()))
         try:
             body(ctx)
+        except SweepYield as why:
+            print('=== {} yielded: {} ==='.format(ctx.kind, why))
+            return 0
         except StageFailed as err:
             print('!!! stage {} failed: {}'.format(name, err))
-            stage_logs(ctx)
-            sys.exit(1)
+            if name != 'logs':
+                stage_logs(ctx)
+            return 1
         except subprocess.CalledProcessError as err:
             print('!!! stage {} failed: {}'.format(name, err))
-            stage_logs(ctx)
-            sys.exit(1)
-        mark_done(ctx.date, name)
-    print('=== flow done ===')
+            if name != 'logs':
+                stage_logs(ctx)
+            return 1
+        mark_done(ctx, name)
+    return 0
+
+
+def cmd_run(options):
+    ctx = Ctx(options, 'run')
+    os.environ['TWRH_TARGET_DATE'] = ctx.date
+    os.environ['TWRH_LOG_STAMP'] = ctx.stamp
+    print('=== flow run {} (vendor: {}, executor: {}, seed mode: {}) ==='.format(
+        ctx.date, ctx.vendor.short, ctx.executor, ctx.seed_mode))
+    code = run_stages(ctx, RUN_STAGES, options.from_stage)
+    if code == 0:
+        print('=== flow done ===')
+    sys.exit(code)
+
+
+def cmd_sweep(options):
+    ctx = Ctx(options, 'sweep')
+    os.environ['TWRH_TARGET_DATE'] = ctx.date
+    os.environ['TWRH_LOG_STAMP'] = ctx.stamp
+    print('=== flow sweep {} {} (vendor: {}, frontier pages<={}) ==='.format(
+        ctx.date, ctx.run_id, ctx.vendor.short, ctx.vendor.frontier_pages))
+    code = run_stages(ctx, SWEEP_STAGES, None)
+    if code == 0:
+        print('=== flow sweep {} done ==='.format(ctx.run_id))
+    sys.exit(code)
 
 
 def cmd_status(options):
-    for name, _, artifact_fn in STAGES:
-        state = 'done' if is_done(options.date, name, artifact_fn) else '-'
+    class _Opts:
+        date = options.date
+        vendor = options.vendor
+    ctx = Ctx(_Opts, 'run')
+    for name, _, artifact_fn in RUN_STAGES:
+        state = 'done' if is_done(ctx, name, artifact_fn) else '-'
         print('{:14s} {}'.format(name, state))
+    root = flow_state_dir(options.date)
+    if os.path.isdir(root):
+        sweeps = sorted(d for d in os.listdir(root) if d.startswith('sweep-'))
+        for d in sweeps:
+            done = sorted(f[:-5] for f in os.listdir(os.path.join(root, d))
+                          if f.endswith('.done'))
+            print('{:14s} {}'.format(d, ' '.join(done) or '-'))
 
 
 def main():
+    global DRY_RUN
+    try:
+        sys.stdout.reconfigure(line_buffering=True)   # CloudWatch 要看得到 stage 起訖
+    except AttributeError:
+        pass
     read_env_file()
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     sub = parser.add_subparsers(dest='command', required=True)
 
-    run_parser = sub.add_parser('run', help='run the pipeline for a date')
-    run_parser.add_argument('--date', default=date_cls.today().isoformat())
-    run_parser.add_argument('--from', dest='from_stage', choices=STAGE_NAMES,
+    def common(p):
+        p.add_argument('--date', default=date_cls.today().isoformat())
+        p.add_argument('--vendor', default='591', choices=vendor_profiles.names())
+        p.add_argument('--dry-run', action='store_true',
+                       help='只印指令不執行（不寫 stamp）')
+
+    run_parser = sub.add_parser('run', help='日跑：從任一 stage 續跑整條 pipeline')
+    common(run_parser)
+    run_parser.add_argument('--from', dest='from_stage', choices=RUN_STAGE_NAMES,
                             help='從這個 stage 起強制重跑')
     run_parser.add_argument('--executor', choices=['local', 'ecs'],
                             default='ecs' if os.environ.get('TWRH_CLUSTER')
                             else 'local')
     run_parser.add_argument('--append', action='store_true')
 
+    sweep_parser = sub.add_parser('sweep', help='前緣掃描：list 前緣→新物件 detail→對帳→日包')
+    common(sweep_parser)
+
     status_parser = sub.add_parser('status', help='show stage completion')
     status_parser.add_argument('--date', default=date_cls.today().isoformat())
+    status_parser.add_argument('--vendor', default='591')
 
     options = parser.parse_args()
+    DRY_RUN = getattr(options, 'dry_run', False)
     if options.command == 'run':
         cmd_run(options)
+    elif options.command == 'sweep':
+        cmd_sweep(options)
     else:
         cmd_status(options)
 

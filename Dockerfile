@@ -3,7 +3,7 @@
 #   docker build --target crawler   -t twrh-crawler .
 #   docker build --target publisher -t twrh-publisher .
 #
-# crawler：每日排程任務跑 go.sh／management commands（保持小顆）
+# crawler：每日排程任務跑 flow.py（run／sweep）與 management commands（保持小顆）
 # publisher：crawler ＋ clickhouse/awscli/git，跑 publish.sh（人工觸發才拉）
 # 機密（DB 密碼、Slack webhook、Sentry DSN、proxy token）一律由環境變數注入
 # （AWS 上是 SSM SecureString → task definition secrets），永遠不進 image。
@@ -31,7 +31,7 @@ RUN cp crawler/settings.sample.py crawler/settings.py
 
 # EFS（/data）→ ../logs 與 datas/ 的接線，見 devop/entrypoint.sh
 ENTRYPOINT ["/app/twrh-dataset/devop/entrypoint.sh"]
-CMD ["./go.sh"]
+CMD ["poetry", "run", "python", "flow.py", "run"]
 
 
 FROM crawler AS publisher
