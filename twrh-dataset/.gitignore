@@ -11,6 +11,7 @@ devop/*
 !devop/workers.py
 !devop/runcheck.py
 !devop/sweep.sh
+!devop/rawcutover.sh
 !devop/housekeep.sh
 datas/*.zip
 # publish.sh 的 --resume marker 與 monthreport 月報，跑一次一組，非版控物
