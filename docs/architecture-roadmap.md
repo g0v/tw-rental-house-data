@@ -558,6 +558,7 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 | 2026-09-05 | deals 首航＋1-3 baseline 重製 | 02:10 日跑五項全綠（三型 queue 收斂、rawpack 流程內原生成功、distcheck、qualitycheck 0 advisory、deals 首航寫入成交事件）→ #229 關閉。發現 591 成交列表在成交後數日仍補列，日跑 lookback 改 7（task def rev 8）。baseline 重製：`dist.*` near 改為 9/1～9/5 五份 manifest 中位數、list 完整度哨兵轉硬斷言，`baselines/national.json` 待 D3 隨 distcheck 退場 | master `8c6795cb` |
 | 2026-09-06 早 | D3＋D5 停寫＋D6a 切排程 | 平行第三天 Slack 兩軌一致（僅新 list 完整度定義不同）→ `arch-d3` 併入；`arch-d5-d6` 併入、CI 四條綠、新 image 上線。雲上全量對帳 9/4（6432 一致、452 superseded）、9/5（6083 一致、274 superseded）皆 0 mismatch；`flow --from rawpack` 於 ecs 走通，順手把 9/5 sweep 孤兒 scratch 8192 頁併回日包。tfvars 翻 `raw_db_write=0`＋`crawler_command` 指 flow，apply（task def 新 rev；sweep 11:00 起即在停寫下跑）。**待 9/7 02:10 flow 首跑驗**，綠後 `rawcutover.sh --commit` | master `c0d50934` |
 | 2026-09-06 午 | 3-3 驗收 | 本機 docker 起 crawler image、**不給任何 `TWRH_DB_*`**、掛 `sync-dev-data.sh` 拉回的 manifests 三天＋日包兩天：`quality_offline` 綠；`rerun_from_raws` dry-run 起初炸在 Vendor 查詢與 Detail591Spider 建構（PersistQueue 查 Vendor）——改為 dry-run 不查 Vendor、改用 package 的 `Rental591Spider`，重跑 9/5＋9/6 共 11,896 頁全數 parse 成功。「新貢獻者不建 PostGIS 也能跑資料後段」成立 | master（本列 commit） |
+| 2026-09-07 早 | flow 首跑＋**事故** | 02:10 flow 首跑（D5 停寫＋D6a）五項全綠、1h45m，05:00 sweep 與 flow 同 bucket 對帳合併正確。隨後 `rawcutover.sh` dry-run 於雲上打包 DB 剩餘 raw（2026-08 14,481 列 90 MB、2026-09 86,639 列 573 MB，驗證過）——**但 dry-run 也上傳，且沿用 housekeep 的 `<month>.tar.zst` 命名，把 S3 上 08-29 遷移時 strip 出的 `raw/591/2026-08.tar.zst`（557 MB、81,174 戶）覆蓋掉**；bucket 無 versioning、舊 RDS 已 destroy，**18,378 戶（8/1–8/28 更新、之後未再爬）的最後一版 raw HTML 永久遺失**，其餘 6 萬多戶 9 月已重爬、raw 在 DB／日包。遺失範圍＝debug／re-parse 素材，House／HouseTS 資料無損。舊 index 本機仍在，已另存 `2026-08.migration-20260829.index.json` 存證。修法已入版（`989da85c`）：dry-run 不上傳；commit 上傳走帶日期獨立 key＋head-object 拒絕覆蓋 | master `be0032f2`／`989da85c` |
 | 待（9/8 起） | D6b | sweep 併入 flow＋vendor profile；go.sh／orchestrate／sweep 退役——flow 日跑跑過一天（9/7）即可動工（2026-09-06 拍板） | — |
 
 **D5／D6a 壓縮時程**（門檻不是日曆是證據；指令見 devop/aws/README.md runbook）：
@@ -599,6 +600,10 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 
 ## 編修紀錄
 
+- **2026-09-07** flow 首跑綠（D5＋D6a 驗過）；rawcutover dry-run 覆蓋 S3 舊
+  2026-08 月包事故（18,378 戶 raw 遺失，資料集無損），修法與教訓入部署紀錄；
+  S3 治理節的「無 DeleteObject」不擋 PutObject 覆蓋——**任何上傳工具一律
+  獨立 key＋先 head-object**，列為工具通則。
 - **2026-09-06（補）** 3-3 驗收：無 DB 容器實測，修 rerun dry-run 兩處 DB 相依。
 - **2026-09-06** D3＋D5 停寫＋D6a 部署紀錄（pin `c0d50934`）；壓縮時程照表走，
   9/7 日跑驗收後補 rawcutover。
