@@ -311,7 +311,7 @@ snapshot（fold 邏輯改動或 carry 欄修錯）＝從任一舊 checkpoint rep
 1-1＋1-2 做完，「靜默失敗」類事故從結構上絕種——這是四個目標裡現在
 離得最遠的一個，也是後面每一步的安全網。
 
-### Phase 2 — 多平台前置（由 #29 觸發；＝multi-vendor-plan P0／P1 的實作面）
+### Phase 2 — 多平台前置（順延至 Phase 4 切換完成、以 vendor survey 結果觸發；＝multi-vendor-plan P0／P1 的實作面）
 
 | # | 事項 | 具體動作 | 規模 |
 |---|---|---|---|
@@ -331,11 +331,42 @@ Phase 1 一起做；順序由觸發時點決定，不硬性綁死。
 | 3-2 | **flow 收斂四套編排** | make 式 DAG runner；go.sh／orchestrate.sh／batch marker／progress 檔四合一；本機與雲上同一份 stage 定義、executor 可換 | 中 | 一條指令可從任一 stage 續跑本機或雲上 pipeline |
 | 3-3 | 開發環境零雲相依 | `s3 sync` 數日分區即可跑 pipeline 後段（parse 之後不需連網／DB raw） | 小 | 新貢獻者不建 PostGIS 也能跑資料後段 |
 
-### Phase 4 — 觸發式（明定觸發條件，不排程）
+### Phase 4 — 本體（2026-09-07 拍板：Phase 3 結案後立即衝刺，排在 Phase 2 之前）
+
+原為觸發式；2026-09-07 改為主動排程——理由：(1) 仲介行為／週間週末這類
+研究需求已出現，要的是 parsed／snapshot 分區；(2) 4a 的 list stub 契約
+就是 2-1 Vendor Protocol 的 list 介面，先用 591 驗過再談第二站；(3) 維護者
+同期做 vendor survey（不寫程式），衝刺不與 Phase 2 搶手。
+
+**子任務與 migration**（詳見附錄〈儲存演變對照〉）：
+
+| 子任務 | 退役 | migration | 規模 |
+|---|---|---|---|
+| 0 清理 | — | 一顆：drop `list_raw`／`detail_raw`／`raw_archived_at`、drop `stats` | 小時 |
+| 4a list 檔案化 | `list_dict`／list 判準欄停寫；seed 純函數 | 無（欄位留到 4b 併 drop） | 1 天 |
+| 4b parsed parquet | `detail_dict`／`house_etc`、rerun 工具 | 一顆 drop table，驗證窗後 | 1.5 天 |
+| 4c snapshot parquet | `house_ts`、synthts、housekeep | 一顆 drop table；**門檻＝10/1 九月 zip 與 DB 版 byte 級一致** | 2 天 |
+| 4d deals parquet | syncstateful 推導、`house` | 一顆 drop table | 1 天 |
+| 4e queue 出 DB | `request_ts`、RDS | 最後一顆，DB 歸零 | 2 天＋雲上一天 |
+
+**衝刺計畫（第一週程式、雙寫、DB 仍是真相）**：
+
+| 日 | 做什麼 | 驗收 |
+|---|---|---|
+| 9/9 | Phase 3 結案；清理 migration；4a list stub＋seed 純函數（同時仍寫舊欄位） | seed 純函數對當日資料重算與 DB 判準一致 |
+| 9/10 | 4b parsed parquet 雙寫；rerun_from_raws 改產 parquet | 當日 parquet 列數＝house_etc 更新數 |
+| 9/11–9/12 | 4c snapshot parquet 雙寫（carry 欄摺入、synthts 併入 stage）；manifest 改讀 parquet | snapshot 對 house_ts 逐欄一致 |
+| 9/13 | 4d deals parquet；DEAL 推導改 deals＋snapshot 純函數，雙寫 House | 兩軌 DEAL 一致 |
+| 9/14–9/15 | 4e 靜態分片 queue：本機 local executor 驗，再雲上一天 | seeds==terminals 由檔案算出，與 request_ts 對帳一致 |
+
+**第二週起切換階梯**（照 D1–D6 節奏）：每 stage 平行比對三天一致→讀取端
+切 parquet、DB 停寫；export 改讀 snapshot 後以 10/1 九月 zip byte 級比對
+為 4c drop 門檻，故 `house_ts`／`house` drop 落 10 月初、RDS 退場在其後；
+過渡期 RDS 以排程 stop/start 省費。
 
 | 事項 | 觸發條件 |
 |---|---|
-| snapshot／deals parquet 化、queue 出 DB（檔案化靜態分片，RDS 退役）、DuckDB 分析工作流 | 591 大改版逼全歷史 re-parse，或 RDS 費用重新成為痛點 |
+| DuckDB 分析工作流（仲介行為、重刊率、週間週末） | 4b＋4c 分區到齊即可，分析層、不進 pipeline（2026-09-06 拍板：重刊偵測不當一等公民） |
 | AI triage A1／A2（告警自動開 issue、核准後自動修 PR） | Phase 1 的 manifest 告警就位後（manifest 即證據包）；見 `docs/ai-triage.md` |
 | 第二個 vendor 之後的規模化（新增 vendor 指南、issue 模板、發版節奏文件） | multi-vendor P2，第一個新站走通後 |
 
@@ -498,6 +529,9 @@ Phase 1 一起做；順序由觸發時點決定，不硬性綁死。
 ### 仍開放
 
 | # | 問題 | 歸屬 |
+| 9 | **4e 的 PersistQueue 換檔案分片**：detail spider 的認領改讀 seeds 檔＋自己的終結檔，B 層 42 例矩陣要整套重寫成檔案版；primary 不再需要 DB 做任何事——確認無遺漏的 DB 讀點 | Phase 4 衝刺 9/14 前 |
+| 10 | **carry 欄定義**：照 L-C 案例節（last_detail_at、fingerprint_at_last_detail、days_absent、last_seen_at、first_seen_at＋sticky deal）——是否還缺 n_day_deal 的來源欄 | 4c 動工前 |
+| 11 | **snapshot 歷史回填深度**：建議自 9/4（日包起點）以日包＋DB 摺出，更早以公開 zip 為準、不回填 | 4c 動工前 |
 |---|---|---|
 | 6 | **deals 語意 × #229**：成交訊號消失調查的結論影響事件類別設計（DEAL／NOT_FOUND／原因不明下架） | **已結案（2026-09-04）**：deals stage 落地（package 2.4.0 DealMixin＋dataset `deal591`，DEAL 為第三種 queue 類型），8/26 起回補 |
 | 8 | **queue 清理窗口長度**：預設 90 天，實跑後定案 | Phase 1 |
@@ -601,6 +635,10 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 
 ## 編修紀錄
 
+- **2026-09-07（三補）** **Phase 4 改主動衝刺、排在 Phase 2 之前**（維護者拍板）：
+  子任務／migration 表、一週衝刺計畫（雙寫、DB 仍真相）、第二週切換階梯與
+  4c 的 10/1 zip 門檻；開放問題加 #9–#11；Phase 2 順延並改由 survey 觸發。
+  D6b 程式備妥於 `arch-d6b`。
 - **2026-09-07（補）** D5 清空完成；事故遺失的 18,378 戶 raw 由開發機 twrh2025
   全數補回（`recovered-from-dev` 包）。
 - **2026-09-07** flow 首跑綠（D5＋D6a 驗過）；rawcutover dry-run 覆蓋 S3 舊
