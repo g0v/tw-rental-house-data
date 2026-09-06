@@ -69,6 +69,10 @@ abort_if_breaker_tripped() {
 now=`date +'%Y.%m.%d.%H%M'`
 mkdir -p ../logs
 
+# 每月 1 日出上月（export -p 自判），排在爬取之前——此刻 DB＝上月最後一天收工狀態
+echo '===== CHECK EXPORT (previous month, before crawl) ====='
+poetry run python ./django/manage.py export -p
+
 echo '===== LIST ====='
 poetry run scrapy crawl list591 -L INFO $APPEND_FLAG $START_EARLY_FLAG
 mv scrapy.log ../logs/$now.list.log
@@ -159,9 +163,6 @@ poetry run python ./django/manage.py manifest
 poetry run python ./django/manage.py qualitycheck
 
 # do this in last step, as it may run for a long time
-echo '===== CHECK EXPORT ====='
-poetry run python ./django/manage.py export -p
-
 echo '===== FINALIZE ====='
 grep -nE 'ERROR|CRITICAL' ../logs/$now.*.log > ../logs/$now.error
 gzip ../logs/*.log

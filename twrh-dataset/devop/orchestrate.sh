@@ -28,6 +28,9 @@ TAIL_PID=$!
 breaker_tripped() { grep -q 'error_rate_exceeded' "$1"; }
 
 # --- phase 1: list（本行程內跑）---
+echo '===== CHECK EXPORT (previous month, before crawl) ====='
+poetry run python ./django/manage.py export -p
+
 echo '===== LIST ====='
 poetry run scrapy crawl list591 -L INFO
 mv scrapy.log "../logs/$now.list.log"
@@ -138,9 +141,6 @@ poetry run python ./django/manage.py syncstateful -ts
 echo '===== MANIFEST + QUALITY CHECK ====='
 poetry run python ./django/manage.py manifest
 poetry run python ./django/manage.py qualitycheck
-echo '===== CHECK EXPORT ====='
-poetry run python ./django/manage.py export -p
-
 echo '===== FINALIZE ====='
 kill "$TAIL_PID" 2>/dev/null || true
 gzip ../logs/*.log 2>/dev/null || true

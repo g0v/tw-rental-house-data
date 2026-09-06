@@ -140,7 +140,7 @@ variable "enable_publish_schedule" {
 }
 
 variable "publish_schedule" {
-  description = "月度出貨 cron（Asia/Taipei）；須在 1 日的日爬（含月底 export -p）收工之後"
+  description = "月度出貨 cron（Asia/Taipei）；須在 1 日的日爬收工之後（export -p 是 1 日 flow 的第一個 stage，出上月）"
   type        = string
   default     = "cron(0 7 1 * ? *)"
 }

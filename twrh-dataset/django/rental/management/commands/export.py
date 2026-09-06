@@ -242,15 +242,21 @@ class Command(BaseCommand):
     def handle_periodic(self):
         today = self.target_now()
 
-        end_of_sth = self.is_end_of_sth()
-
-        if not end_of_sth['month']:
+        # 2026-09-07 改：每月 1 日出「上個月」，且 flow 把 export 排在 list 之前
+        # ——此刻 DB 是前一天 23:00 sweep 之後的狀態，上月最後一天全天的
+        # 前緣掃描都收得到，當日爬取尚未動到任何一列（export 讀 House 現況，
+        # 爬完再出會把 1 日的 updated／狀態混進上月資料集）。
+        # 舊制「月底當天 02:10 出本月」會漏掉最後一天 05:00–23:00 的 sweep。
+        if today.day != 1:
             return
 
-        # monthly export
-        month_ago = today.replace(day=1)
-        month_prefix = month_ago.strftime('%Y%m')
-        self.export_everything(month_ago, today, month_prefix)
+        last_month_end = (today - timedelta(days=1)).date()
+        last_month_start = last_month_end.replace(day=1)
+        month_prefix = last_month_start.strftime('%Y%m')
+        self.export_everything(
+            timezone.make_aware(datetime.combine(last_month_start, datetime.min.time())),
+            timezone.make_aware(datetime.combine(last_month_end, datetime.min.time())),
+            month_prefix)
 
         # don't do quarterly & annual export during periodic task,
         # as this task has to be run in a more powerful instance

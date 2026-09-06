@@ -261,6 +261,9 @@ def rawpack_artifacts(date_str):
 
 STAGES = [
     # (name, body, artifact_fn 或 None＝stamp 檔)
+    # export 排最前：每月 1 日出上月（export -p 自判），此刻 DB＝上月最後一天
+    # 23:00 sweep 後的狀態，當日爬取尚未動到任何列（2026-09-07 拍板）
+    ('export', stage_export, None),
     ('list', stage_list, None),
     ('seed', stage_seed, None),
     ('detail', stage_detail, None),
@@ -271,7 +274,6 @@ STAGES = [
     ('sync', stage_sync, None),
     ('manifest', stage_manifest, manifest_artifacts),
     ('quality', stage_quality, None),
-    ('export', stage_export, None),
     ('logs', stage_logs, None),
 ]
 STAGE_NAMES = [name for name, _, _ in STAGES]

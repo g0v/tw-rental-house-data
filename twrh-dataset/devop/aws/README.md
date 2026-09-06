@@ -45,6 +45,7 @@ Apply 後仍需人工做的事：
 | flow 雲上驗（D6a 前） | 日跑收工後 `run-cloud.sh poetry run python flow.py run --date <今天> --from rawpack` | `=== flow done`；manifest／日包重出、qualitycheck 綠 |
 | D5 停寫＋D6a 切 flow | tfvars：`raw_db_write = "0"`、`crawler_command = ["poetry","run","python","flow.py","run"]` → `terraform apply` | 次日 02:10 `runcheck` 五項綠、rawpack 流程內成功（此時失敗＝硬紅） |
 | D5 清空 | 綠後、避開爬蟲時段：`run-cloud.sh ./devop/rawcutover.sh`（dry-run）→ `--commit` | 包上 `raw/591/<YYYY-MM>*.tar.zst`，`house_etc` raw 欄位全 NULL；空間回收另 `VACUUM (FULL) house_etc`（可不做） |
+| 1 日 export 補跑 | flow 若在 export 之後的 stage 紅，export 已出、不需補；若 export 本身紅：`run-cloud.sh poetry run python django/manage.py export -p`（task 的 TWRH_TARGET_DATE 未設時取真實當天，須在 1 日當天跑；否則加 `env TWRH_TARGET_DATE=YYYY-MM-01`）——**不要**用 `flow.py run --from export`，export 已是第一個 stage、會把整天重爬 | 07:00 publisher 前 `datas/` 有 `[YYYYMM][CSV][Raw]` zip |
 | 回退 | tfvars 翻回 `raw_db_write = "1"`／`crawler_command = ["./devop/orchestrate.sh"]` → apply | image 不需重出 |
 
 ## 刻意不做（見 aws-deployment-plan「刻意避開的費用陷阱」）

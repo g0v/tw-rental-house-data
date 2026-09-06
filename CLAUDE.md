@@ -71,7 +71,7 @@ poetry run python django/manage.py manifest            # 1-2：產 manifests/<da
 poetry run python django/manage.py qualitycheck        # 1-2：quality/assertions.yaml × manifest 斷言，單一 Slack 通道（D3 起唯一觀測通道；statscheck／distcheck／fill-rate ext 已退役）
 poetry run python django/manage.py rawpack --reconcile # 3-1：當日 raw scratch 打成 raws/<vendor>/<date>.tar.zst＋index（同日多次 run＝與既有日包聯集）；--reconcile 抽樣比對 DB，--full 全量
 poetry run python django/manage.py rawpack --reconcile-only --full --date YYYY-MM-DD   # 對既有日包（本地／S3）補跑全量對帳，不打包
-poetry run python django/manage.py export -p           # periodic export (month-end only)
+poetry run python django/manage.py export -p           # periodic export：每月 1 日出上月（flow／go.sh 第一個 stage，爬取前）
 poetry run python django/manage.py export --help       # manual export: -f/-t dates, -u, -j, -b6
 poetry run python django/manage.py monthreport         # 月報 quality gate：疊 manifest 出月窗（0=綠、2=紅）
 poetry run python django/manage.py invalidate          # flag suspicious/unstable listing data

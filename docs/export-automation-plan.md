@@ -10,7 +10,7 @@
 
 | 素材 | 位置 | 現況 |
 |---|---|---|
-| 月度匯出 | `django/manage.py export -p`（`export.py` `handle_periodic`） | ✅ 已自動：go.sh 最後一步，僅月底執行，產出上月 `[YYYYMM][CSV/JSON][Raw]` zip 到 `twrh-dataset/datas/` |
+| 月度匯出 | `django/manage.py export -p`（`export.py` `handle_periodic`） | ✅ 已自動：flow／go.sh **第一個 stage**、僅每月 1 日執行、出**上個月**（2026-09-07 改：原「月底當天 02:10 出本月」會漏最後一天的前緣掃描；爬取前出則 DB＝上月最後一天收工狀態），產出 `[YYYYMM][CSV/JSON][Raw]` zip 到 `twrh-dataset/datas/` |
 | 單月去重 | `csv-aggregator/dedup-single.sh` + `dedup-single.sql`（clickhouse local） | ✅ 存在，手動：Raw zip → `[YYYYMM][CSV][Deduplicated]` |
 | 季/年聚合 | `csv-aggregator/merge-and-dedup.sh` + `merge-multiple.sql` | ✅ 存在，手動：多個月 Raw zip → `[YYYYQx/YYYY][CSV][Raw+Deduplicated]`。註：`export.py` 裡的季/年匯出**刻意註解掉**（DB 匯出太重），2023 起就是 clickhouse 路線，不要走回頭路 |
 | 檔案驗證 | `csv-aggregator/check.sh` | ✅ 存在，手動：CSV/JSON 物件數比對 + **編碼表注入**（S3 上的 zip 內含 `編碼表/`，是這步放進去的） |
