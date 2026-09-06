@@ -38,16 +38,36 @@ echo "===== RAW CUTOVER (${commit:-dry-run}) ====="
 poetry run python django/manage.py rawoffload "$OUT/raw" --days-ago 0 $commit \
   || { echo '!!! rawoffload failed'; failed=1; }
 
+# dry-run 只打包驗證、不上傳（2026-09-07 教訓：dry-run 也上傳，把 S3 上既有的
+# 2026-08 月包蓋掉了——bucket 無 versioning、無 DeleteObject，覆蓋即永久）。
+# 上傳一律用帶日期的獨立 key（<month>.cutover-<YYYYMMDD>.tar.zst），且先
+# head-object 確認不存在，永不覆蓋既有 key。
+if [ "$commit" != "--commit" ]; then
+  echo "dry-run: packs left in $OUT/raw (not uploaded)"; ls -la "$OUT"/raw/*/ 2>/dev/null
+  echo '=== rawcutover dry-run done ==='; exit 0
+fi
+stamp=$(date +%Y%m%d)
 for f in "$OUT"/raw/*/*; do
   [ -e "$f" ] || continue
   vendor_dir=$(basename "$(dirname "$f")")
   vendor="${vendor_dir%% *}"   # '591 租屋網' -> '591'，對齊 raw/591/ 佈局
   base=$(basename "$f")
   case "$base" in
-    *.tar.zst) sc=GLACIER_IR ;;
-    *)         sc=STANDARD ;;
+    *.tar.zst)   sc=GLACIER_IR; key="raw/$vendor/${base%.tar.zst}.cutover-$stamp.tar.zst" ;;
+    *.index.json) sc=STANDARD;  key="raw/$vendor/${base%.index.json}.cutover-$stamp.index.json" ;;
+    *) echo "!!! unexpected file $f"; failed=1; continue ;;
   esac
-  if s3put "$f" "raw/$vendor/$base" "$sc"; then
+  if poetry run python -c "
+import sys, os, boto3
+from botocore.exceptions import ClientError
+try:
+    boto3.client('s3').head_object(Bucket=os.environ['TWRH_RAW_BUCKET'], Key=sys.argv[1]); sys.exit(0)
+except ClientError as e:
+    sys.exit(1 if e.response['Error']['Code'] in ('404', 'NotFound') else 2)
+" "$key"; then
+    echo "!!! $key already exists on S3 — refusing to overwrite, keep $f"; failed=1; continue
+  fi
+  if s3put "$f" "$key" "$sc"; then
     rm "$f"
   else
     echo "!!! upload failed, keep $f for next run"
