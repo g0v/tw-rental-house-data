@@ -7,10 +7,8 @@ rental_house.json
 devop/*
 !devop/aws/
 !devop/entrypoint.sh
-!devop/orchestrate.sh
 !devop/workers.py
 !devop/runcheck.py
-!devop/sweep.sh
 !devop/rawcutover.sh
 !devop/housekeep.sh
 datas/*.zip

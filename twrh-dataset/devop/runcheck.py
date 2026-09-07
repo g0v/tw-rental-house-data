@@ -26,7 +26,7 @@ KEY_LINES = re.compile(
     r'rawpack|reconcile|packed|distribution invariants|distcheck|'
     r'hard failure|all assertions|wrote manifests|error_rate|'
     r'diff seeds:|seed-only mode|\[deal\] \d+ events|\[deal\] seeding|'
-    r'=== sweep|\[frontier\] \d+ unseen houses|sweep skipped|generatingrequest|'
+    r'=== sweep|=== flow sweep|\[frontier\] \d+ unseen houses|sweep skipped|yielded|generatingrequest|'
     r'workers:|NOTE|Traceback|!!!|CommandError')
 PROGRESS = re.compile(r'\[(list591|detail591|deal591)\] INFO: Batch: (\S+) \(')
 DEAL_PAGE = re.compile(r'\[deal\] (\S+) page (\d+):')
@@ -80,7 +80,7 @@ def summarize_stream(logs, stream):
     for ts, msg in stream_events(logs, name):
         if '=== orchestrate' in msg or '=== flow run' in msg:
             is_primary = True
-        if '=== sweep' in msg and not is_primary:
+        if ('=== sweep' in msg or '=== flow sweep' in msg) and not is_primary:
             is_primary = 'sweep'
         if KEY_LINES.search(msg):
             lines.append('{} {}'.format(local(ts).strftime('%H:%M:%S'), msg.strip()[:160]))

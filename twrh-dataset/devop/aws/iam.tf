@@ -59,7 +59,7 @@ resource "aws_iam_role_policy" "crawler_exec" {
   })
 }
 
-# orchestrate.sh（模型 A）：開 N 個 detail worker 並輪詢其收尾狀態。
+# flow detail stage（模型 A，devop/workers.py）：開 N 個 detail worker 並輪詢其收尾狀態。
 # RunTask 限本 task def 家族；DescribeTasks 讀狀態；PassRole 傳兩個 task role
 # 給 worker（與 scheduler role 同對象）。
 resource "aws_iam_role_policy" "crawler_orchestrate" {

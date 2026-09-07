@@ -1,4 +1,4 @@
-"""orchestrate.sh 的 worker 開啟／輪詢 helper（boto3，免在 image 裝 aws CLI）。
+"""flow detail stage 的 worker 開啟／輪詢 helper（boto3，免在 image 裝 aws CLI）。
 
   python devop/workers.py launch          # 開 N 個 worker，印出 task ARN（空白分隔）
   python devop/workers.py wait ARN...     # 輪詢到全 STOPPED（exit 0）或逾時（exit 2）
