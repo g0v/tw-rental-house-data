@@ -529,10 +529,11 @@ Phase 1 一起做；順序由觸發時點決定，不硬性綁死。
 ### 仍開放
 
 | # | 問題 | 歸屬 |
+|---|---|---|
 | 9 | **4e 的 PersistQueue 換檔案分片**：detail spider 的認領改讀 seeds 檔＋自己的終結檔，B 層 42 例矩陣要整套重寫成檔案版；primary 不再需要 DB 做任何事——確認無遺漏的 DB 讀點 | Phase 4 衝刺 9/14 前 |
 | 10 | **carry 欄定義**：照 L-C 案例節（last_detail_at、fingerprint_at_last_detail、days_absent、last_seen_at、first_seen_at＋sticky deal）——是否還缺 n_day_deal 的來源欄 | 4c 動工前 |
 | 11 | **snapshot 歷史回填深度**：建議自 9/4（日包起點）以日包＋DB 摺出，更早以公開 zip 為準、不回填 | 4c 動工前 |
-|---|---|---|
+| 12 | **4f 去 Django**（2026-09-08 提出）：4e 後 ORM 無表可對、PointField 只剩兩個 float 欄、Django 只剩 management command 的 CLI 殼，可整個拔掉——image 不再裝 GDAL／GEOS／PROJ／psycopg，新貢獻者不建 PostGIS。拔前要搬家：(a) schema 的家——House／HouseTS 欄位定義從 models.py 移到 pyarrow schema／dataclass（4b／4c 動工時即決定）；(b) CLI 殼——manage.py 指令併入 `flow.py` 子命令或獨立 argparse 入口；(c) scrapy 啟動——`general_settings.py` 的 `django.setup()` 與 CrawlerPipeline 的 ORM 寫入，雙寫期須留、DB 停寫後換純 parquet writer；(d) 測試——B 層矩陣隨 4e 重寫成檔案版時改 pytest，一併斷 Django TestCase 依賴。與 Phase 2 無關（package 端本就不依賴 Django）。時序：衝刺週不碰（雙寫期 DB 仍是真相），10 月初 4c 門檻過、RDS 退場後獨立做，估 1–2 天 | 4e 後、RDS 退場後 |
 | 6 | **deals 語意 × #229**：成交訊號消失調查的結論影響事件類別設計（DEAL／NOT_FOUND／原因不明下架） | **已結案（2026-09-04）**：deals stage 落地（package 2.4.0 DealMixin＋dataset `deal591`，DEAL 為第三種 queue 類型），8/26 起回補 |
 | 8 | **queue 清理窗口長度**：預設 90 天，實跑後定案 | Phase 1 |
 
