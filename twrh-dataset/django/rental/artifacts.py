@@ -254,3 +254,42 @@ def upload(bucket, tree, vendor_short, date_str, run, path):
     s3.upload_file(path, bucket, key)
     print('    uploaded s3://{}/{}'.format(bucket, key))
     return key
+
+
+def local_partitions(tree, date_str):
+    '''本地 <tree>/<vendor>/<date>/ 下的分區檔 → [(vendor, run, path)]。'''
+    out = []
+    base = os.path.join(artifact_dir(), tree)
+    if not os.path.isdir(base):
+        return out
+    ext = '.' + TREES[tree][1]
+    for vendor in sorted(os.listdir(base)):
+        ddir = os.path.join(base, vendor, date_str)
+        if not os.path.isdir(ddir):
+            continue
+        for name in sorted(os.listdir(ddir)):
+            if name.endswith(ext):
+                out.append((vendor, name[:-len(ext)], os.path.join(ddir, name)))
+    return out
+
+
+def reupload_missing(bucket, tree, date_str):
+    '''把本地已打包、S3 上還沒有的分區檔補上（上傳失敗後的補救，例如 S3 policy
+    尚未 apply）。已存在的 key 一律不動。回傳 (uploaded, skipped)。'''
+    import boto3
+    from botocore.exceptions import ClientError
+    s3 = boto3.client('s3')
+    uploaded = skipped = 0
+    for vendor, run, path in local_partitions(tree, date_str):
+        key = s3_key(tree, vendor, date_str, run)
+        try:
+            s3.head_object(Bucket=bucket, Key=key)
+            skipped += 1
+            continue
+        except ClientError as err:
+            if err.response.get('Error', {}).get('Code') not in ('404', 'NoSuchKey', 'NotFound'):
+                raise
+        s3.upload_file(path, bucket, key)
+        print('    uploaded s3://{}/{}'.format(bucket, key))
+        uploaded += 1
+    return uploaded, skipped

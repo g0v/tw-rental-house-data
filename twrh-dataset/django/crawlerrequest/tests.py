@@ -1265,6 +1265,16 @@ class ArtifactPackTests(TestCase):
         self.assertEqual(next(r for r in rows if r['vendor_house_id'] == 'a')['monthly_price'], 1)
         self.assertFalse(os.path.exists(os.path.join(self.tmp, 'scratch', 'list', '591', TEST_DATE)))
 
+    def test_local_partitions_lists_packed_runs(self):
+        from rental import artifacts
+        t = timezone.now().isoformat()
+        self.write_rows('list', 'run', [{'vendor_house_id': 'a', 'seen_at': t, 'fingerprint': 'f'}])
+        self.write_rows('list', 'sweep-0800', [{'vendor_house_id': 'b', 'seen_at': t, 'fingerprint': 'f'}])
+        self.pack('list')
+        self.assertEqual([(v, r) for v, r, _ in artifacts.local_partitions('list', TEST_DATE)],
+                         [('591', 'run'), ('591', 'sweep-0800')])
+        self.assertEqual(artifacts.local_partitions('parsed', TEST_DATE), [])
+
     def test_parsed_parquet_dedups_latest_and_packs_orphans(self):
         import pyarrow.parquet as pq
         from rental import artifacts

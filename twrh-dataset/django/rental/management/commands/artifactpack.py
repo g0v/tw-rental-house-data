@@ -5,7 +5,8 @@
 
 一輪一檔，永不改寫別輪的檔（見 rental/artifacts.py）。有 TWRH_RAW_BUCKET
 即上傳（同一 bucket、同名前綴），本地分區檔保留（seed 函數／manifest 直接
-讀當日目錄；EFS 上容量可忽略）。
+讀當日目錄；EFS 上容量可忽略）。上傳失敗（打包已完成、scratch 已清）之後
+用 --reupload 補：只上傳 S3 缺的 key。
 '''
 import os
 from datetime import date as date_cls, datetime
@@ -23,6 +24,8 @@ class Command(BaseCommand):
         parser.add_argument('--date', help='YYYY-MM-DD（預設 TWRH_TARGET_DATE／今天）')
         parser.add_argument('--keep-scratch', action='store_true')
         parser.add_argument('--no-upload', action='store_true')
+        parser.add_argument('--reupload', action='store_true',
+                            help='不打包：把本地已有、S3 缺的當日分區檔補上（既有 key 不動）')
 
     def handle(self, *_args, **options):
         tree = options['tree']
@@ -34,6 +37,15 @@ class Command(BaseCommand):
             date_str = options['date']
         else:
             date_str = os.environ.get('TWRH_TARGET_DATE') or date_cls.today().isoformat()
+
+        if options['reupload']:
+            bucket = os.environ.get('TWRH_RAW_BUCKET')
+            if not bucket:
+                raise CommandError('--reupload 需要 TWRH_RAW_BUCKET')
+            uploaded, skipped = artifacts.reupload_missing(bucket, tree, date_str)
+            print('=== {} {} reupload: {} uploaded, {} already on S3'.format(
+                tree, date_str, uploaded, skipped))
+            return
 
         jobs = artifacts.pending_jobs(tree, date_str)
         if not jobs:
