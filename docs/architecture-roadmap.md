@@ -446,7 +446,7 @@ zip、DB 路徑再出一份對照，一致才 destroy——10/1 從門檻變成�
   節）；**stub 指紋存雜湊**。
 - **raw 壓縮框架＝整包拉回**：不採可尋址壓縮、不依賴 S3 特有功能；
   單流壓縮率最佳、可攜性最好，debug 點查＝拉當日包（百 MB 級可接受）。
-- **versioning 不開**：重寫分區即覆蓋，兜底＝「365 天內可重算」本身。
+- ~~**versioning 不開**：重寫分區即覆蓋，兜底＝「365 天內可重算」本身。~~ **2026-09-09 推翻（維護者拍板）：raw bucket 與公開 bucket 皆開 versioning**，防誤覆蓋／誤刪（09-07 事故若有 versioning 只是還原一個版本）；raw bucket 非當前版本 30 天過期＋孤兒 delete marker 清理，成本有界。
 - **動態基準＝疊窗即算**：斷言引擎當場掃近 30 份 manifest（KB 級），
   不物化第二種 baseline artifact——觀測層單一機制原則的延伸；history
   不足 N 天（bootstrap 期）該類斷言自動降 advisory。
