@@ -2,7 +2,7 @@
 <p>開租總共使用三組流程，並將中繼、最終資料，存在三種資料表中。</p>
 <!--more-->
 <h2 id="每日例行工作---儲存前日所有租屋平台的物件最新資訊">每日例行工作 - 儲存前日所有租屋平台的物件最新資訊</h2>
-<p><img alt="每日例行工作" loading="lazy" decoding="async" width="4480" height="1632" src="/_astro/twrh-daily-pipeline.g9dA8_0m_Z1PNwPc.webp" srcset=""></p>
+<p><img alt="每日例行工作" loading="lazy" decoding="async" width="4480" height="1632" src="/_astro/twrh-daily-pipeline.g9dA8_0m_Z1PNwPc.webp"></p>
 <p>這是開租的核心工作，每日清晨，系統自動甦醒後，會以各租屋平台為單位</p>
 <ol>
 <li>載入該平台設定</li>
@@ -17,7 +17,7 @@
 </ol>
 <p>附帶一題，雖然系統架構上，開租支援多租屋平台資料紀錄，但由於缺乏開發資源，截至 2024 年三月為止，僅有 591 租屋網，是有完整執行的。</p>
 <h2 id="三種資料表---是否正規劃-x-每日或最新總覽">三種資料表 - 是否正規劃 x 每日或最新總覽</h2>
-<p><img alt="資料表圖例" loading="lazy" decoding="async" width="2112" height="2016" src="/_astro/twrh-table-types.fXG6MdVt_26hzCj.webp" srcset=""></p>
+<p><img alt="資料表圖例" loading="lazy" decoding="async" width="2112" height="2016" src="/_astro/twrh-table-types.fXG6MdVt_26hzCj.webp"></p>
 <p>由每日例行工作可知，開租的資料表分為三種，並用兩項屬性來區分：</p>
 <ol>
 <li>是否正規化
@@ -41,10 +41,10 @@
 <li><strong>正規化的最新總覽</strong>，也是開租釋出的<a href="/download/">資料集</a></li>
 </ol>
 <h2 id="每月例行工作---整併當月所有租屋平台的物件資訊">每月例行工作 - 整併當月所有租屋平台的物件資訊</h2>
-<p><img alt="每月例行工作" loading="lazy" decoding="async" width="4480" height="1056" src="/_astro/twrh-monthly-pipeline.CrkGoHcF_Z2pjDo7.webp" srcset=""></p>
+<p><img alt="每月例行工作" loading="lazy" decoding="async" width="4480" height="1056" src="/_astro/twrh-monthly-pipeline.CrkGoHcF_Z2pjDo7.webp"></p>
 <p>每月例行工作，是為了將每日例行工作的資料，整併成一個月的資料，並將其轉換為最新總覽，以供使用者進行資料分析。</p>
 <p>為了節省資料庫計算資源，每月例行工作，僅使用資料庫匯出原始資料，後續則使用 ClickHouse ，製作消除重複住宅資料集。</p>
 <h2 id="每季年的例行工作---整併當季年所有租屋平台的物件資訊">每季、年的例行工作 - 整併當季、年所有租屋平台的物件資訊</h2>
-<p><img alt="每季、年例行工作" loading="lazy" decoding="async" width="4480" height="960" src="/_astro/twrh-quarterly-pipeline.9M8vL_H1_1RsvqW.webp" srcset=""></p>
+<p><img alt="每季、年例行工作" loading="lazy" decoding="async" width="4480" height="960" src="/_astro/twrh-quarterly-pipeline.9M8vL_H1_1RsvqW.webp"></p>
 <p>由於每季、年的資料量過大，從原始資料開始，我們就會使用 ClickHouse 進行資料整併，並將其轉換為最新總覽、消除重複住宅資料集，以供使用者進行資料分析。</p>
 </div><div class="mt-4 flex flex-wrap justify-between gap-3 text-sm text-ink-soft"><div class="flex gap-4"><span itemprop="author" itemscope itemtype="http://schema.org/Person">✍️ <span itemprop="name">ddio</span></span><time itemprop="datePublished dateModified" datetime="2024-03-10T00:00:00.000Z" class="font-mono">2024/03/10</time></div><span>🏷️ <span class="inline-flex flex-wrap gap-x-2 gap-y-1"><!--[--><a class="text-tile-deep underline decoration-rule underline-offset-2 hover:decoration-tile" href="/blog/tag/關於/">關於</a><a class="text-tile-deep underline decoration-rule underline-offset-2 hover:decoration-tile" href="/blog/tag/技術文件/">技術文件</a><!--]--></span></span></div><span itemprop="publisher" itemscope itemtype="https://schema.org/Organization"><meta itemprop="name" content="開放台灣民間租屋資料"></span></article><section class="mt-12 border-t border-rule pt-6"><h2 class="font-serif text-xl font-bold">留言</h2><div id="cusdis_thread" class="mt-4" data-host="https://cusdis.com" data-app-id="8887d91e-674e-4197-a72a-67f0cd741429" data-page-id="/blog/post/2024-twrh-pipeline/" data-page-url="https://rentalhouse.g0v.ddio.io/blog/post/2024-twrh-pipeline/" data-page-title="開放台灣租屋資料處理流程"></div><script async defer src="https://cusdis.com/js/cusdis.es.js"></script></section></main><footer class="mt-auto border-t border-rule bg-terrazzo"><div class="mx-auto max-w-6xl px-4 py-6 text-sm leading-relaxed text-ink-soft"><p>本部落格的所有文章，除另外註明，皆以<a class="text-tile-deep underline" href="https://creativecommons.org/licenses/by/4.0/deed.zh_TW" target="_blank" rel="noopener">CC-BY</a>授權，提供公眾使用。</p><p class="mt-1">若有使用上的疑問，歡迎於網站留言、<a class="text-tile-deep underline" href="mailto:open-tw-rental-house@ddio.io">來信</a>，或至<a class="text-tile-deep underline" href="https://github.com/g0v/tw-rental-house-data" target="_blank" rel="noopener">專案頁面</a>詢問。</p></div></footer></body></html>
