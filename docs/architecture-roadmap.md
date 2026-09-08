@@ -323,7 +323,7 @@ snapshot（fold 邏輯改動或 carry 欄修錯）＝從任一舊 checkpoint rep
 備註：2-3 的 B 層與 1-1 有互相增強關係——若 #29 動工在前，B 層可提前到
 Phase 1 一起做；順序由觸發時點決定，不硬性綁死。
 
-### Phase 3 — 資料層與執行層收斂（等 Phase 1 跑順）
+### Phase 3 — 資料層與執行層收斂（**已結案 2026-09-09**：D1–D6b 全部上線，9/9 02:10 flow 日跑全綠）
 
 | # | 事項 | 具體動作 | 規模 | 驗收 |
 |---|---|---|---|---|
@@ -606,6 +606,7 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 | 2026-09-07 早 | flow 首跑＋**事故** | 02:10 flow 首跑（D5 停寫＋D6a）五項全綠、1h45m，05:00 sweep 與 flow 同 bucket 對帳合併正確。隨後 `rawcutover.sh` dry-run 於雲上打包 DB 剩餘 raw（2026-08 14,481 列 90 MB、2026-09 86,639 列 573 MB，驗證過）——**但 dry-run 也上傳，且沿用 housekeep 的 `<month>.tar.zst` 命名，把 S3 上 08-29 遷移時 strip 出的 `raw/591/2026-08.tar.zst`（557 MB、81,174 戶）覆蓋掉**；bucket 無 versioning、舊 RDS 已 destroy，**18,378 戶（8/1–8/28 更新、之後未再爬）的最後一版 raw HTML 永久遺失**，其餘 6 萬多戶 9 月已重爬、raw 在 DB／日包。遺失範圍＝debug／re-parse 素材，House／HouseTS 資料無損。舊 index 本機仍在，已另存 `2026-08.migration-20260829.index.json` 存證。修法已入版（`989da85c`）：dry-run 不上傳；commit 上傳走帶日期獨立 key＋head-object 拒絕覆蓋 | master `be0032f2`／`989da85c` |
 | 2026-09-07 06:26 | **D5 完成（清空）** | `rawcutover.sh --commit`（修正版）：DB 剩餘 raw 打成 `2026-08.cutover-20260907`（14,481 列、90 MB）與 `2026-09.cutover-20260907`（86,639 列、573 MB）上 S3 獨立 key，101,120 列 raw 欄位清空並蓋 `raw_archived_at`；**house_etc 自此不存 raw，DB 成長歸零**。事故補救：遺失的 18,378 戶在開發機 `twrh2025`（本機獨立爬到 9/2）全部找到——17,838 戶有 detail_raw、18,378 戶有 list_raw——打成 `2026-08.recovered-from-dev-20260907.tar.zst`（36,216 members、113 MB，member 以雲上 house_id 命名、與月包同格式）上 S3；版本是本機 8/25–9/1 抓的，非雲上最後一版，re-parse 兜底足夠。**遺失範圍歸零** | — |
 | 2026-09-08 早 | **D6b 上線** | 9/8 02:10 flow 第二天日跑五項全綠（list 2205／detail 7231／deal 247 全 done、rawpack 30.8 MB、qualitycheck 0 advisory、四份 manifest live）＋05:00 sweep 綠→`arch-d6b` 併入 master（merge `0331520d`）、CI 四條綠、新 image 上 ECR、terraform apply 只改一筆（sweep 排程 command→`flow.py sweep`，07:00 就位、趕在 08:00 輪前）。9/7 全日七輪 sweep（05–23）亦全綠、rawpack 聯集正確、日包收 63.6 MB。程式內容（09-07 備妥）：`flow.py sweep`（busy→frontier→newdetail→queuefinalize→rawpack→logs，stamp 落 `logs/flow/<date>/sweep-<HHMM>/`）；互斥改 `queuebusy` 指令（加 vendor 條件）；`crawler/vendor_profiles.py`（spider 名、has_deals_stage、supports_frontier、頁數、lookback、sweep 速率，env 可覆寫）；flow `--vendor`／`--dry-run`、stdout 行緩衝（runcheck 看得到 stage 時間軸）；terraform sweep 排程與 Dockerfile CMD 改指 flow；**刪 go.sh／gobg.sh／watchdog.sh／orchestrate.sh／sweep.sh**；B 層加 VendorProfileTests＋QueueBusyTests（63 例綠）。progress json／stop marker 仍留（detail 記憶體上限機制，Phase 4 再收）。待驗：9/8 各輪 sweep 走 flow 綠；9/9 早日跑綠＝**Phase 3 結案** | master `0331520d` |
+| 2026-09-09 早 | **Phase 3 結案** | D6b 上線後首個完整日跑（flow 第三天）五項全綠：list 2238／detail 7330／deal 244 全 done、rawpack 流程內 31.0 MB、qualitycheck 0 advisory、四份 manifest live、errors 0；9/8 全日七輪 sweep 皆由 flow 跑、全綠、日包聯集至 64.9 MB。3-1／3-2／3-3 驗收條件皆已滿足（DB 成長歸零、flow 唯一編排本機雲上同一份、無 DB 跑後段成立）。同日開 Phase 4 衝刺 | — |
 
 **D5／D6a 壓縮時程**（門檻不是日曆是證據；指令見 devop/aws/README.md runbook）：
 
@@ -646,6 +647,9 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 
 ## 編修紀錄
 
+- **2026-09-09** **Phase 3 結案**（9/9 早日跑綠）；Phase 4 衝刺開工（清理 migration、4a、4b）。
+  前一日：D6b 上線、開放問題 #8／#10／#11 拍板、#12 去 Django 記入、衝刺表壓成五天、
+  4c／export 門檻改區間比對。
 - **2026-09-07（三補）** **Phase 4 改主動衝刺、排在 Phase 2 之前**（維護者拍板）：
   子任務／migration 表、一週衝刺計畫（雙寫、DB 仍真相）、第二週切換階梯與
   4c 的 10/1 zip 門檻；開放問題加 #9–#11；Phase 2 順延並改由 survey 觸發。
