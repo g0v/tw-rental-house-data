@@ -41,23 +41,3 @@ class RequestTS(BaseTimeSeries):
                 condition=Q(status__in=[int(s) for s in REQUEST_STATUS_ACTIVE]),
             ),
         ]
-
-class Stats(BaseTimeSeries):
-    # D3（1-2 切換）起凍結：statscheck 退役、不再新增列；職責由
-    # manifests/<date>/<stage>.json 承接。表暫留（歷史查詢），不做 migration
-    vendor = models.ForeignKey(Vendor, on_delete=models.PROTECT)
-    n_list_fail = models.IntegerField(default=0)
-    n_expected = models.IntegerField(default=0)
-    n_crawled = models.IntegerField(default=0)
-    n_fail = models.IntegerField(default=0)
-    n_new_item = models.IntegerField(default=0)
-    n_closed = models.IntegerField(default=0)
-    n_dealt = models.IntegerField(default=0)
-    # 當日 OPENED 中有出現在 list 的數量（分母＝n_crawled - n_closed - n_dealt）。
-    # list 完整度哨兵（L-B），比率持續偏低代表 list 掃描漏尾頁
-    n_open_in_list = models.IntegerField(default=0)
-
-    class Meta:
-        unique_together = (
-            ('year', 'month', 'day', 'hour', 'vendor'),
-        )

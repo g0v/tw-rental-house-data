@@ -6,5 +6,5 @@
 rental/raws.py。
 '''
 from rental.raws import (  # noqa: F401
-    enabled, db_write, scratch_dir, raw_dir, vendor_dirname, day_dir,
+    enabled, scratch_dir, raw_dir, vendor_dirname, day_dir,
     write_raw)

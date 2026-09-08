@@ -11,7 +11,10 @@ dry-run 完全不連 DB（沒有 PostGIS 的環境也能跑）。
 用法（在 twrh-dataset/ 下）：
   poetry run python tools/rerun_from_raws.py --from 2026-09-01 --to 2026-09-03
   poetry run python tools/rerun_from_raws.py --from 2026-09-01 --to 2026-09-01 --commit
-預設 dry-run：只解析、統計成功率，不寫 DB。
+  poetry run python tools/rerun_from_raws.py --from 2026-09-04 --to 2026-09-05 \
+      --parquet-dir artifacts        # 4b：重放結果直接落 parsed/<vendor>/<date>/rerun-<ts>.parquet
+預設 dry-run：只解析、統計成功率，不寫 DB。--parquet-dir 不需 DB（4b 起
+「修 parser 後重算歷史」的正道：重寫分區而非 UPDATE DB）。
 '''
 import argparse
 import io
@@ -36,6 +39,7 @@ from scrapy_twrh.spiders.rental591 import util
 
 from scrapy_twrh.spiders.rental591 import Rental591Spider
 from rental.models import Author, House, HouseEtc, Vendor
+from rental import contracts
 
 DEFAULT_RAW_DIR = os.path.join(
     os.path.dirname(os.path.realpath(__file__)), '..', 'raws')
@@ -64,11 +68,13 @@ def rerun_page(spider, house_id, body):
         request.url, status=200, request=request, body=body)
     detail_dict = None
     house_fields = {}
+    generic = {}
     for item in spider.default_parse_detail(response):
         if isinstance(item, RawHouseItem):
             if 'dict' in item and not item['is_list']:
                 detail_dict = item['dict']
         elif isinstance(item, GenericHouseItem):
+            generic.update(dict(item))
             fields = dict(item)
             fields.pop('vendor', None)
             fields.pop('vendor_house_id', None)
@@ -79,7 +85,7 @@ def rerun_page(spider, house_id, body):
                 fields['rough_coordinate'] = Point(
                     fields['rough_coordinate'], srid=4326)
             house_fields.update(fields)
-    return detail_dict, house_fields
+    return detail_dict, house_fields, generic
 
 
 def main():
@@ -91,7 +97,16 @@ def main():
     parser.add_argument('--to', dest='date_to', required=True)
     parser.add_argument('--commit', action='store_true',
                         help='寫回 HouseEtc.detail_dict 與 House 欄位（預設 dry-run）')
+    parser.add_argument('--parquet-dir',
+                        help='把重放結果寫成 parsed 分區檔：<dir>/parsed/<vendor>/<date>/rerun-<ts>.parquet（不需 DB）')
     options = parser.parse_args()
+    run_tag = 'rerun-' + datetime.now().strftime('%Y%m%d%H%M%S')
+    parser_version = None
+    try:
+        from importlib.metadata import version
+        parser_version = version('scrapy-tw-rental-house')
+    except Exception:
+        pass
 
     # dry-run 不碰 DB（3-3 零雲相依：sync 日包即可離線重放；Vendor 只在
     # --commit 寫回時才需要——2026-09-06 無 DB 容器實測踩到後改）
@@ -115,19 +130,24 @@ def main():
             print('{}: no pack, skip'.format(date_str))
             continue
         print('=== {} ==='.format(pack_path))
+        parquet_rows = []
         for member, body in iter_pack(pack_path):
             if not member.endswith('.detail.html'):
                 continue
             house_id = member.rsplit('.', 2)[0]
             total += 1
             try:
-                detail_dict, house_fields = rerun_page(spider, house_id, body)
+                detail_dict, house_fields, generic = rerun_page(spider, house_id, body)
             except Exception:
                 failed += 1
                 print('parse error in {}'.format(member))
                 traceback.print_exc()
                 continue
             ok += 1
+            if options.parquet_dir and generic:
+                parquet_rows.append(contracts.coerce_row(contracts.parsed_row(
+                    vendor_dir, house_id, date_str, run_tag, datetime.now().astimezone(),
+                    parser_version, generic), contracts.PARSED_FIELDS))
             if not options.commit:
                 continue
             with transaction.atomic():
@@ -147,6 +167,17 @@ def main():
                 if house_fields:
                     house.save()
                 written += 1
+        if options.parquet_dir and parquet_rows:
+            import pyarrow as pa
+            import pyarrow.parquet as pq
+            out_dir = os.path.join(options.parquet_dir, 'parsed', vendor_dir, date_str)
+            os.makedirs(out_dir, exist_ok=True)
+            out = os.path.join(out_dir, run_tag + '.parquet')
+            pq.write_table(pa.Table.from_pylist(
+                parquet_rows, schema=contracts.arrow_schema(contracts.PARSED_FIELDS)),
+                out, compression='zstd')
+            print('wrote {} rows -> {}'.format(len(parquet_rows), out))
+            written += len(parquet_rows)
 
     print(json.dumps({
         'detail_pages': total, 'parsed_ok': ok, 'parse_failed': failed,

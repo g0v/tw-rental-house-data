@@ -19,6 +19,7 @@ requests = "^2.31.0"
 python-dotenv = "^1.0"
 boto3 = "^1.43.82"
 pyyaml = "^6.0.3"
+pyarrow = ">=21"
 
 
 [tool.poetry.group.dev.dependencies]

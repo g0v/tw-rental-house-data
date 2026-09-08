@@ -142,8 +142,8 @@ locals {
     { name = "TWRH_MANIFEST_DIR", value = "/data/manifests" },
     { name = "TWRH_RAW_SCRATCH_DIR", value = "/data/raws/scratch" },
     { name = "TWRH_RAW_DIR", value = "/data/raws" },
-    # D5 cutover 開關（rental/raws.db_write）：tfvars 翻 0 即 DB 停寫 raw
-    { name = "TWRH_RAW_DB_WRITE", value = var.raw_db_write },
+    # Phase 4 分區檔（4a list stub／4b parsed）落 EFS，artifactpack 上 S3 list/、parsed/
+    { name = "TWRH_ARTIFACT_DIR", value = "/data/artifacts" },
     # flow detail stage（模型 A，devop/workers.py）開/查 detail worker 所需
     { name = "AWS_DEFAULT_REGION", value = var.region },
     { name = "TWRH_CLUSTER", value = aws_ecs_cluster.twrh.name },

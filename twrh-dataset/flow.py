@@ -234,13 +234,33 @@ def stage_queuefinalize(_ctx):
 def stage_rawpack(_ctx):
     result = manage('rawpack', '--reconcile', check=False)
     if result.returncode != 0:
-        # 雙寫對帳期（TWRH_RAW_DB_WRITE=1）：DB 仍有 raw、scratch 保留可
-        # 重打，警告不中止；D5 cutover（=0）後日包是 raw 唯一去向，升硬紅
-        if os.environ.get('TWRH_RAW_DB_WRITE', '1') != '1':
-            raise StageFailed('rawpack failed — DB no longer keeps raw, '
-                              'scratch retained; fix and rerun --from rawpack')
-        print('!!! rawpack failed — raw kept in scratch/DB, '
-              'investigate before cutover')
+        # D5 後日包是 raw 唯一去向：硬紅（scratch 保留，修好 --from rawpack）
+        raise StageFailed('rawpack failed — DB no longer keeps raw, '
+                          'scratch retained; fix and rerun --from rawpack')
+
+
+def _artifactpack(tree):
+    # 4a／4b 雙寫期：DB 仍是真相，分區檔失敗（例如 S3 權限未到位）只
+    # 大聲警告不中止；本地分區檔／scratch 都留著，補跑 artifactpack 即可
+    result = manage('artifactpack', '--tree', tree, check=False)
+    if result.returncode != 0:
+        print('!!! artifactpack --tree {} failed (advisory during dual-write; '
+              'scratch/local partition retained)'.format(tree))
+
+
+def stage_liststubs(_ctx):
+    # 4a：本輪 list stub shards → list/<vendor>/<date>/<run>.jsonl.zst（＋S3）
+    _artifactpack('list')
+
+
+def stage_seedcheck(_ctx):
+    # 4a 驗收：純函數從 stub 重算 seeds 對 queue；advisory，不擋 pipeline
+    manage('seedcheck', check=False)
+
+
+def stage_parsed(_ctx):
+    # 4b：本輪 parsed shards → parsed/<vendor>/<date>/<run>.parquet（＋S3）
+    _artifactpack('parsed')
 
 
 def stage_synthts(ctx):
@@ -356,11 +376,14 @@ RUN_STAGES = [
     # 23:00 sweep 後的狀態，當日爬取尚未動到任何列（2026-09-07 拍板）
     ('export', stage_export, None),
     ('list', stage_list, None),
+    ('liststubs', stage_liststubs, None),
     ('seed', stage_seed, None),
+    ('seedcheck', stage_seedcheck, None),
     ('detail', stage_detail, None),
     ('deals', stage_deals, None),
     ('queuefinalize', stage_queuefinalize, None),
     ('rawpack', stage_rawpack, rawpack_artifacts),
+    ('parsed', stage_parsed, None),
     ('synthts', stage_synthts, None),
     ('sync', stage_sync, None),
     ('manifest', stage_manifest, manifest_artifacts),
@@ -372,10 +395,13 @@ RUN_STAGE_NAMES = [name for name, _, _ in RUN_STAGES]
 SWEEP_STAGES = [
     ('busy', stage_busy, None),
     ('frontier', stage_frontier, None),
+    ('liststubs', stage_liststubs, None),
     ('newdetail', stage_newdetail, None),
     ('queuefinalize', stage_sweep_finalize, None),
     # 本輪 raw 併進當日日包（rawpack 合併既有包＋scratch，同日多次 run＝聯集）
     ('rawpack', stage_rawpack, None),
+    # 4a／4b 分區檔是一輪一檔，不聯集
+    ('parsed', stage_parsed, None),
     ('logs', stage_logs, None),
 ]
 SWEEP_STAGE_NAMES = [name for name, _, _ in SWEEP_STAGES]
@@ -449,6 +475,7 @@ def cmd_run(options):
     ctx = Ctx(options, 'run')
     os.environ['TWRH_TARGET_DATE'] = ctx.date
     os.environ['TWRH_LOG_STAMP'] = ctx.stamp
+    os.environ['TWRH_RUN_ID'] = ctx.run_id
     print('=== flow run {} (vendor: {}, executor: {}, seed mode: {}) ==='.format(
         ctx.date, ctx.vendor.short, ctx.executor, ctx.seed_mode))
     code = run_stages(ctx, RUN_STAGES, options.from_stage)
@@ -461,6 +488,7 @@ def cmd_sweep(options):
     ctx = Ctx(options, 'sweep')
     os.environ['TWRH_TARGET_DATE'] = ctx.date
     os.environ['TWRH_LOG_STAMP'] = ctx.stamp
+    os.environ['TWRH_RUN_ID'] = ctx.run_id
     print('=== flow sweep {} {} (vendor: {}, frontier pages<={}) ==='.format(
         ctx.date, ctx.run_id, ctx.vendor.short, ctx.vendor.frontier_pages))
     code = run_stages(ctx, SWEEP_STAGES, None)

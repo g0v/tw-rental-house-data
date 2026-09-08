@@ -15,6 +15,7 @@ from django.contrib.gis.geos import Point
 from crawler.utils import now_tuple
 from crawler import signals as twrh_signals
 from crawler import raw_sink
+from crawler import artifact_sink
 
 
 class CrawlerPipeline(object):
@@ -24,14 +25,53 @@ class CrawlerPipeline(object):
         self.vendorMap = {}
         for vendor in Vendor.objects.all():
             self.vendorMap[vendor.name] = vendor
-        if not raw_sink.db_write() and not raw_sink.enabled():
-            # 兩邊都關＝raw 無處可去；不擋爬（資料仍入庫），但大聲講
+        if not raw_sink.enabled():
+            # D5 後 DB 不存 raw：sink 關＝raw 無處可去；不擋爬，但大聲講
             logging.error(
-                'raw has no sink: TWRH_RAW_DB_WRITE=0 and TWRH_RAW_SINK=0 '
-                '— raw HTML of this run will be lost')
+                'raw has no sink: TWRH_RAW_SINK=0 — raw HTML of this run will be lost')
+        # 4a／4b 檔案分區（雙寫期：DB 仍是真相）：list stub 與 parsed 列各自
+        # 一個 shard writer；指紋在 RawHouseItem(list) 算好、等同戶的
+        # GenericHouseItem 到再寫 stub（兩個 item 同一 response 連續到達）
+        self.stub_writer = artifact_sink.ShardWriter('list')
+        self.parsed_writer = artifact_sink.ShardWriter('parsed')
+        self._pending_stub = {}      # house_id -> fingerprint
+        self._pending_parsed = set()  # house_id（detail dict 已到）
+        self._parser_version = None
+        try:
+            from importlib.metadata import version
+            self._parser_version = version('scrapy-tw-rental-house')
+        except Exception:  # pragma: no cover
+            pass
+
+    def close_spider(self, spider=None):
+        self.stub_writer.close()
+        self.parsed_writer.close()
 
     def item_vendor (self, item):
         return self.vendorMap[item['vendor']]
+
+    def write_artifact_rows(self, item, y, m, d):
+        '''4a list stub／4b parsed 列 → scratch shard。失敗只記 log、不影響
+        DB 寫入（雙寫期 DB 是真相；分區檔缺漏由 artifactpack／manifest 對數抓）。'''
+        if not artifact_sink.enabled():
+            return
+        house_id = item['vendor_house_id']
+        date_str = '{:04d}-{:02d}-{:02d}'.format(y, m, d)
+        short = artifact_sink.vendor_dirname(item['vendor'])
+        run = artifact_sink.run_id()
+        now = timezone.now()
+        try:
+            if house_id in self._pending_stub:
+                fingerprint = self._pending_stub.pop(house_id)
+                self.stub_writer.append(artifact_sink.list_stub(
+                    short, house_id, date_str, run, now, fingerprint, item))
+            if house_id in self._pending_parsed:
+                self._pending_parsed.discard(house_id)
+                self.parsed_writer.append(artifact_sink.parsed_row(
+                    short, house_id, date_str, run, now,
+                    self._parser_version, item))
+        except Exception:
+            logging.exception('artifact row write failed for %s', house_id)
 
     def process_item(self, item, spider):
         y, m, d, h = now_tuple()
@@ -51,13 +91,7 @@ class CrawlerPipeline(object):
                 )
 
                 if 'raw' in item:
-                    # 3-1：D5 cutover 前雙寫（DB＋scratch）、後只寫 scratch
-                    # （TWRH_RAW_DB_WRITE=0），收尾 rawpack 打日包上 S3
-                    if raw_sink.db_write():
-                        if item['is_list']:
-                            house_etc.list_raw = item['raw']
-                        else:
-                            house_etc.detail_raw = item['raw']
+                    # 3-1／D5：raw 只進 scratch，收尾 rawpack 打日包上 S3
                     if raw_sink.enabled():
                         raw_sink.write_raw(
                             item['vendor'],
@@ -68,6 +102,7 @@ class CrawlerPipeline(object):
 
                 if 'dict' in item and not item['is_list']:
                     house_etc.detail_dict = item['dict']
+                    self._pending_parsed.add(item['house_id'])
 
                 # list 層指紋（title/price/update_time…）落地供 L-C 比對；
                 # 空 dict 不覆寫，避免解析失敗清掉上次的指紋
@@ -80,6 +115,8 @@ class CrawlerPipeline(object):
                         old_dict.get(key) != item['dict'].get(key)
                         for key in ('price', 'title'))
                     house_etc.list_dict = item['dict']
+                    self._pending_stub[item['house_id']] = \
+                        artifact_sink.list_fingerprint(item['dict'])
 
                 house_etc.save()
 
@@ -149,6 +186,8 @@ class CrawlerPipeline(object):
 
                 house.save()
                 house_ts.save()
+
+                self.write_artifact_rows(item, y, m, d)
 
         except Exception as err:
             logging.error('Pipeline got exception in item {}'.format(item))

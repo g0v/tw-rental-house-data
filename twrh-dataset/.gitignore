@@ -9,7 +9,6 @@ devop/*
 !devop/entrypoint.sh
 !devop/workers.py
 !devop/runcheck.py
-!devop/rawcutover.sh
 !devop/housekeep.sh
 datas/*.zip
 # publish.sh 的 --resume marker 與 monthreport 月報，跑一次一組，非版控物
@@ -20,3 +19,4 @@ ocr_cache
 manifests/
 # 3-1 raw 日包與 scratch（本機／EFS 落地；正式歸宿是 S3 raw/）
 raws/
+artifacts/

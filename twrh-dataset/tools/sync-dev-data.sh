@@ -4,7 +4,9 @@
 # 對象＝有 bucket 讀權限的專案成員（可散佈界線拍板：一般貢獻者以
 # twrh CLI 自抓資料開發，不經此路）。拉回後不需 PostGIS 即可：
 #   - tools/quality_offline.py    重跑品質斷言（manifests/）
-#   - tools/rerun_from_raws.py    重放 parser（raws/，dry-run 無 DB 寫入*）
+#   - tools/rerun_from_raws.py    重放 parser（raws/，dry-run 無 DB 寫入*；
+#                                 --parquet-dir 產 parsed 分區檔，無 DB）
+#   - duckdb 掃 artifacts/list、artifacts/parsed 做分析
 #   * commit 模式寫 DB，仍需本機 DB
 #
 # 用法：
@@ -28,4 +30,11 @@ if [ "$RAW_DAYS" -gt 0 ]; then
   done
   aws s3 sync "s3://$BUCKET/raw/" "$DEST/raws/" --exclude '*' "${includes[@]}"
 fi
+
+# Phase 4 分區檔（4a list stub、4b parsed；小，整樹拉）：
+# tools/rerun_from_raws.py --parquet-dir、DuckDB 分析、seed 純函數重算都吃這裡
+echo "=== sync list/ + parsed/ partitions ==="
+for tree in list parsed; do
+  aws s3 sync "s3://$BUCKET/$tree/" "$DEST/artifacts/$tree/"
+done
 echo "=== done ==="

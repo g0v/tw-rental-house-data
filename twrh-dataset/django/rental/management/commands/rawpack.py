@@ -16,11 +16,9 @@ sweep 留下、沒人打包的孤兒）一併各自打包。
 index.jsonl：每 member 一行 {"house_id", "member", "bytes"}——
 「回頭多抓一欄」的重算保險與 debug 點查入口。
 
-雙寫對帳（--reconcile）：比對包內容 vs DB HouseEtc raw 欄位 byte 級一致
-（預設抽樣、--full 全量串流），並列 member 數 vs 當日 queue DONE 數。
---reconcile-only：不打包，對既有日包（本地沒有就從 S3 拉）做同樣比對——
-D5 cutover 前對歷史日包補跑全量對帳用。TWRH_RAW_DB_WRITE=0（cutover 後）
-DB 沒 raw 可比，只報量。
+對帳（--reconcile）：包內 detail member 數 vs 當日 queue DONE 數（D5 起
+DB 不存 raw，雙寫期的逐頁 byte 比對已退役；--full 保留相容、無作用）。
+--reconcile-only：不打包，對既有日包（本地沒有就從 S3 拉）報同樣的量。
 
 TWRH_RAW_BUCKET 有設時上傳 S3（key: raw/<vendor>/<date>.tar.zst），
 上傳成功後預設刪本地包（EFS 空間）；--keep-local 保留。
@@ -35,14 +33,13 @@ import os
 import random
 import subprocess
 import tarfile
-from datetime import date as date_cls, datetime, time as time_cls, timedelta
+from datetime import date as date_cls, datetime
 
 from django.core.management.base import BaseCommand, CommandError
-from django.utils import timezone
 
 from rental import raws as raw_sink
 from rental.raws import raw_dir, vendor_dirname
-from rental.models import HouseEtc, Vendor
+from rental.models import Vendor
 from crawlerrequest.models import RequestTS
 from crawlerrequest.enums import RequestType, RequestStatus
 
@@ -73,11 +70,11 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--date', help='YYYY-MM-DD（預設 TWRH_TARGET_DATE／今天）')
         parser.add_argument('--reconcile', action='store_true',
-                            help='比對包內容 vs DB raw 欄位（雙寫對帳）')
+                            help='對帳：包內 detail 數 vs queue done 數（D5 後 DB 無 raw，只報量）')
         parser.add_argument('--reconcile-only', action='store_true',
                             help='不打包，只對既有日包（本地或 S3）做對帳')
         parser.add_argument('--full', action='store_true',
-                            help='對帳全量串流比對（預設抽樣 {}）'.format(SAMPLE_SIZE))
+                            help='（保留相容；D5 後對帳不再逐頁比 DB）')
         parser.add_argument('--keep-scratch', action='store_true',
                             help='打包後保留 scratch（預設刪除）')
         parser.add_argument('--keep-local', action='store_true',
@@ -269,18 +266,14 @@ class Command(BaseCommand):
             os.unlink(index_path)
 
     def reconcile(self, vendor, date_str, pack_path, candidates, full):
-        '''雙寫對帳：包內容 vs DB raw 欄位 byte 比對＋量的對照。
-
-        candidates：要比的 index entries（打包時＝本輪 scratch 的；
-        --reconcile-only＝整包）。該日之後又爬過（detail_crawled_at 晚於
-        當日）的物件 DB 已是新 raw，算 superseded 跳過不算錯。
+        '''對帳＝量的對照：包內 detail member 數 vs 當日 queue DONE 數。
+        D5 前這裡還逐頁比 DB raw 欄位 byte（雙寫期），DB 停存 raw 後只剩量。
+        candidates：index entries（打包時＝本輪 scratch 的；--reconcile-only＝整包）。
         '''
         vendor_obj = Vendor.objects.filter(name__startswith=vendor).first()
         if vendor_obj is None:
             raise CommandError('vendor {} not in DB'.format(vendor))
         day = datetime.strptime(date_str, '%Y-%m-%d')
-        day_end = timezone.make_aware(
-            datetime.combine(day.date() + timedelta(days=1), time_cls.min))
 
         detail_entries = [e for e in candidates
                           if e['member'].endswith('.detail.html')]
@@ -289,62 +282,9 @@ class Command(BaseCommand):
             vendor=vendor_obj, request_type=RequestType.DETAIL,
             status=RequestStatus.DONE).count()
 
-        if not raw_sink.db_write():
-            print('    reconcile: TWRH_RAW_DB_WRITE=0，DB 無 raw 可比，只報量——'
-                  'detail members {} vs queue done {}'.format(
-                      len(detail_entries), n_done))
-            return
-
-        if full:
-            targets = {e['member'] for e in detail_entries}
-        else:
-            targets = {e['member'] for e in random.sample(
-                detail_entries, min(SAMPLE_SIZE, len(detail_entries)))}
-
-        def db_raw(member):
-            house_id = member.rsplit('.', 2)[0]
-            etc = HouseEtc.objects.select_related('house').filter(
-                vendor=vendor_obj, vendor_house_id=house_id).first()
-            return etc
-
-        mismatch = superseded = missing = compared = 0
-
-        def check(member, data):
-            nonlocal mismatch, superseded, missing, compared
-            etc = db_raw(member)
-            crawled = etc.house.detail_crawled_at if etc else None
-            if crawled is not None and crawled >= day_end:
-                superseded += 1
-                return
-            if etc is None or not etc.detail_raw:
-                missing += 1
-                print('    reconcile: DB 無 raw — {}'.format(member))
-                return
-            compared += 1
-            if data != etc.detail_raw.encode('utf-8'):
-                mismatch += 1
-                print('    reconcile: byte 不一致 — {}'.format(member))
-
-        if full:
-            for name, data in iter_pack(pack_path):
-                if name in targets:
-                    check(name, data)
-        else:
-            for member in sorted(targets):
-                out = subprocess.run(
-                    ['tar', '-I', 'zstd', '-xOf', pack_path, member],
-                    capture_output=True, check=True)
-                check(member, out.stdout)
-
-        summary = ('{} compared, {} superseded (re-crawled later), {} no raw in DB'
-                   .format(compared, superseded, missing))
-        if mismatch or missing:
-            raise CommandError(
-                'reconcile failed: {} mismatch — {}'.format(mismatch, summary))
-        print('    reconcile OK ({}) — {}；detail members {} vs queue done {}'
-              '（NOT_FOUND 等無 raw 頁屬正常差）'.format(
-                  'full' if full else 'sample', summary,
-                  len(detail_entries), n_done))
+        # D5 後 DB 不存 raw：對帳只剩量的對照（detail members vs queue done）
+        print('    reconcile: detail members {} vs queue done {}'
+              '（NOT_FOUND 等無 raw 頁屬正常差）'.format(len(detail_entries), n_done))
 
     # ---- upload ----------------------------------------------------------
 

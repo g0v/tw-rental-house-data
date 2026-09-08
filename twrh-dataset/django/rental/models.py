@@ -193,12 +193,9 @@ class HouseEtc(BaseModel):
     # list 頁解析出的欄位（title/price/update_time…），L-C skip 判準的指紋來源：
     # pipeline 覆寫前可拿舊值與當日 list 比對（docs/dx-roadmap.md list-driven 三階段）
     list_dict = JSONField(null=True)
-    list_raw = models.TextField(null=True)
-    detail_raw = models.TextField(null=True)
+    # list_raw／detail_raw／raw_archived_at 於 Phase 4 清理（0014）drop：
+    # raw 自 D5（2026-09-07）起只住日包 raw/<vendor>/<date>.tar.zst
     could_be_rooftop = models.BooleanField(null=True)
-    # raw 已由 rawoffload 剝離出 DB 的時間（S3/本機包裡找得到）；
-    # NULL＋raw 有值 = 尚未歸檔，NULL＋raw 為 NULL = 遷移期歷史列（見 aws-deployment-plan）
-    raw_archived_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'house_etc'

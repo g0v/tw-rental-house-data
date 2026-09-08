@@ -24,7 +24,7 @@ print('uploaded s3://{}/{}'.format(os.environ['TWRH_RAW_BUCKET'], key))
 }
 
 # raw 半邊已退役（D5，2026-09-05）：DB 不再存 raw，日包由 rawpack 每日直寫 S3；
-# 一次性清空既有 raw 欄位見 devop/rawcutover.sh
+# raw 欄位已於 D5（2026-09-07）清空並在 Phase 4 清理 migration drop
 
 echo '===== HOUSE_TS ARCHIVE ====='
 poetry run python django/manage.py archivehistory "$OUT/ts" -d "$WINDOW_DAYS" \

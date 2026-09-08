@@ -2,7 +2,7 @@
 # 雲上一次性指令：用 crawler task def 起一個 task 跑任意 command，等它收工、印 log。
 #   devop/aws/run-cloud.sh poetry run python django/manage.py rawpack --reconcile-only --full --date 2026-09-04
 #   devop/aws/run-cloud.sh poetry run python flow.py run --date 2026-09-06 --from rawpack
-#   devop/aws/run-cloud.sh ./devop/rawcutover.sh --commit
+#   devop/aws/run-cloud.sh poetry run python django/manage.py seedcheck --date 2026-09-10
 # 一次只起一個（09-04 教訓：兩個 task 搶同一張 queue）；起前先確認沒有 crawler
 # task 在跑（日跑／sweep），要爬站的指令另先暫停 sweep 排程。憑證：本機 twrh profile。
 set -euo pipefail

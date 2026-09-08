@@ -68,6 +68,10 @@ resource "aws_iam_role_policy" "crawler_raw_upload" {
           "${aws_s3_bucket.raw.arn}/logs/*",
           # 1-2 觀測層 manifest（manifest command 日日上傳，重跑覆蓋）
           "${aws_s3_bucket.raw.arn}/manifests/*",
+          # Phase 4 分區檔（artifactpack）：4a list stub、4b parsed parquet，
+          # 一輪一檔、key 帶 run id，正常永不覆蓋
+          "${aws_s3_bucket.raw.arn}/list/*",
+          "${aws_s3_bucket.raw.arn}/parsed/*",
         ]
       },
       {

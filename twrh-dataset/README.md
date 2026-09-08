@@ -52,7 +52,7 @@ cp crawler/settings.sample.py crawler/settings.py
 vim crawler/settings.py
 
 # 開始爬資料（flow.py 是唯一編排；go.sh 已於 2026-09-07 退役）
-poetry run python flow.py run            # 日跑：export(1 日)→list→seed→detail→deals→finalize→rawpack→synthts→sync→manifest→quality
+poetry run python flow.py run  # 日跑：export(1 日)→list→liststubs→seed→seedcheck→detail→deals→finalize→rawpack→parsed→synthts→sync→manifest→quality→logs
 poetry run python flow.py sweep          # 前緣掃描（白天每數小時）
 poetry run python flow.py status
 ```

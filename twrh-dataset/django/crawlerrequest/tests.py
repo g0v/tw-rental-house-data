@@ -1093,7 +1093,7 @@ class ListManifestCaptureTests(QueueTestMixin, TestCase):
 
 class RawPackTests(QueueTestMixin, TestCase):
     '''3-1 rawpack：同日多次 run 聯集（sweep 上線後）、孤兒日期、vendor 目錄
-    正規化、雙寫對帳 byte 比對與 D5 cutover（TWRH_RAW_DB_WRITE=0）只報量。'''
+    正規化、對帳只報量（D5 後 DB 不存 raw）。'''
 
     def setUp(self):
         super().setUp()
@@ -1103,7 +1103,6 @@ class RawPackTests(QueueTestMixin, TestCase):
             'TWRH_RAW_SCRATCH_DIR': os.path.join(self.tmp, 'scratch'),
             'TWRH_RAW_DIR': os.path.join(self.tmp, 'raws'),
             'TWRH_RAW_BUCKET': '',
-            'TWRH_RAW_DB_WRITE': '1',
         })
         self.env.start()
         self.vendor = Vendor.objects.get(name=VENDOR_NAME)
@@ -1119,14 +1118,6 @@ class RawPackTests(QueueTestMixin, TestCase):
         os.makedirs(day, exist_ok=True)
         with open(os.path.join(day, '{}.detail.html'.format(house_id)), 'w') as f:
             f.write(html)
-
-    def db_house(self, house_id, raw, crawled_at=None):
-        from rental.models import HouseEtc
-        house = House.objects.create(
-            vendor=self.vendor, vendor_house_id=house_id,
-            detail_crawled_at=crawled_at)
-        HouseEtc.objects.create(house=house, vendor=self.vendor,
-                                vendor_house_id=house_id, detail_raw=raw)
 
     def members(self, date_str):
         import subprocess
@@ -1169,29 +1160,194 @@ class RawPackTests(QueueTestMixin, TestCase):
                                TEST_DATE + '.index.jsonl')) as f:
             self.assertEqual(len(f.read().splitlines()), 3)
 
-    def test_reconcile_full_detects_mismatch_and_skips_superseded(self):
-        from django.core.management.base import CommandError
-        later = timezone.make_aware(
-            timezone.datetime.strptime('2026-01-20', '%Y-%m-%d'))
-        self.db_house('A', '<a1>')
-        self.db_house('B', '<b-newer>', crawled_at=later)   # 之後又爬過
+    def test_reconcile_reports_counts_only(self):
+        '''D5 後 DB 無 raw：--reconcile／--reconcile-only 只報量，內容不比、恆綠。'''
         self.scratch('591', TEST_DATE, 'A', '<a1>')
-        self.scratch('591', TEST_DATE, 'B', '<b1>')
-        self.rawpack('--reconcile', '--full')                 # 綠：B superseded
-        self.scratch('591', TEST_DATE, 'A', '<a-tampered>')
-        with self.assertRaises(CommandError):
-            self.rawpack('--reconcile', '--full')
-
-    def test_reconcile_only_and_cutover_mode(self):
-        self.db_house('A', '<a1>')
-        self.scratch('591', TEST_DATE, 'A', '<a1>')
-        self.rawpack()
-        self.rawpack('--reconcile-only', '--full')            # 對既有包
-        # cutover 後 DB 無 raw：只報量、不比 byte，即使內容不同也綠
+        self.rawpack('--reconcile', '--full')
+        self.rawpack('--reconcile-only', '--full')
         self.scratch('591', TEST_DATE, 'A', '<a-changed>')
-        with mock.patch.dict(os.environ, {'TWRH_RAW_DB_WRITE': '0'}):
-            self.rawpack('--reconcile', '--full')
+        self.rawpack('--reconcile')
         self.assertEqual(self.member(TEST_DATE, 'A.detail.html'), b'<a-changed>')
+
+
+class ContractTests(TestCase):
+    '''4a／4b normalized 契約：指紋是雜湊、enum 落 int、座標拆 lat/lng、author 只留雜湊。'''
+
+    def test_list_fingerprint_hash_only_price_title(self):
+        from rental import contracts
+        fp = contracts.list_fingerprint({'price': '15,000', 'title': 'A', 'update_time': '3小時內'})
+        self.assertEqual(fp, contracts.list_fingerprint({'price': '15,000', 'title': 'A', 'update_time': '1天內'}))
+        self.assertNotEqual(fp, contracts.list_fingerprint({'price': '16,000', 'title': 'A'}))
+        self.assertEqual(len(fp), 16)
+        self.assertNotIn('A', fp)
+
+    def test_stub_and_parsed_rows_are_normalized(self):
+        from rental import contracts
+        now = timezone.now()
+        stub = contracts.list_stub('591', 'h1', TEST_DATE, 'run', now, 'abcd', {
+            'top_region': enums.TopRegionType.台北市, 'monthly_price': 15000,
+            'property_type': enums.PropertyType.獨立套房, 'title': '不該落地'})
+        self.assertEqual(stub['top_region'], int(enums.TopRegionType.台北市))
+        self.assertNotIn('title', stub)
+        self.assertEqual(stub['stub_version'], contracts.LIST_STUB_VERSION)
+        row = contracts.parsed_row('591', 'h1', TEST_DATE, 'run', now, '2.4.0', {
+            'rough_coordinate': (25.03, 121.56), 'author': '0912345678',
+            'contact': enums.ContactType.屋主, 'imgs': ['a', 'b'],
+            'deal_status': enums.DealStatusType.OPENED})
+        self.assertEqual((row['rough_lat'], row['rough_lng']), (25.03, 121.56))
+        self.assertNotIn('author', row)
+        self.assertEqual(len(row['author_key']), 16)
+        coerced = contracts.coerce_row(row, contracts.PARSED_FIELDS)
+        self.assertEqual(coerced['imgs'], '["a", "b"]')
+        self.assertEqual(coerced['crawled_at'], now)
+        self.assertEqual(set(coerced), {name for name, _ in contracts.PARSED_FIELDS})
+        contracts.arrow_schema(contracts.PARSED_FIELDS)   # pyarrow 可建
+
+    def test_contract_field_names_match_house_columns(self):
+        '''契約欄位（來源欄與拆解欄除外）都必須是 BaseHouse 現有欄——防止漂移。'''
+        from rental import contracts
+        columns = {f.name for f in House._meta.get_fields()}
+        extra = {'date', 'run', 'crawled_at', 'parser_version', 'rough_lat',
+                 'rough_lng', 'author_key', 'parsed_version', 'seen_at',
+                 'fingerprint', 'stub_version'}
+        for name, _ in contracts.PARSED_FIELDS + contracts.LIST_STUB_FIELDS:
+            if name not in extra:
+                self.assertIn(name, columns, name)
+
+
+class ArtifactPackTests(TestCase):
+    '''4a／4b artifactpack：shard → 一輪一檔；parsed 去重後爬者勝；同 run 重打聯集；
+    不同 run 各自成檔、不互相改寫；孤兒日期也打。'''
+
+    def setUp(self):
+        super().setUp()
+        import tempfile
+        self.tmp = tempfile.mkdtemp(prefix='twrh-artifacts-')
+        self.env = mock.patch.dict(os.environ, {
+            'TWRH_ARTIFACT_DIR': self.tmp, 'TWRH_RAW_BUCKET': ''})
+        self.env.start()
+
+    def tearDown(self):
+        import shutil
+        self.env.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        super().tearDown()
+
+    def write_rows(self, tree, run, rows, date_str=TEST_DATE):
+        from rental import artifacts
+        with mock.patch.dict(os.environ, {'TWRH_RUN_ID': run}):
+            writer = artifacts.ShardWriter(tree)
+            for row in rows:
+                writer.append({'vendor': '591', 'date': date_str, 'run': run, **row})
+            writer.close()
+
+    def pack(self, tree):
+        from django.core.management import call_command
+        call_command('artifactpack', '--tree', tree, '--date', TEST_DATE, '--no-upload')
+
+    def test_list_stubs_one_file_per_run_and_union_on_rerun(self):
+        from rental import artifacts
+        t = timezone.now().isoformat()
+        self.write_rows('list', 'run', [
+            {'vendor_house_id': 'a', 'seen_at': t, 'fingerprint': 'f1', 'monthly_price': 1},
+            {'vendor_house_id': 'b', 'seen_at': t, 'fingerprint': 'f2'}])
+        self.pack('list')
+        self.write_rows('list', 'sweep-0500', [
+            {'vendor_house_id': 'c', 'seen_at': t, 'fingerprint': 'f3'}])
+        self.write_rows('list', 'run', [   # 同 run 重跑（--from list）：聯集
+            {'vendor_house_id': 'd', 'seen_at': t, 'fingerprint': 'f4'}])
+        self.pack('list')
+        files = artifacts.list_partition_files('591', TEST_DATE)
+        self.assertEqual([os.path.basename(p) for p in files],
+                         ['run.jsonl.zst', 'sweep-0500.jsonl.zst'])
+        rows = list(artifacts.read_list_stubs('591', TEST_DATE))
+        self.assertEqual(sorted(r['vendor_house_id'] for r in rows), ['a', 'b', 'c', 'd'])
+        self.assertEqual(next(r for r in rows if r['vendor_house_id'] == 'a')['monthly_price'], 1)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, 'scratch', 'list', '591', TEST_DATE)))
+
+    def test_parsed_parquet_dedups_latest_and_packs_orphans(self):
+        import pyarrow.parquet as pq
+        from rental import artifacts
+        early = (timezone.now() - timedelta(hours=1)).isoformat()
+        late = timezone.now().isoformat()
+        self.write_rows('parsed', 'run', [
+            {'vendor_house_id': 'a', 'crawled_at': late, 'monthly_price': 20000,
+             'imgs': ['x'], 'top_region': 17},
+            {'vendor_house_id': 'a', 'crawled_at': early, 'monthly_price': 10000},
+            {'vendor_house_id': 'b', 'crawled_at': late}])
+        self.write_rows('parsed', 'sweep-2300', [
+            {'vendor_house_id': 'z', 'crawled_at': late}], date_str='2026-01-14')
+        self.pack('parsed')
+        table = pq.read_table(artifacts.partition_path('parsed', '591', TEST_DATE, 'run'))
+        self.assertEqual(table.num_rows, 2)
+        a = table.to_pylist()[0]
+        self.assertEqual((a['vendor_house_id'], a['monthly_price'], a['imgs']),
+                         ('a', 20000, '["x"]'))
+        self.assertEqual(table.schema.field('crawled_at').type.tz, 'UTC')
+        orphan = artifacts.partition_path('parsed', '591', '2026-01-14', 'sweep-2300')
+        self.assertTrue(os.path.exists(orphan))
+
+
+class SeedFunctionTests(TestCase):
+    '''4a seed 純函數：四類（stale／指紋／缺席／回列）＋skip，與 SeedMatrixTests 的
+    DB 版同一組案例；無 DB、無 Django model。'''
+
+    def stub(self, hid, fp='same', at=None):
+        return {'vendor_house_id': hid, 'fingerprint': fp,
+                'seen_at': (at or timezone.now()).isoformat()}
+
+    def test_four_seed_classes_and_skip(self):
+        from rental.seeding import HouseState, select_seeds
+        now = timezone.now()
+        d = timedelta
+        state = {
+            'stale': HouseState(open=True, detail_crawled_at=now - d(days=8)),
+            'new': HouseState(open=True),
+            'fp_legacy': HouseState(open=True, detail_crawled_at=now - d(days=2),
+                                    fingerprint_changed_at=now - d(days=1)),
+            'fp_carry': HouseState(open=True, detail_crawled_at=now - d(days=2),
+                                   fingerprint_at_last_detail='old'),
+            'absent': HouseState(open=True, detail_crawled_at=now - d(days=2)),
+            'returned': HouseState(open=True, detail_crawled_at=now - d(days=2)),
+            'skip': HouseState(open=True, detail_crawled_at=now - d(days=2),
+                               fingerprint_at_last_detail='same'),
+            'ctrl_yesterday': HouseState(open=True, detail_crawled_at=now - d(days=2)),
+            'fresh_returned': HouseState(open=True, detail_crawled_at=now - d(hours=1)),
+            'dealt': HouseState(open=False),
+        }
+        today = [self.stub('stale'), self.stub('new'), self.stub('fp_legacy'),
+                 self.stub('fp_carry', fp='new'), self.stub('returned'),
+                 self.stub('skip'), self.stub('ctrl_yesterday'),
+                 self.stub('fresh_returned'), self.stub('dealt')]
+        yesterday = {'skip', 'ctrl_yesterday'}
+
+        r = select_seeds(today, yesterday, state, now, refresh_days=7)
+
+        self.assertEqual(r.stale, {'stale', 'new'})
+        self.assertEqual(r.fingerprint, {'fp_legacy', 'fp_carry'})
+        self.assertEqual(r.absent, {'absent'})
+        self.assertEqual(r.returned, {'stale', 'new', 'fp_legacy', 'fp_carry', 'returned'})
+        self.assertEqual(sorted(r.seeds),
+                         ['absent', 'fp_carry', 'fp_legacy', 'new', 'returned', 'stale'])
+        self.assertEqual(r.n_open, 9)
+        self.assertEqual(r.n_in_list, 9)          # dealt 也在 list（stub 不看狀態）
+        self.assertEqual(r.skipped, 8 - 5)        # open∩today 8 − seeds∩today 5
+
+    def test_latest_fingerprint_wins_across_runs(self):
+        from rental.seeding import HouseState, select_seeds, latest_fingerprints
+        now = timezone.now()
+        today = [self.stub('h', fp='old', at=now - timedelta(hours=5)),
+                 self.stub('h', fp='new', at=now - timedelta(hours=1))]
+        self.assertEqual(latest_fingerprints(today), {'h': 'new'})
+        state = {'h': HouseState(open=True, detail_crawled_at=now - timedelta(days=1),
+                                 fingerprint_at_last_detail='old')}
+        self.assertEqual(select_seeds(today, {'h'}, state, now).fingerprint, {'h'})
+
+    def test_new_mode_seeds_only_never_detailed(self):
+        from rental.seeding import HouseState, select_new_seeds
+        state = {'a': HouseState(open=True), 'b': HouseState(open=True, detail_crawled_at=timezone.now()),
+                 'c': HouseState(open=False)}
+        self.assertEqual(select_new_seeds([self.stub('a'), self.stub('b'), self.stub('c'), self.stub('x')], state), {'a'})
 
 
 class VendorProfileTests(TestCase):

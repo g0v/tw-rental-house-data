@@ -48,7 +48,8 @@ poetry run python django/manage.py loaddata vendors   # required: pipeline looks
 ```bash
 # Full crawl pipeline（D6b 起唯一編排：flow.py；go.sh／gobg.sh／orchestrate.sh／sweep.sh 已退役 2026-09-07）
 poetry run python flow.py run [--date YYYY-MM-DD] [--from STAGE] [--executor local|ecs] [--append] [--vendor 591] [--dry-run]
-poetry run python flow.py sweep [--date YYYY-MM-DD] [--vendor 591] [--dry-run]   # 前緣掃描：busy→frontier→newdetail→queuefinalize→rawpack→logs
+#   run stages：export→list→liststubs→seed→seedcheck→detail→deals→queuefinalize→rawpack→parsed→synthts→sync→manifest→quality→logs
+poetry run python flow.py sweep [--date YYYY-MM-DD] [--vendor 591] [--dry-run]   # 前緣掃描：busy→frontier→liststubs→newdetail→queuefinalize→rawpack→parsed→logs
 poetry run python flow.py status [--date YYYY-MM-DD]                             # 日跑 stage 與各輪 sweep 的完成狀態
 
 # Individual spiders
@@ -69,26 +70,27 @@ poetry run python django/manage.py synthts             # L-C diff 模式：合�
 poetry run python django/manage.py syncstateful -ts    # sync deal status into time-series
 poetry run python django/manage.py manifest            # 1-2：產 manifests/<date>/{list,detail,snapshot}.json（--from/--to --source backfill 可回補）
 poetry run python django/manage.py qualitycheck        # 1-2：quality/assertions.yaml × manifest 斷言，單一 Slack 通道（D3 起唯一觀測通道；statscheck／distcheck／fill-rate ext 已退役）
-poetry run python django/manage.py rawpack --reconcile # 3-1：當日 raw scratch 打成 raws/<vendor>/<date>.tar.zst＋index（同日多次 run＝與既有日包聯集）；--reconcile 抽樣比對 DB，--full 全量
-poetry run python django/manage.py rawpack --reconcile-only --full --date YYYY-MM-DD   # 對既有日包（本地／S3）補跑全量對帳，不打包
+poetry run python django/manage.py rawpack --reconcile # 3-1：當日 raw scratch 打成 raws/<vendor>/<date>.tar.zst＋index（同日多次 run＝與既有日包聯集）；--reconcile 報 member 數 vs queue done（D5 後 DB 無 raw，只報量）
+poetry run python django/manage.py artifactpack --tree list    # 4a：list stub shards → artifacts/list/<vendor>/<date>/<run>.jsonl.zst（＋S3 list/）
+poetry run python django/manage.py artifactpack --tree parsed  # 4b：parsed shards → artifacts/parsed/<vendor>/<date>/<run>.parquet（＋S3 parsed/）；一輪一檔、永不改寫別輪
+poetry run python django/manage.py seedcheck [--date] [--strict]   # 4a 驗收：純函數（rental/seeding.py）從 stub 重算四類 seeds 對 queue；advisory
 poetry run python django/manage.py export -p           # periodic export：每月 1 日出上月（flow run 第一個 stage，爬取前）
 poetry run python django/manage.py export --help       # manual export: -f/-t dates, -u, -j, -b6
 poetry run python django/manage.py monthreport         # 月報 quality gate：疊 manifest 出月窗（0=綠、2=紅）
 poetry run python django/manage.py invalidate          # flag suspicious/unstable listing data
 poetry run python django/manage.py archivehistory      # archive old HouseTS/HouseEtc to tar
-poetry run python django/manage.py rawoffload <dir>    # pack raw HTML beyond 90d out of DB (dry-run unless --commit)
 poetry run python django/manage.py deduprequest        # drop duplicate rows in request_ts
 
 # 離線／重放工具（arch 3-3／3-1）
 poetry run python tools/quality_offline.py --date …    # 無 DB 跑斷言引擎（sync 回 manifests/ 即可）
-poetry run python tools/rerun_from_raws.py --from … --to …  # 從 raw 日包重放 detail parser（dry-run 不連 DB；--commit 寫回；取代已失效的 rerun_detail_raw/dict）
-./tools/sync-dev-data.sh                               # 成員用：拉 manifests/＋近 N 天 raw 日包（需 bucket 讀權限）
+poetry run python tools/rerun_from_raws.py --from … --to …  # 從 raw 日包重放 detail parser（dry-run 不連 DB；--commit 寫回；--parquet-dir 直接產 parsed 分區檔，無 DB）
+./tools/sync-dev-data.sh                               # 成員用：拉 manifests/＋近 N 天 raw 日包＋list/、parsed/ 分區（需 bucket 讀權限）
 
 # 雲上營運（AWS_PROFILE=twrh；四條 EventBridge 排程：日跑 02:10、前緣掃描 05/08/11/14/17/20/23、
 # 月度出貨每月 1 日 07:00、housekeep 每月 3 日 12:00，皆 Asia/Taipei；定義在 devop/aws/*.tf）
 poetry run python devop/runcheck.py [YYYY-MM-DD]        # 當日雲上驗收摘要：task／stage 時間軸／manifest／日包，不碰 RDS
 ./devop/aws/publish-cloud.sh [YYYYMM] [--dry-run|--resume --quality-issue <id>]   # 起一個 publisher task 跑 publish.sh
-./devop/aws/run-cloud.sh <command...>                   # 用 crawler image 跑一次性指令（對帳補跑、flow --from、rawcutover），D5／D6 runbook 見 devop/aws/README.md
+./devop/aws/run-cloud.sh <command...>                   # 用 crawler image 跑一次性指令（artifactpack 補跑、flow --from、seedcheck），runbook 見 devop/aws/README.md
 # 臨時上雲測 list/detail 前先暫停掃描：cd devop/aws && terraform apply -var enable_sweep_schedule=false
 # run-task 一次只發一個、發完 list-tasks 確認（09-04 誤發兩個搶同一 queue 的教訓）
 ```
@@ -287,19 +289,28 @@ Set it manually (or use `flow.py run --date`) when re-running part of a pipeline
 - `House` — current state of each listing, unique on (vendor, vendor_house_id).
 - `HouseTS` — daily snapshot, unique on (year, month, day, hour, vendor, vendor_house_id). `hour` is
   currently always 0 (`current_stepped_hour` steps by 24).
-- `HouseEtc` — 1:1 with `House`, holds `list_raw` / `detail_raw` HTML and `detail_dict`.
-- `RequestTS` / `Stats` (crawlerrequest app) — crawl queue；`Stats` 自 D3 凍結（表留、不再寫）。
+- `HouseEtc` — 1:1 with `House`, holds `detail_dict` / `list_dict`（raw 欄已於 D5 清空、0014 drop）。
+- `RequestTS` (crawlerrequest app) — crawl queue；`Stats` 已於 Phase 4 清理（0006）drop。
 - GeoDjango `PointField` (WGS84 / SRID 4326) for `rough_coordinate`.
 - Deal status is sticky: once a house is `DEAL`, the pipeline will not overwrite it with `NOT_FOUND`.
 - `RequestTS.request_type` has three values: `LIST` / `DETAIL` / `DEAL`; queuefinalize's zero-seed
   rule applies to list/detail only (a day without a deals run is legal), residue rules to all.
-- Raw HTML（arch 3-1）：pipeline 落 `raws/scratch/`，收尾 `rawpack` 打成
+- Raw HTML（arch 3-1／D5）：pipeline 落 `raws/scratch/`，收尾 `rawpack` 打成
   `raws/<vendor>/<date>.tar.zst`＋index 上 S3；**同日多次 run（日跑＋各輪 sweep）各自 rawpack，
-  與既有日包聯集、後爬者勝**。`TWRH_RAW_DB_WRITE`（預設 1）＝D5 開關：1 雙寫 `HouseEtc` raw 欄，
-  0 為 cutover（DB 停寫、rawpack 失敗升硬紅）；一次性
-  清空既有 raw 欄＝`devop/rawcutover.sh`（rawoffload 窗口 0 天，housekeep 的 raw 半邊已退役）。
+  與既有日包聯集、後爬者勝**。DB 自 D5（2026-09-07）起不存 raw，`list_raw`／`detail_raw`／
+  `raw_archived_at` 欄已 drop（0014）；rawoffload／rawcutover 退役。
   修完 parser bug 後用 `tools/rerun_from_raws.py` 對日包重放、**不需重爬**（舊
   `rerun_detail_raw/dict.py` 已因改組失效，勿用）。
+- **Phase 4 檔案分區（4a／4b 雙寫期，DB 仍是真相）**：pipeline 另寫兩種 normalized 列到
+  `artifacts/scratch/`（每行程一個 jsonl shard），flow 的 `liststubs`／`parsed` stage 用
+  `artifactpack` 打成 `artifacts/list/<vendor>/<date>/<run>.jsonl.zst`（list stub：一戶一輪一觀測，
+  `fingerprint`＝sha1(price,title) 雜湊）與 `artifacts/parsed/<vendor>/<date>/<run>.parquet`
+  （GenericHouseItem 全欄＋`parser_version`；座標拆 lat/lng、author 只留雜湊、JSON 欄存字串），
+  上同一 bucket 的 `list/`、`parsed/` 前綴。**一輪一檔（run／sweep-HHMM），永不改寫別輪**，
+  與 rawpack 的同日聯集刻意不同。schema 單一定義在 `django/rental/contracts.py`（只增不改；
+  4f 去 Django 時它接替 models.py）；seed 推導純函數在 `django/rental/seeding.py`，
+  `seedcheck`（flow seed 之後、detail 之前）對 queue 比對兩軌一致，切換前只 advisory。
+  local 佈局預設與 `raws/` 同層（`TWRH_ARTIFACT_DIR`，AWS `/data/artifacts`）。
 
 ### Scrapy settings layering (twrh-dataset)
 - `crawler/general_settings.py` — committed, shared. Calls `django.setup()` (adds `django/` to
