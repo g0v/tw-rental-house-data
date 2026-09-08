@@ -345,24 +345,34 @@ Phase 1 一起做；順序由觸發時點決定，不硬性綁死。
 | 0 清理 | — | 一顆：drop `list_raw`／`detail_raw`／`raw_archived_at`、drop `stats` | 小時 |
 | 4a list 檔案化 | `list_dict`／list 判準欄停寫；seed 純函數 | 無（欄位留到 4b 併 drop） | 1 天 |
 | 4b parsed parquet | `detail_dict`／`house_etc`、rerun 工具 | 一顆 drop table，驗證窗後 | 1.5 天 |
-| 4c snapshot parquet | `house_ts`、synthts、housekeep | 一顆 drop table；**門檻＝10/1 九月 zip 與 DB 版 byte 級一致** | 2 天 |
+| 4c snapshot parquet | `house_ts`、synthts、housekeep | 一顆 drop table；**門檻＝任一區間 export 兩路 CSV 逐 byte 一致（2026-09-08 改，不等月底）；10/1 九月 zip 兩路對照為 RDS destroy 前最後確認** | 2 天 |
 | 4d deals parquet | syncstateful 推導、`house` | 一顆 drop table | 1 天 |
 | 4e queue 出 DB | `request_ts`、RDS | 最後一顆，DB 歸零 | 2 天＋雲上一天 |
 
-**衝刺計畫（第一週程式、雙寫、DB 仍是真相）**：
+**衝刺計畫（第一週程式、雙寫、DB 仍是真相；2026-09-08 壓成五天＋一天緩衝）**：
 
 | 日 | 做什麼 | 驗收 |
 |---|---|---|
-| 9/9 | Phase 3 結案；清理 migration；4a list stub＋seed 純函數（同時仍寫舊欄位） | seed 純函數對當日資料重算與 DB 判準一致 |
-| 9/10 | 4b parsed parquet 雙寫；rerun_from_raws 改產 parquet | 當日 parquet 列數＝house_etc 更新數 |
-| 9/11–9/12 | 4c snapshot parquet 雙寫（carry 欄摺入、synthts 併入 stage）；manifest 改讀 parquet | snapshot 對 house_ts 逐欄一致 |
-| 9/13 | 4d deals parquet；DEAL 推導改 deals＋snapshot 純函數，雙寫 House | 兩軌 DEAL 一致 |
-| 9/14–9/15 | 4e 靜態分片 queue：本機 local executor 驗，再雲上一天 | seeds==terminals 由檔案算出，與 request_ts 對帳一致 |
+| 9/9（三） | Phase 3 結案；清理 migration；4a list stub＋seed 純函數（仍寫舊欄位）；**4b** parsed parquet 雙寫＋rerun_from_raws 改產 parquet（純追加寫入、不動讀取端，與 4a 同晚上線可接受） | seed 純函數對當日資料重算與 DB 判準一致；當日 parquet 列數＝house_etc 更新數 |
+| 9/10（四） | **4e 檔案分片 queue 動工**：分片＋終結檔機制與 seeds 來源無關，不必等 4c；先與 request_ts 雙軌（終結檔照寫、seeds==terminals 兩邊各算一次） | 本機 local executor 兩軌對帳一致 |
+| 9/11（五） | 4c snapshot parquet 雙寫（carry 五欄＋成交日來源欄摺入、synthts 併入 stage） | snapshot 對 house_ts 逐欄一致 |
+| 9/12（六） | 4c 收尾＋manifest 改讀 parquet；**4d** deals parquet，DEAL 推導改 deals＋snapshot 純函數，雙寫 House | 兩軌 DEAL 一致 |
+| 9/13（日） | 4e 本機驗完＋B 層矩陣重寫成檔案版；sweep 的 queuebusy 改看檔案 | 矩陣綠 |
+| 9/14（一） | 4e 雲上一天雙軌（**當晚單獨上線**，不疊其他寫入路徑變更） | seeds==terminals 由檔案算出，與 request_ts 對帳一致 |
+| 9/15（二） | 緩衝，不排事；提早則進切換階梯 | — |
+
+底線：每晚只上一個動到 pipeline 寫入路徑的變更（9/7 一晚疊三個的教訓）；
+衝刺期間有紅先停下歸因；維護者同期 vendor survey。
 
 **第二週起切換階梯**（照 D1–D6 節奏）：每 stage 平行比對三天一致→讀取端
-切 parquet、DB 停寫；export 改讀 snapshot 後以 10/1 九月 zip byte 級比對
-為 4c drop 門檻，故 `house_ts`／`house` drop 落 10 月初、RDS 退場在其後；
-過渡期 RDS 以排程 stop/start 省費。
+切 parquet、DB 停寫。**4c／export 的門檻改為區間比對、不等月底**（2026-09-08
+拍板）：`export -f 2026-09-04 -t <當日>` 由 DB 路徑與 snapshot 路徑各出一份，
+比 **zip 內 CSV 逐 byte 一致**（不比 zip 位元組——受 mtime／寫入順序影響）；
+4c 雙寫 9/11 起、平行三天，最早 9/14–9/15 可跑第一次，一致即切 export 讀
+parquet、`house_ts` 停寫，drop 提前到 9 月下旬。九月 zip 需 9/1–9/3：
+snapshot 由 DB 窗內 HouseTS 摺出補齊（#11 微調）。**唯一留到 10/1 的是
+不可逆那步**：RDS 先 stop 只付儲存費，10/1 publisher 以 parquet 路徑出九月
+zip、DB 路徑再出一份對照，一致才 destroy——10/1 從門檻變成最後一次確認。
 
 | 事項 | 觸發條件 |
 |---|---|
@@ -532,7 +542,7 @@ Phase 1 一起做；順序由觸發時點決定，不硬性綁死。
 |---|---|---|
 | 9 | **4e 的 PersistQueue 換檔案分片**：detail spider 的認領改讀 seeds 檔＋自己的終結檔，B 層 42 例矩陣要整套重寫成檔案版；primary 不再需要 DB 做任何事——確認無遺漏的 DB 讀點 | Phase 4 衝刺 9/14 前 |
 | 10 | **carry 欄定義**：照 L-C 案例節（last_detail_at、fingerprint_at_last_detail、days_absent、last_seen_at、first_seen_at＋sticky deal）——是否還缺 n_day_deal 的來源欄 | **已拍板（2026-09-08）**：五欄採用；另補 n_day_deal 推導所需的成交日來源欄（deals stage 給的 deal_time 與時序推導兩軌都要能算），欄名於 4c 設計時具名；4d 拔 syncstateful 前驗兩軌一致 |
-| 11 | **snapshot 歷史回填深度**：建議自 9/4（日包起點）以日包＋DB 摺出，更早以公開 zip 為準、不回填 | **已拍板（2026-09-08）**：snapshot 分區自 2026-09-04 起算，以日包＋DB 摺出；之前不回填，歷史以公開 zip 為準 |
+| 11 | **snapshot 歷史回填深度**：建議自 9/4（日包起點）以日包＋DB 摺出，更早以公開 zip 為準、不回填 | **已拍板（2026-09-08）**：snapshot 分區自 2026-09-04（日包起點）起算，以日包＋DB 摺出；**同日微調：9/4 之前、仍在 DB 90 天窗內的天數（至少 9/1–9/3）由 HouseTS 摺出補齊**，讓九月 zip 可全由 parquet 路徑出；更早不回填，歷史以公開 zip 為準 |
 | 12 | **4f 去 Django**（2026-09-08 提出）：4e 後 ORM 無表可對、PointField 只剩兩個 float 欄、Django 只剩 management command 的 CLI 殼，可整個拔掉——image 不再裝 GDAL／GEOS／PROJ／psycopg，新貢獻者不建 PostGIS。拔前要搬家：(a) schema 的家——House／HouseTS 欄位定義從 models.py 移到 pyarrow schema／dataclass（4b／4c 動工時即決定）；(b) CLI 殼——manage.py 指令併入 `flow.py` 子命令或獨立 argparse 入口；(c) scrapy 啟動——`general_settings.py` 的 `django.setup()` 與 CrawlerPipeline 的 ORM 寫入，雙寫期須留、DB 停寫後換純 parquet writer；(d) 測試——B 層矩陣隨 4e 重寫成檔案版時改 pytest，一併斷 Django TestCase 依賴。與 Phase 2 無關（package 端本就不依賴 Django）。時序：衝刺週不碰（雙寫期 DB 仍是真相），10 月初 4c 門檻過、RDS 退場後獨立做，估 1–2 天 | 4e 後、RDS 退場後 |
 | 6 | **deals 語意 × #229**：成交訊號消失調查的結論影響事件類別設計（DEAL／NOT_FOUND／原因不明下架） | **已結案（2026-09-04）**：deals stage 落地（package 2.4.0 DealMixin＋dataset `deal591`，DEAL 為第三種 queue 類型），8/26 起回補 |
 | 8 | **queue 清理窗口長度**：預設 90 天，實跑後定案 | **已拍板（2026-09-08）隨 4e 結案**：queue 出 DB 後終結紀錄改檔案永存，窗口問題自然消失；4e 前維持 90 天不另調 |
