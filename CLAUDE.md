@@ -270,6 +270,9 @@ date-keyed:
   （`TWRH_DETAIL_SEED_MODE=diff`，production 現行，L-C list-diff skip 降頻：stale/指紋變/
   連續≥2天缺席/回列才入 queue，之後 `synthts` 合成被 skip 者的當日 HouseTS）、`new`
   （只排 `detail_crawled_at IS NULL` 的 OPENED，前緣掃描用，不受同日 progress 檔防呆限制）。
+  stale 門檻自 2026-09-11 起 per-house 抖動 ±`TWRH_DETAIL_REFRESH_JITTER`（預設 2）天，
+  house_id 雜湊決定（`rental/seeding.refresh_days_for`，DB 判準與純函數同式）——攤平
+  9/2 bootstrap 全量在 7 天後同日到期的回波（9/10 detail 43,827 vs 平常 7,300）。
 - **前緣掃描**（`flow.py sweep`，EventBridge 白天每 3 小時，避開 02:00–05:00 主跑）：
   `list591 -a frontier_pages=N` 逐頁走每縣市 list 最前面（排序鍵＝刊登時間，新刊登連續），
   整頁都是 DB 已知物件即收單；接 `detail591 -a seed_mode=new`＋`queuefinalize`。目的＝

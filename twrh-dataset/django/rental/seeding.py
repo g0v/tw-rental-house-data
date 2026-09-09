@@ -15,6 +15,7 @@ days_absent／last_seen_at。兩者語意對齊——`fingerprint_at_last_detail
 有值時用它比今日指紋；沒有（過渡期）就退回 `fingerprint_changed_at >
 detail_crawled_at` 的舊判準。
 '''
+import hashlib
 from collections import namedtuple
 from datetime import timedelta
 
@@ -31,6 +32,23 @@ SeedResult = namedtuple('SeedResult', [
     'n_open', 'n_in_list', 'skipped'])
 
 
+def refresh_days_for(house_id, refresh_days, jitter_days=0):
+    '''per-house 的 stale 門檻天數：refresh_days ± jitter，由 house_id 雜湊決定、
+    永遠一致。用途＝攤平「同一天全量 bootstrap → 7 天後同一天全部到期」的回波
+    （2026-09-10 實踩：detail 43,827 vs 平常 7,300）。jitter=0 即舊制。'''
+    if not jitter_days:
+        return refresh_days
+    bucket = int(hashlib.sha1(str(house_id).encode('utf-8')).hexdigest()[:8], 16)
+    return refresh_days + bucket % (2 * jitter_days + 1) - jitter_days
+
+
+def is_stale(house_id, detail_crawled_at, now, refresh_days, jitter_days=0):
+    if detail_crawled_at is None:
+        return True
+    return detail_crawled_at < now - timedelta(
+        days=refresh_days_for(house_id, refresh_days, jitter_days))
+
+
 def latest_fingerprints(stubs):
     '''stub 列 → {house_id: 當日最後一次觀測的指紋}（同日多輪取最晚 seen_at）。'''
     seen = {}
@@ -43,10 +61,10 @@ def latest_fingerprints(stubs):
 
 
 def select_seeds(today_stubs, yesterday_ids, state, now,
-                 refresh_days=7, fresh_hours=12):
+                 refresh_days=7, fresh_hours=12, refresh_jitter_days=0):
     '''四類 detail seeds（與 gen_diff_seeds 語意逐條對齊）：
 
-    - stale：OPENED ∧ (從未 detail ∨ 距上次 detail ≥ refresh_days)
+    - stale：OPENED ∧ (從未 detail ∨ 距上次 detail ≥ refresh_days ± jitter（per-house 雜湊））
     - fingerprint：OPENED ∧ detail 過 ∧ 在今日 list ∧ 指紋自上次 detail 後變了
     - absent：OPENED ∧ 不在今日 list ∧ 不在昨日 list（連續 ≥2 天缺席）
     - returned：OPENED ∧ 在今日 list ∧ 不在昨日 list ∧ 本輪未 detail（fresh_hours）
@@ -60,14 +78,13 @@ def select_seeds(today_stubs, yesterday_ids, state, now,
     in_list_yesterday = set(yesterday_ids)
     open_ids = {hid for hid, st in state.items() if st.open}
 
-    stale_cut = now - timedelta(days=refresh_days)
     fresh_cut = now - timedelta(hours=fresh_hours)
 
     stale, fingerprint, fresh = set(), set(), set()
     for hid in open_ids:
         st = state[hid]
         crawled = st.detail_crawled_at
-        if crawled is None or crawled < stale_cut:
+        if is_stale(hid, crawled, now, refresh_days, refresh_jitter_days):
             stale.add(hid)
         if crawled is not None and crawled >= fresh_cut:
             fresh.add(hid)

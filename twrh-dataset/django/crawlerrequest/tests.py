@@ -418,6 +418,29 @@ class SeedMatrixTests(QueueTestMixin, TestCase):
         self.assertEqual(
             sorted(seeds), ['absent', 'fp', 'new', 'returned', 'stale'])
 
+    def test_refresh_jitter_matches_pure_function_per_house(self):
+        '''抖動後 DB 判準與純函數 is_stale 逐戶一致；門檻落在 refresh±jitter 內且有分散。'''
+        from rental import seeding
+        now = timezone.now()
+        ids = ['h{:03d}'.format(i) for i in range(60)]
+        for i, hid in enumerate(ids):
+            # 上次 detail 分佈在 4.75～9.75 天前（避開整數天邊界：spider 內的 now 晚幾毫秒）
+            self.make_house(hid, detail_crawled_at=now - timedelta(days=4.75 + (i % 11) * 0.5))
+            self.put_in_list(hid, self.today)
+            self.put_in_list(hid, self.today - timedelta(days=1))
+        spider = self.make_spider(seed_mode='diff', refresh_days=7, refresh_jitter=2)
+        db_seeds = set(spider.gen_diff_seeds())
+        expected = {hid for hid in ids if seeding.is_stale(
+            hid, House.objects.get(vendor_house_id=hid).detail_crawled_at, now, 7, 2)}
+        self.assertEqual(db_seeds, expected)
+        thresholds = {seeding.refresh_days_for(hid, 7, 2) for hid in ids}
+        self.assertTrue(thresholds <= {5, 6, 7, 8, 9} and len(thresholds) >= 4)
+        self.assertEqual(seeding.refresh_days_for('h001', 7, 0), 7)
+        # 無抖動＝舊制：門檻恰為 7 天
+        plain = set(self.make_spider(seed_mode='diff', refresh_days=7).gen_diff_seeds())
+        self.assertEqual(plain, {hid for hid in ids if
+                                 House.objects.get(vendor_house_id=hid).detail_crawled_at < now - timedelta(days=7)})
+
     def test_diff_mode_fresh_returned_not_reseeded(self):
         '''回列但 12 小時內 detail 過＝同輪已處理，不重排。'''
         now = timezone.now()
