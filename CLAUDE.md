@@ -48,7 +48,7 @@ poetry run python django/manage.py loaddata vendors   # required: pipeline looks
 ```bash
 # Full crawl pipeline（D6b 起唯一編排：flow.py；go.sh／gobg.sh／orchestrate.sh／sweep.sh 已退役 2026-09-07）
 poetry run python flow.py run [--date YYYY-MM-DD] [--from STAGE] [--executor local|ecs] [--append] [--vendor 591] [--dry-run]
-#   run stages：export→list→liststubs→seed→seedcheck→detail→deals→queuefinalize→rawpack→parsed→synthts→sync→manifest→quality→logs
+#   run stages：export→list→liststubs→seed→seedcheck→detail→deals→queuefinalize→rawpack→parsed→parsedcheck→synthts→sync→manifest→quality→logs
 poetry run python flow.py sweep [--date YYYY-MM-DD] [--vendor 591] [--dry-run]   # 前緣掃描：busy→frontier→liststubs→newdetail→queuefinalize→rawpack→parsed→logs
 poetry run python flow.py status [--date YYYY-MM-DD]                             # 日跑 stage 與各輪 sweep 的完成狀態
 

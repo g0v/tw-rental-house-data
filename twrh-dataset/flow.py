@@ -263,6 +263,11 @@ def stage_parsed(_ctx):
     _artifactpack('parsed')
 
 
+def stage_parsedcheck(_ctx):
+    # 4b 驗收：當日 parquet 逐欄對 HouseTS；advisory（雙寫期 DB 是真相）
+    manage('parsedcheck', check=False)
+
+
 def stage_synthts(ctx):
     if ctx.seed_mode == 'diff':
         manage('synthts')
@@ -384,6 +389,7 @@ RUN_STAGES = [
     ('queuefinalize', stage_queuefinalize, None),
     ('rawpack', stage_rawpack, rawpack_artifacts),
     ('parsed', stage_parsed, None),
+    ('parsedcheck', stage_parsedcheck, None),
     ('synthts', stage_synthts, None),
     ('sync', stage_sync, None),
     ('manifest', stage_manifest, manifest_artifacts),
