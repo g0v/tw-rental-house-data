@@ -48,8 +48,8 @@ poetry run python django/manage.py loaddata vendors   # required: pipeline looks
 ```bash
 # Full crawl pipeline（D6b 起唯一編排：flow.py；go.sh／gobg.sh／orchestrate.sh／sweep.sh 已退役 2026-09-07）
 poetry run python flow.py run [--date YYYY-MM-DD] [--from STAGE] [--executor local|ecs] [--append] [--vendor 591] [--dry-run]
-#   run stages：export→list→liststubs→seed→seedcheck→detail→deals→queuefinalize→rawpack→parsed→parsedcheck→synthts→sync→manifest→quality→logs
-poetry run python flow.py sweep [--date YYYY-MM-DD] [--vendor 591] [--dry-run]   # 前緣掃描：busy→frontier→liststubs→newdetail→queuefinalize→rawpack→parsed→logs
+#   run stages：export→list→liststubs→seed→seedcheck→detail→deals→queuefinalize→filequeuecheck→rawpack→parsed→parsedcheck→synthts→sync→manifest→quality→logs
+poetry run python flow.py sweep [--date YYYY-MM-DD] [--vendor 591] [--dry-run]   # 前緣掃描：busy→frontier→liststubs→newdetail→queuefinalize→filequeuecheck→rawpack→parsed→logs
 poetry run python flow.py status [--date YYYY-MM-DD]                             # 日跑 stage 與各輪 sweep 的完成狀態
 
 # Individual spiders
@@ -75,6 +75,7 @@ poetry run python django/manage.py artifactpack --tree list    # 4a：list stub 
 poetry run python django/manage.py artifactpack --tree parsed  # 4b：parsed shards → artifacts/parsed/<vendor>/<date>/<run>.parquet（＋S3 parsed/）；一輪一檔、永不改寫別輪
 poetry run python django/manage.py seedcheck [--date] [--strict]   # 4a 驗收：純函數（rental/seeding.py）從 stub 重算四類 seeds 對 queue；advisory
 poetry run python django/manage.py parsedcheck [--date] [--strict] # 4b 驗收：當日 parsed parquet 逐欄對 HouseTS（DB Point 約定 x=lat／y=lng；parquet NULL 而 DB 有值另計，不算錯）
+poetry run python django/manage.py filequeuecheck [--date] [--strict]  # 4e 雙軌：檔案 queue（artifacts/queue/<vendor>/<date>/<type>/seeds｜terminals）對 request_ts 逐型計數
 poetry run python django/manage.py export -p           # periodic export：每月 1 日出上月（flow run 第一個 stage，爬取前）
 poetry run python django/manage.py export --help       # manual export: -f/-t dates, -u, -j, -b6
 poetry run python django/manage.py monthreport         # 月報 quality gate：疊 manifest 出月窗（0=綠、2=紅）
@@ -313,6 +314,11 @@ Set it manually (or use `flow.py run --date`) when re-running part of a pipeline
   4f 去 Django 時它接替 models.py）；seed 推導純函數在 `django/rental/seeding.py`，
   `seedcheck`（flow seed 之後、detail 之前）對 queue 比對兩軌一致，切換前只 advisory。
   local 佈局預設與 `raws/` 同層（`TWRH_ARTIFACT_DIR`，AWS `/data/artifacts`）。
+- **4e 檔案 queue（雙軌期）**：`django/rental/filequeue.py`（無 Django）＝seeds 檔＋每 worker
+  append-only 終結檔（`artifacts/queue/<vendor>/<date>/<type>/{seeds/<run>.jsonl, terminals/<run>/<worker>.jsonl}`），
+  摺疊語意 done＞dead＞failed、attempts 跨檔取最大、位置輪分 `shard()`。PersistQueue 目前
+  **同步記帳**（key＝RequestTS.id，`TWRH_FILEQUEUE=0` 可關），DB 仍是認領來源；`filequeuecheck`
+  逐日對 request_ts；連續 AGREE 後才把認領換成檔案分片（generation／shard 檔）、退役 request_ts。
 
 ### Scrapy settings layering (twrh-dataset)
 - `crawler/general_settings.py` — committed, shared. Calls `django.setup()` (adds `django/` to

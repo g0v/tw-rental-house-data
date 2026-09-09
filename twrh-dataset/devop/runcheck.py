@@ -27,7 +27,7 @@ KEY_LINES = re.compile(
     r'hard failure|all assertions|wrote manifests|error_rate|'
     r'diff seeds:|seed-only mode|\[deal\] \d+ events|\[deal\] seeding|'
     r'=== sweep|=== flow sweep|\[frontier\] \d+ unseen houses|sweep skipped|yielded|generatingrequest|'
-    r'seedcheck:|^=== (list|parsed) |merged with existing|uploaded s3://|'
+    r'seedcheck:|parsedcheck:|filequeue|^=== (list|parsed) |merged with existing|uploaded s3://|'
     r'workers:|NOTE|Traceback|!!!|CommandError')
 PROGRESS = re.compile(r'\[(list591|detail591|deal591)\] INFO: Batch: (\S+) \(')
 DEAL_PAGE = re.compile(r'\[deal\] (\S+) page (\d+):')
