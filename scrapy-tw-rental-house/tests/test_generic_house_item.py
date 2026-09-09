@@ -282,3 +282,9 @@ def test_two_level_breadcrumb_falls_back_to_pattern_property_type(spider):
     assert basic['top_region'] == enums.TopRegionType.台北市
     assert basic['sub_region'] == enums.SubRegionType.台北市中山區
     assert basic['property_type'] == enums.PropertyType.獨立套房
+
+
+def test_detail_album_lands_in_imgs(spider):
+    misc = spider.get_shared_misc({'images': ['https://img.example.test/a.jpg']})
+    assert misc['imgs'] == ['https://img.example.test/a.jpg']
+    assert 'imgs' not in spider.get_shared_misc({})

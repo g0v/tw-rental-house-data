@@ -198,3 +198,35 @@ def test_parse_a_page_which_is_not_a_detail_page():
     assert house['title'] is None
     assert house['breadcrumb'] == []
     assert house['misc'] == {}
+
+
+ALBUM_PAGE = """
+<html><head>
+<meta property="og:image" content="https://img2.example.test/house/a.jpg!730x460.water2.jpg">
+</head><body>
+<section class="album"><ul data-count="3">
+  <li class="album-pc-item"><img src="data:image/svg+xml,placeholder"
+      data-src="https://img2.example.test/house/a.jpg!1000x.water2.jpg"></li>
+  <li class="album-pc-item"><img src="data:image/svg+xml,placeholder"
+      data-src="https://img1.example.test/house/b.jpg!1000x.water2.jpg"></li>
+  <li class="album-pc-item"><img src="data:image/svg+xml,placeholder"
+      data-src="https://img2.example.test/house/a.jpg!1000x.water2.jpg"></li>
+</ul></section>
+</body></html>
+"""
+
+
+def test_read_the_photo_list_from_the_album():
+    response = HtmlResponse(
+        url='https://rent.591.com.tw/10000001',
+        body=ALBUM_PAGE.encode('utf-8'), encoding='utf-8')
+    assert parser.get_album(response) == {'images': [
+        'https://img2.example.test/house/a.jpg!1000x.water2.jpg',
+        'https://img1.example.test/house/b.jpg!1000x.water2.jpg',
+    ]}
+
+
+@pytest.mark.parametrize('fixture', EVERY_HOUSE + [PARKING])
+def test_no_album_means_no_images_key(fixture):
+    # the scrubbed fixtures carry no album; the key must stay absent, not empty
+    assert 'images' not in parse(fixture)

@@ -495,6 +495,12 @@ class DetailMixin(RequestGenerator):
 
         ret['facilities'] = facilities
 
+        # imgs: the detail album (2026 template); the list stage sets the same
+        # field from the slider, detail overrides with the full-size set
+        images = get(detail_dict, 'images')
+        if images:
+            ret['imgs'] = list(images)
+
         # contact, agent, and author
         # 屋主: 陳先生 / 仲介: 戴先生, no contact card at all on some pages
         contact_name = get(detail_dict, 'author_name') or ''

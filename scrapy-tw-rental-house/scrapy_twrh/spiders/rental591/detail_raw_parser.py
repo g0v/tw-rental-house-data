@@ -70,8 +70,6 @@ def get_detail_raw_attrs(response):
     '''
     parse detail page HTML and find all fields in best effort
     keep original text, without any processing, so that we can re-parse it later
-
-    TODO: photo list
     '''
     if is_legacy_template(response):
         raise LegacyTemplateError(
@@ -89,8 +87,24 @@ def get_detail_raw_attrs(response):
         **get_promotion(response),
         **get_description(response),
         **get_misc_info(response),
-        **get_contact(response)
+        **get_contact(response),
+        **get_album(response)
     }
+
+def get_album(response):
+    '''
+    section.album — the photo strip is server-rendered since the 2026
+    redesign (the pre-2026 gallery was filled in by JS, hence never parsed).
+    Real URLs live in data-src; src holds an inline SVG placeholder.
+    Order kept, duplicates dropped; key absent when the page has no album.
+    '''
+    urls = []
+    for url in response.css('section.album img::attr(data-src)').getall():
+        url = (url or '').strip()
+        if url and not url.startswith('data:') and url not in urls:
+            urls.append(url)
+    return {'images': urls} if urls else {}
+
 
 def get_title(response):
     '''
