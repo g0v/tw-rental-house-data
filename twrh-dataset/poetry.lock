@@ -1618,12 +1618,13 @@ typing = "*"
 
 [[package]]
 name = "scrapy-tw-rental-house"
-version = "2.4.0"
+version = "2.5.0"
 description = "Scrapy spider for TW Rental House"
 optional = false
 python-versions = "<4.0,>=3.10"
 files = [
-    {file = "scrapy_tw_rental_house-2.4.0-py3-none-any.whl", hash = "sha256:b58e959a75547a43e9f16d3938a022c163fca598a1d63a231a8db54bfa74e4ae"},
+    {file = "scrapy_tw_rental_house-2.5.0-py3-none-any.whl", hash = "sha256:10033cd57254353963665006abe05bbf2ae753e7ef45fa95fb19b1d8ef950511"},
+    {file = "scrapy_tw_rental_house-2.5.0.tar.gz", hash = "sha256:4920f570f9957a8cd63da2f25a18ca16962b0bd35d736e4653474915d30e0f13"},
 ]
 
 [package.dependencies]
@@ -1959,4 +1960,4 @@ testing = ["coverage[toml]", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "cd1be68d15b9796cdd36e2643596c35051e03b3feb1796a7124cb272ae9723b2"
+content-hash = "860b00c054fd3bf11a66d4b9a5aabc0b48b24e7c838a9b90aef7b0bc769c03f4"
