@@ -374,6 +374,22 @@ snapshot 由 DB 窗內 HouseTS 摺出補齊（#11 微調）。**唯一留到 10/
 不可逆那步**：RDS 先 stop 只付儲存費，10/1 publisher 以 parquet 路徑出九月
 zip、DB 路徑再出一份對照，一致才 destroy——10/1 從門檻變成最後一次確認。
 
+**切換階梯重排（2026-09-10 拍板，依 4b 一天驗過、export 改區間比對的實況）**：
+
+| 步 | 條件 | 動作 | 估 |
+|---|---|---|---|
+| S1 seed 純函數上位 | seedcheck 連續 3 天 AGREE | seed stage 改由 `seeding.select_seeds` 產種子（狀態改讀昨日 snapshot carry 欄），DB 判準退役；仍寫 request_ts | 9/16–17 |
+| S2 house_etc 退役 | parsedcheck 連續 3 天 AGREE | 停寫 detail_dict／list_dict；rerun 只出 parquet；drop `house_etc` | 9/16–17 |
+| S3 export 切 parquet | 區間 export 兩路 CSV 逐 byte 一致 3 次 | export 讀 snapshot；house_ts／house 停寫；manifest／quality 改讀分區 | 9/18–20 |
+| S4 queue 出 DB | filequeuecheck 連續 3 天 AGREE＋4e 第二步本機驗過 | 雲上一天雙軌（檔案認領、DB 記帳）→ 隔日 DB 停寫、drop `request_ts` | 9/21–23 |
+| S5 RDS stop | **S4 完成即 stop**（維護者拍板 2026-09-10，不等 10/1）；10/1 對照時臨時 start | 只付儲存費 | 9/24 起 |
+| S6 RDS destroy＋4f 去 Django | 10/1 parquet 路徑出九月 zip、DB 路徑對照一致 | destroy；4f | 10/2 後 |
+
+程式週（9/11–9/15）：9/11 4d 寫入側＋4c 接線（bootstrap 工具）、9/12 snapshotcheck＋manifest 並列輸出、
+9/13 4d 推導側＋#11 回填、9/14 export 讀 snapshot 首次區間比對、9/15 緩衝／4e 第二步落碼。
+同日拍板：**bootstrap snapshot 起點＝9/10 由 DB 摺出起始列、往後日更，9/1–9/9 由 HouseTS 回填成
+無 carry 欄的歷史列（供 export 比對）**；**imgs 在 snapshot＝detail 給全尺寸組覆蓋、只在 list 時不動**。
+
 | 事項 | 觸發條件 |
 |---|---|
 | DuckDB 分析工作流（仲介行為、重刊率、週間週末） | 4b＋4c 分區到齊即可，分析層、不進 pipeline（2026-09-06 拍板：重刊偵測不當一等公民） |
