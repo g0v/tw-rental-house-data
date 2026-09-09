@@ -83,14 +83,18 @@ class Command(BaseCommand):
                 detail_crawled_at=crawled,
                 fingerprint_changed_at=fp_changed)
 
+        db_rows = RequestTS.objects.filter(
+            vendor=vendor, request_type=RequestType.DETAIL,
+            year=day.year, month=day.month, day=day.day)
+        # 「現在」釘在 DB 生種子的時刻：stale 判準是 detail_crawled_at < now−refresh_days，
+        # seedcheck 晚幾分鐘跑就會多算幾百戶（2026-09-10：晚 3 分鐘 +756）
+        seeded_at = db_rows.order_by('created').values_list('created', flat=True).first()
+        now = seeded_at or timezone.now()
         result = seeding.select_seeds(
-            today_stubs, yesterday_ids, state, timezone.now(),
+            today_stubs, yesterday_ids, state, now,
             refresh_days=options['refresh_days'])
 
-        db_seeds = set(RequestTS.objects.filter(
-            vendor=vendor, request_type=RequestType.DETAIL,
-            year=day.year, month=day.month, day=day.day,
-        ).values_list('seed__id', flat=True))
+        db_seeds = set(db_rows.values_list('seed__id', flat=True))
 
         only_pure = sorted(result.seeds - db_seeds)
         only_db = sorted(db_seeds - result.seeds)
@@ -108,6 +112,7 @@ class Command(BaseCommand):
             'only_pure': len(only_pure),
             'only_db': len(only_db),
             'yesterday_source': yesterday_source,
+            'now': now.isoformat(timespec='seconds'),
         }
         agree = not only_pure and not only_db
         print('seedcheck: {} — {}'.format('AGREE' if agree else 'DIFF',
