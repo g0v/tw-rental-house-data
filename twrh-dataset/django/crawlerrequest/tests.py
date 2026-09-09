@@ -77,8 +77,18 @@ class QueueTestMixin:
         super().setUp()
         self._old_target_date = os.environ.get('TWRH_TARGET_DATE')
         os.environ['TWRH_TARGET_DATE'] = TEST_DATE
+        # 4e 雙軌：PersistQueue 會同步寫檔案 queue，測試一律導到暫存目錄，
+        # 不污染 repo 的 artifacts/（子類另設 TWRH_ARTIFACT_DIR 者以子類為準）
+        import tempfile
+        self._artifact_tmp = tempfile.mkdtemp(prefix='twrh-test-artifacts-')
+        self._artifact_env = mock.patch.dict(
+            os.environ, {'TWRH_ARTIFACT_DIR': self._artifact_tmp})
+        self._artifact_env.start()
 
     def tearDown(self):
+        import shutil
+        self._artifact_env.stop()
+        shutil.rmtree(self._artifact_tmp, ignore_errors=True)
         if self._old_target_date is None:
             os.environ.pop('TWRH_TARGET_DATE', None)
         else:
@@ -1350,6 +1360,107 @@ class ParsedCheckTests(QueueTestMixin, TestCase):
             call_command('parsedcheck', '--date', TEST_DATE)
         self.assertIn('parsedcheck: DIFF', out.getvalue())
         self.assertIn('"monthly_price": 1', out.getvalue())
+
+
+class FileQueueTests(TestCase):
+    '''4e 檔案 queue（純檔案、無 DB）：摺疊語意、attempts 跨檔累計、殘留／孤兒、位置輪分。'''
+
+    def setUp(self):
+        super().setUp()
+        import tempfile
+        self.tmp = tempfile.mkdtemp(prefix='twrh-filequeue-')
+        self.env = mock.patch.dict(os.environ, {'TWRH_ARTIFACT_DIR': self.tmp})
+        self.env.start()
+
+    def tearDown(self):
+        import shutil
+        self.env.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        super().tearDown()
+
+    def test_reconcile_folds_terminals_across_runs_and_workers(self):
+        from rental import filequeue as fq
+        seeds = fq.SeedsWriter('591', TEST_DATE, 'detail', 'run')
+        for k in ('1', '2', '3', '4', '5'):
+            seeds.append(k, {'id': 'h' + k})
+        seeds.close()
+        w1 = fq.TerminalWriter('591', TEST_DATE, 'detail', 'run', 'worker-a')
+        w2 = fq.TerminalWriter('591', TEST_DATE, 'detail', 'sweep-0800', 'worker-b')
+        w1.append('1', 'done', 1, http=200)
+        w1.append('2', 'failed', 1, error='http_403')        # 之後別的 run 做完
+        w2.append('2', 'done', 2, http=200)
+        w1.append('3', 'failed', 1, error='http_403')
+        w2.append('3', 'failed', 3, error='http_403')        # attempts 達上限 → dead
+        w1.append('4', 'failed', 1, error='TimeoutError')    # 仍可重試 → residue
+        w2.append('9', 'done', 1)                             # 沒種子 → orphan
+        w1.close(); w2.close()
+
+        r = fq.reconcile('591', TEST_DATE, 'detail', max_attempts=3)
+        self.assertEqual((r['seeds'], r['done'], r['dead'], r['residue']), (5, 2, 1, 2))
+        self.assertEqual(r['retriable_failed'], 1)
+        self.assertEqual(r['orphan_terminals'], 1)
+        self.assertEqual(r['errors'], {'http_403': 1, 'TimeoutError': 1})
+        rem = fq.remaining('591', TEST_DATE, 'detail', max_attempts=3)
+        self.assertEqual({k: a for k, (_s, a) in rem.items()}, {'4': 1, '5': 0})
+        self.assertEqual(fq.type_names('591', TEST_DATE), ['detail'])
+
+    def test_shard_is_positional_and_exact(self):
+        from rental.filequeue import shard
+        keys = [str(i) for i in range(10)]
+        parts = [shard(keys, i, 3) for i in range(3)]
+        self.assertEqual([len(p) for p in parts], [4, 3, 3])
+        self.assertEqual(sorted(sum(parts, [])), sorted(keys))
+        self.assertEqual(shard(['b', 'a', 'c'], 0, 2), ['a', 'c'])
+        with self.assertRaises(ValueError):
+            shard(keys, 3, 3)
+
+
+class FileQueueDualWriteTests(QueueTestMixin, TestCase):
+    '''4e 雙軌：PersistQueue 的種子／done／failed／dead／release 都同步落檔，
+    reconcile 與 DB 計數一致（filequeuecheck AGREE）。'''
+
+    def setUp(self):
+        super().setUp()
+        import tempfile
+        self.tmp = tempfile.mkdtemp(prefix='twrh-fqdual-')
+        self.env = mock.patch.dict(os.environ, {'TWRH_ARTIFACT_DIR': self.tmp, 'TWRH_RUN_ID': 'run'})
+        self.env.start()
+
+    def tearDown(self):
+        import shutil
+        self.env.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        super().tearDown()
+
+    def test_dual_write_matches_db(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from rental import filequeue as fq
+
+        def exploding(_response):
+            raise ValueError('boom')
+        # batch_size=1：wrapper 收工後不補貨，認領順序由測試掌控
+        q = make_queue(batch_size=1, parse_response=lambda r: iter([True]))
+        q.max_attempts = 1
+        for k in ('a', 'b', 'c', 'd'):
+            q.gen_persist_request({'id': k})
+        # a：done
+        r1 = q.next_request(); list(q.parser_wrapper(make_response(r1.meta['db_request'])))
+        # b：parse error，attempts 1 >= max 1 → dead
+        q.parse_response = exploding
+        r2 = q.next_request(); list(q.parser_wrapper(make_response(r2.meta['db_request'])))
+        # c：認領後不處理 → release 時 dead（attempts 已達上限）
+        q.next_request()
+        q.release_claims()
+        # d：從未認領 → residue
+        r = fq.reconcile('591', TEST_DATE, 'detail', max_attempts=1)
+        self.assertEqual((r['seeds'], r['done'], r['dead'], r['residue']), (4, 1, 2, 1))
+        self.assertEqual(r['orphan_terminals'], 0)
+        out = StringIO()
+        with mock.patch('sys.stdout', out):
+            call_command('filequeuecheck', '--date', TEST_DATE)
+        self.assertIn('filequeuecheck: AGREE', out.getvalue())
+        self.assertIn('file seeds 4 = done 1 + dead 2 + residue 1', out.getvalue())
 
 
 class SeedFunctionTests(TestCase):

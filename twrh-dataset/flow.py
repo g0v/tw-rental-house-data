@@ -248,6 +248,11 @@ def _artifactpack(tree):
               'scratch/local partition retained)'.format(tree))
 
 
+def stage_filequeuecheck(_ctx):
+    # 4e 雙軌：檔案 queue 記帳對 request_ts；advisory
+    manage('filequeuecheck', check=False)
+
+
 def stage_liststubs(_ctx):
     # 4a：本輪 list stub shards → list/<vendor>/<date>/<run>.jsonl.zst（＋S3）
     _artifactpack('list')
@@ -387,6 +392,7 @@ RUN_STAGES = [
     ('detail', stage_detail, None),
     ('deals', stage_deals, None),
     ('queuefinalize', stage_queuefinalize, None),
+    ('filequeuecheck', stage_filequeuecheck, None),
     ('rawpack', stage_rawpack, rawpack_artifacts),
     ('parsed', stage_parsed, None),
     ('parsedcheck', stage_parsedcheck, None),
@@ -404,6 +410,7 @@ SWEEP_STAGES = [
     ('liststubs', stage_liststubs, None),
     ('newdetail', stage_newdetail, None),
     ('queuefinalize', stage_sweep_finalize, None),
+    ('filequeuecheck', stage_filequeuecheck, None),
     # 本輪 raw 併進當日日包（rawpack 合併既有包＋scratch，同日多次 run＝聯集）
     ('rawpack', stage_rawpack, None),
     # 4a／4b 分區檔是一輪一檔，不聯集

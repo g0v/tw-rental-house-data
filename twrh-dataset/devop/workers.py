@@ -54,6 +54,9 @@ def launch():
            {'name': 'TWRH_DOWNLOAD_DELAY', 'value': WDELAY}]
     if TARGET_DATE:
         env.append({'name': 'TWRH_TARGET_DATE', 'value': TARGET_DATE})
+    # 4e 檔案 queue 的 run 維度（seeds/<run>、terminals/<run>/）：worker 與 primary 同 run
+    if os.environ.get('TWRH_RUN_ID'):
+        env.append({'name': 'TWRH_RUN_ID', 'value': os.environ['TWRH_RUN_ID']})
     arns = []
     remaining = N
     while remaining > 0:
