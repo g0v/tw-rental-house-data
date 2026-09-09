@@ -107,22 +107,35 @@ def _zstd_lines(path):
             raise RuntimeError('zstd failed on {}'.format(path))
 
 
-def list_partition_files(vendor_short, date_str, bucket=None):
-    '''當日所有 run 的 list stub 檔（本地；沒有且給了 bucket 就從 S3 拉回）。'''
-    local = sorted(glob.glob(os.path.join(
-        day_dir('list', vendor_short, date_str), '*.jsonl.zst')))
+def partition_files(tree, vendor_short, date_str, bucket=None):
+    '''當日所有 run 的分區檔（本地；沒有且給了 bucket 就從 S3 拉回）。'''
+    ext = '*.' + TREES[tree][1]
+    target = day_dir(tree, vendor_short, date_str)
+    local = sorted(glob.glob(os.path.join(target, ext)))
     if local or not bucket:
         return local
     import boto3
     s3 = boto3.client('s3')
-    prefix = 'list/{}/{}/'.format(vendor_short, date_str)
-    target = day_dir('list', vendor_short, date_str)
+    prefix = '{}/{}/{}/'.format(tree, vendor_short, date_str)
     os.makedirs(target, exist_ok=True)
     for page in s3.get_paginator('list_objects_v2').paginate(Bucket=bucket, Prefix=prefix):
         for obj in page.get('Contents', []):
-            dst = os.path.join(target, os.path.basename(obj['Key']))
-            s3.download_file(bucket, obj['Key'], dst)
-    return sorted(glob.glob(os.path.join(target, '*.jsonl.zst')))
+            s3.download_file(bucket, obj['Key'],
+                             os.path.join(target, os.path.basename(obj['Key'])))
+    return sorted(glob.glob(os.path.join(target, ext)))
+
+
+def list_partition_files(vendor_short, date_str, bucket=None):
+    return partition_files('list', vendor_short, date_str, bucket)
+
+
+def read_parsed_rows(vendor_short, date_str, bucket=None):
+    '''當日全部 parsed 列（跨 run，list of dict；不含 scratch）。'''
+    import pyarrow.parquet as pq
+    rows = []
+    for path in partition_files('parsed', vendor_short, date_str, bucket):
+        rows.extend(pq.read_table(path).to_pylist())
+    return rows
 
 
 def read_list_stubs(vendor_short, date_str, bucket=None):

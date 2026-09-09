@@ -74,6 +74,7 @@ poetry run python django/manage.py rawpack --reconcile # 3-1：當日 raw scratc
 poetry run python django/manage.py artifactpack --tree list    # 4a：list stub shards → artifacts/list/<vendor>/<date>/<run>.jsonl.zst（＋S3 list/）
 poetry run python django/manage.py artifactpack --tree parsed  # 4b：parsed shards → artifacts/parsed/<vendor>/<date>/<run>.parquet（＋S3 parsed/）；一輪一檔、永不改寫別輪
 poetry run python django/manage.py seedcheck [--date] [--strict]   # 4a 驗收：純函數（rental/seeding.py）從 stub 重算四類 seeds 對 queue；advisory
+poetry run python django/manage.py parsedcheck [--date] [--strict] # 4b 驗收：當日 parsed parquet 逐欄對 HouseTS（DB Point 約定 x=lat／y=lng；parquet NULL 而 DB 有值另計，不算錯）
 poetry run python django/manage.py export -p           # periodic export：每月 1 日出上月（flow run 第一個 stage，爬取前）
 poetry run python django/manage.py export --help       # manual export: -f/-t dates, -u, -j, -b6
 poetry run python django/manage.py monthreport         # 月報 quality gate：疊 manifest 出月窗（0=綠、2=紅）
@@ -84,6 +85,7 @@ poetry run python django/manage.py deduprequest        # drop duplicate rows in 
 # 離線／重放工具（arch 3-3／3-1）
 poetry run python tools/quality_offline.py --date …    # 無 DB 跑斷言引擎（sync 回 manifests/ 即可）
 poetry run python tools/rerun_from_raws.py --from … --to …  # 從 raw 日包重放 detail parser（dry-run 不連 DB；--commit 寫回；--parquet-dir 直接產 parsed 分區檔，無 DB）
+poetry run python tools/compare_parsed.py A B                 # 兩組 parsed parquet 逐欄比（無 DB）：pipeline 分區 vs rerun 重放、或新舊 parser 版本 diff
 ./tools/sync-dev-data.sh                               # 成員用：拉 manifests/＋近 N 天 raw 日包＋list/、parsed/ 分區（需 bucket 讀權限）
 
 # 雲上營運（AWS_PROFILE=twrh；四條 EventBridge 排程：日跑 02:10、前緣掃描 05/08/11/14/17/20/23、

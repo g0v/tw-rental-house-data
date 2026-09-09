@@ -175,9 +175,11 @@ def parsed_row(vendor_short, house_id, date_str, run, crawled_at,
     }
     coord = generic_fields.get('rough_coordinate')
     if coord is not None:
-        # item 是 (lat, lng) tuple；Django Point 是 (x=lng, y=lat)
+        # item 是 (lat, lng) tuple。pipeline 直接 Point(tuple) 入庫，所以本專案 DB 的
+        # PointField 是 x=lat、y=lng（與 GIS 慣例 x=lng 相反；2026-09-09 parsedcheck
+        # 實測確認）——讀 DB Point 時照這個約定拆，不要「修正」它
         if hasattr(coord, 'y') and hasattr(coord, 'x'):
-            row['rough_lat'], row['rough_lng'] = float(coord.y), float(coord.x)
+            row['rough_lat'], row['rough_lng'] = float(coord.x), float(coord.y)
         else:
             row['rough_lat'], row['rough_lng'] = float(coord[0]), float(coord[1])
     author = generic_fields.get('author')

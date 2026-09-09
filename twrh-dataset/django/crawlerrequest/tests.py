@@ -1298,6 +1298,60 @@ class ArtifactPackTests(TestCase):
         self.assertTrue(os.path.exists(orphan))
 
 
+class ParsedCheckTests(QueueTestMixin, TestCase):
+    '''4b 對帳：parquet 對 HouseTS 逐欄；Point 依專案約定 x=lat／y=lng；
+    parquet NULL 而 DB 有值（list 才有的欄）不算錯；狀態欄變動只計數。'''
+
+    def setUp(self):
+        super().setUp()
+        import tempfile
+        self.tmp = tempfile.mkdtemp(prefix='twrh-parsedcheck-')
+        self.env = mock.patch.dict(os.environ, {'TWRH_ARTIFACT_DIR': self.tmp, 'TWRH_RAW_BUCKET': ''})
+        self.env.start()
+        self.vendor = Vendor.objects.get(name=VENDOR_NAME)
+
+    def tearDown(self):
+        import shutil
+        self.env.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        super().tearDown()
+
+    def test_agree_and_diff(self):
+        from io import StringIO
+        from django.contrib.gis.geos import Point
+        from django.core.management import call_command
+        from rental import artifacts, contracts
+        from rental.models import Author
+        y, m, d = (int(x) for x in TEST_DATE.split('-'))
+        now = timezone.now()
+        author = Author.objects.create(truth='0912')
+        HouseTS.objects.create(
+            vendor=self.vendor, vendor_house_id='h', year=y, month=m, day=d, hour=0,
+            monthly_price=15000, rough_coordinate=Point(25.03, 121.56, srid=4326),
+            imgs=['a'], author=author, deal_status=enums.DealStatusType.DEAL, crawled_at=now)
+        House.objects.create(vendor=self.vendor, vendor_house_id='h', detail_crawled_at=now)
+        row = contracts.parsed_row('591', 'h', TEST_DATE, 'run', now, 'x', {
+            'monthly_price': 15000, 'rough_coordinate': (25.03, 121.56), 'author': '0912',
+            'deal_status': enums.DealStatusType.OPENED})
+        with mock.patch.dict(os.environ, {'TWRH_RUN_ID': 'run'}):
+            w = artifacts.ShardWriter('parsed'); w.append(row); w.close()
+        call_command('artifactpack', '--tree', 'parsed', '--date', TEST_DATE, '--no-upload')
+        out = StringIO()
+        with mock.patch('sys.stdout', out):
+            call_command('parsedcheck', '--date', TEST_DATE)
+        text = out.getvalue()
+        self.assertIn('parsedcheck: AGREE', text)
+        self.assertIn('"parquet_null_db_set": {"imgs": 1}', text)
+        self.assertIn('"deal_status": 1', text)
+        # 價格改了 → DIFF
+        HouseTS.objects.filter(vendor_house_id='h').update(monthly_price=16000)
+        out = StringIO()
+        with mock.patch('sys.stdout', out):
+            call_command('parsedcheck', '--date', TEST_DATE)
+        self.assertIn('parsedcheck: DIFF', out.getvalue())
+        self.assertIn('"monthly_price": 1', out.getvalue())
+
+
 class SeedFunctionTests(TestCase):
     '''4a seed 純函數：四類（stale／指紋／缺席／回列）＋skip，與 SeedMatrixTests 的
     DB 版同一組案例；無 DB、無 Django model。'''
