@@ -56,7 +56,13 @@ class Command(BaseCommand):
             print('seedcheck: no list stubs for {} — skip (4a not yet producing?)'.format(day))
             return
 
-        y_stubs = list(artifacts.read_list_stubs(short, yesterday.isoformat(), bucket))
+        # 昨日在列集合：只有昨日「全量 run」的 stub 分區存在才用 stub（sweep 只掃前緣，
+        # 拿子集當昨日在列會把幾乎全部判成回列／缺席——2026-09-10 4a 首日實踩：
+        # only_pure 26,161 全是這兩類）；否則退回 HouseTS
+        y_files = artifacts.list_partition_files(short, yesterday.isoformat(), bucket)
+        y_has_full = any(os.path.basename(f).startswith('run.') for f in y_files)
+        y_stubs = list(artifacts.read_list_stubs(short, yesterday.isoformat(), bucket)) \
+            if y_has_full else []
         if y_stubs:
             yesterday_ids = set(seeding.latest_fingerprints(y_stubs))
             yesterday_source = 'stubs'
