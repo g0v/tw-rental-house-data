@@ -13,6 +13,8 @@ from crawlerrequest.models import RequestTS
 from crawlerrequest.enums import (
     RequestType, RequestStatus, REQUEST_STATUS_ACTIVE, REQUEST_STATUS_CLAIMABLE)
 from crawler import signals as twrh_signals
+from rental import filequeue
+from rental.raws import vendor_dirname
 from .progress_tracker import ProgressTracker
 
 class PersistQueue(object):
@@ -94,6 +96,32 @@ class PersistQueue(object):
             'd': d,
             'h': h
         }
+
+        # 4e 雙軌：DB 仍是認領來源，這裡同步把種子／終結寫進檔案 queue
+        # （key＝RequestTS.id），filequeuecheck 逐日對帳；任何檔案錯誤只記 log、
+        # 不影響 DB 路徑。TWRH_FILEQUEUE=0 可關
+        self.file_enabled = os.environ.get('TWRH_FILEQUEUE', '1') == '1'
+        date_str = '{:04d}-{:02d}-{:02d}'.format(y, m, d)
+        short = vendor_dirname(self.vendor.name)
+        type_name = self.request_type.name.lower()
+        self.file_seeds = filequeue.SeedsWriter(short, date_str, type_name, filequeue.run_id())
+        self.file_terminals = filequeue.TerminalWriter(
+            short, date_str, type_name, filequeue.run_id(), 'worker-' + self.spider_id[:8])
+
+    def file_record(self, writer, *args, **kwargs):
+        if not self.file_enabled:
+            return
+        try:
+            writer.append(*args, **kwargs)
+        except Exception:
+            self.logger.exception('filequeue write failed (DB path unaffected)')
+
+    def close_files(self):
+        for writer in (self.file_seeds, self.file_terminals):
+            try:
+                writer.close()
+            except Exception:
+                pass
 
     def send_signal(self, signal, **kwargs):
         crawler = getattr(self.spider, 'crawler', None)
@@ -216,6 +244,11 @@ class PersistQueue(object):
             # 只放未終結的：DONE/DEAD 已收工（且 owner 已清，這裡是雙保險）
             status=RequestStatus.IN_FLIGHT,
         )
+        for row_id, attempts in own_claims.values_list('id', 'attempts'):
+            self.file_record(
+                self.file_terminals, row_id,
+                'dead' if attempts >= self.max_attempts else 'failed',
+                attempts, error='released:unfinished')
         dead = own_claims.filter(attempts__gte=self.max_attempts).update(
             owner=None, status=RequestStatus.DEAD, error='released:unfinished')
         released = own_claims.update(
@@ -224,10 +257,11 @@ class PersistQueue(object):
             self.logger.info(
                 'released {} unfinished claimed request(s) ({} dead)'.format(
                     released + dead, dead))
+        self.close_files()
         return released + dead
 
     def gen_persist_request(self, seed):
-        RequestTS.objects.create(
+        row = RequestTS.objects.create(
             year=self.ts['y'],
             month=self.ts['m'],
             day=self.ts['d'],
@@ -236,6 +270,7 @@ class PersistQueue(object):
             vendor=self.vendor,
             seed=seed
         )
+        self.file_record(self.file_seeds, row.id, seed)
         # Update progress tracker total when new requests are added
         self.progress_tracker.increment_total()
 
@@ -310,6 +345,9 @@ class PersistQueue(object):
             db_request.status = RequestStatus.FAILED
         db_request.owner = None
         db_request.save()
+        self.file_record(
+            self.file_terminals, db_request.id, db_request.status.name.lower(),
+            db_request.attempts, error=db_request.error, http=db_request.last_status)
 
     def handle_errback(self, failure):
         '''spider errback 的 DB 側：分類錯誤、寫終結狀態、釋放 in-memory 名額。
@@ -376,6 +414,9 @@ class PersistQueue(object):
                     db_request.error = None
                     db_request.owner = None
                     db_request.save()
+                    self.file_record(
+                        self.file_terminals, db_request.id, 'done',
+                        db_request.attempts, http=response.status)
                     # Track progress after successful completion
                     self.progress_tracker.increment()
                     self.send_signal(twrh_signals.parse_success)
