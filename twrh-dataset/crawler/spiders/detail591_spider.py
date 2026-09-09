@@ -9,6 +9,7 @@ from crawlerrequest.models import RequestTS
 from crawlerrequest.enums import RequestType
 from rental import enums
 from scrapy_twrh.spiders.rental591 import Rental591Spider, util
+from rental import seeding
 from .persist_queue import PersistQueue
 
 class Detail591Spider(Rental591Spider):
@@ -23,7 +24,7 @@ class Detail591Spider(Rental591Spider):
 
     def __init__(self, append=False, start_early=False, batch_size=0,
                  consume_only=False, seed_only=False, stop_marker=None,
-                 seed_mode='full', refresh_days=7, **kwargs):
+                 seed_mode='full', refresh_days=7, refresh_jitter=0, **kwargs):
         super().__init__(
             start_list=self.start_detail_requests,
             **kwargs
@@ -46,6 +47,9 @@ class Detail591Spider(Rental591Spider):
         # 同日多輪、不受 progress 檔的重生成防呆限制）
         self.seed_mode = seed_mode
         self.refresh_days = int(refresh_days)
+        # stale 門檻 per-house 抖動（±N 天，house_id 雜湊決定），攤平 bootstrap 回波；
+        # 與 rental.seeding 的純函數同一個算式，seedcheck 兩軌才對得上
+        self.refresh_jitter = int(refresh_jitter)
 
         self.persist_queue = PersistQueue(
             vendor='591 租屋網',
@@ -151,10 +155,10 @@ class Detail591Spider(Rental591Spider):
         open_qs = House.objects.filter(deal_status=enums.DealStatusType.OPENED)
         open_ids = set(open_qs.values_list('vendor_house_id', flat=True))
 
-        stale = set(open_qs.filter(
-            Q(detail_crawled_at__isnull=True) |
-            Q(detail_crawled_at__lt=now - timedelta(days=self.refresh_days))
-        ).values_list('vendor_house_id', flat=True))
+        stale = {
+            hid for hid, crawled in open_qs.values_list(
+                'vendor_house_id', 'detail_crawled_at').iterator(chunk_size=20000)
+            if seeding.is_stale(hid, crawled, now, self.refresh_days, self.refresh_jitter)}
 
         fingerprint = set(open_qs.filter(
             detail_crawled_at__isnull=False,
