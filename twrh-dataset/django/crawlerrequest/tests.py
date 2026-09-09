@@ -1463,6 +1463,64 @@ class FileQueueDualWriteTests(QueueTestMixin, TestCase):
         self.assertIn('file seeds 4 = done 1 + dead 2 + residue 1', out.getvalue())
 
 
+class SnapshotFoldTests(TestCase):
+    '''4c snapshot 摺疊純函數：detail／list／carry 三種來源、carry 欄遞推、
+    DEAL sticky、deals 事件優先、已關閉且無訊號不攜帶。無 DB。'''
+
+    D1, D2 = '2026-01-15', '2026-01-16'
+
+    def stub(self, hid, at, fp='f1', price=10000):
+        return {'vendor_house_id': hid, 'seen_at': at, 'fingerprint': fp, 'monthly_price': price}
+
+    def parsed(self, hid, at, status=0, price=10000):
+        return {'vendor_house_id': hid, 'crawled_at': at, 'deal_status': status,
+                'monthly_price': price, 'floor_ping': 12.5}
+
+    def test_day_one_and_day_two_carry_semantics(self):
+        from rental.snapshot import fold
+        day1 = fold([], [self.stub('a', 'T1'), self.stub('b', 'T1'), self.stub('c', 'T1')],
+                    [self.parsed('a', 'T1d'), self.parsed('b', 'T1d')], [], self.D1)
+        by = {r['vendor_house_id']: r for r in day1}
+        self.assertEqual({k: v['source'] for k, v in by.items()}, {'a': 'detail', 'b': 'detail', 'c': 'list'})
+        self.assertEqual((by['a']['last_detail_at'], by['a']['fingerprint_at_last_detail'],
+                          by['a']['first_seen_at'], by['a']['days_absent']), ('T1d', 'f1', 'T1', 0))
+        self.assertEqual(by['c']['floor_ping'], None)
+        self.assertEqual(set(by['a']), {name for name, _ in __import__('rental.contracts', fromlist=['x']).SNAPSHOT_FIELDS})
+
+        # day 2：a 只在 list 且價格變、b 缺席、c 有 detail、d 新戶
+        day2 = fold(day1, [self.stub('a', 'T2', fp='f2', price=12000), self.stub('d', 'T2')],
+                    [self.parsed('c', 'T2d')], [], self.D2)
+        by = {r['vendor_house_id']: r for r in day2}
+        self.assertEqual(by['a']['source'], 'list')
+        self.assertEqual((by['a']['monthly_price'], by['a']['floor_ping']), (12000, 12.5))   # list 覆蓋、detail 欄沿用
+        self.assertEqual((by['a']['last_detail_at'], by['a']['fingerprint_at_last_detail']), ('T1d', 'f1'))
+        self.assertEqual((by['a']['last_seen_at'], by['a']['first_seen_at']), ('T2', 'T1'))
+        self.assertEqual((by['b']['source'], by['b']['days_absent'], by['b']['last_seen_at']), ('carry', 1, 'T1'))
+        self.assertEqual((by['c']['source'], by['c']['last_detail_at'], by['c']['fingerprint_at_last_detail']),
+                         ('detail', 'T2d', 'f1'))                       # 今日沒在 list：用最後已知指紋
+        self.assertEqual((by['a']['last_fingerprint'], by['c']['last_fingerprint']), ('f2', 'f1'))
+        self.assertEqual((by['d']['source'], by['d']['first_seen_at'], by['d']['date']), ('list', 'T2', self.D2))
+
+    def test_deal_sticky_and_vendor_event_wins(self):
+        from rental.snapshot import fold, DEAL, NOT_FOUND
+        day1 = fold([], [self.stub('x', 'T1'), self.stub('y', 'T1'), self.stub('z', 'T1')],
+                    [self.parsed('x', 'T1d')], [], self.D1)
+        # x：deals 事件；y：detail 404 → NOT_FOUND；z：無訊號 → carry
+        day2 = fold(day1, [], [self.parsed('y', 'T2d', status=NOT_FOUND)],
+                    [{'vendor_house_id': 'x', 'seen_at': 'T2', 'deal_time': 'D', 'n_day_deal': 3}], self.D2)
+        by = {r['vendor_house_id']: r for r in day2}
+        self.assertEqual((by['x']['deal_status'], by['x']['deal_time'], by['x']['n_day_deal'], by['x']['deal_source']),
+                         (DEAL, 'D', 3, 'deals'))
+        self.assertEqual((by['y']['deal_status'], by['y']['deal_source']), (NOT_FOUND, None))
+        self.assertEqual((by['z']['source'], by['z']['days_absent']), ('carry', 1))
+        # day 3：x 的 detail 回 NOT_FOUND → sticky 留 DEAL；y／x 已關閉且無訊號 → 不攜帶
+        day3 = fold(day2, [], [self.parsed('x', 'T3d', status=NOT_FOUND)], [], '2026-01-17')
+        by = {r['vendor_house_id']: r for r in day3}
+        self.assertEqual(sorted(by), ['x', 'z'])
+        self.assertEqual((by['x']['deal_status'], by['x']['deal_source'], by['x']['n_day_deal']), (DEAL, 'deals', 3))
+        self.assertEqual(by['z']['days_absent'], 2)
+
+
 class SeedFunctionTests(TestCase):
     '''4a seed 純函數：四類（stale／指紋／缺席／回列）＋skip，與 SeedMatrixTests 的
     DB 版同一組案例；無 DB、無 Django model。'''

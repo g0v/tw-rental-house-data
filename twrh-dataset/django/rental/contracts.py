@@ -114,6 +114,37 @@ PARSED_FIELDS = [
     ('parsed_version', I32),
 ]
 
+# deal event（4d 前置）：591 成交列表一筆＝一個事件；detail 404／list 消失不在這裡，
+# 那是 snapshot 摺疊時的推導（deal_source='inferred'）
+DEAL_EVENT_FIELDS = [
+    ('vendor', STR),
+    ('vendor_house_id', STR),
+    ('date', STR),
+    ('run', STR),
+    ('seen_at', TS),
+    ('deal_time', TS),          # vendor 給的成交日（台灣日曆日，+08:00 00:00）
+    ('n_day_deal', I32),        # vendor 給的「N天成交」
+    ('event_version', I32),
+]
+DEAL_EVENT_VERSION = 1
+
+# snapshot（4c）：每日每戶一列＝parsed 全欄＋摺疊狀態（carry 欄）。
+# 每日運行是一階遞迴 f(昨日 snapshot, 今日 stubs／parsed／deal events)，見 rental/snapshot.py
+SNAPSHOT_CARRY_FIELDS = [
+    ('source', STR),                     # detail｜list｜carry：今日這列的來源
+    ('last_detail_at', TS),              # 上次 detail 成功解析（seed stale 判準）
+    ('last_fingerprint', STR),           # 最後一次 list 指紋（今日或更早）
+    ('fingerprint_at_last_detail', STR), # 上次 detail 當下的 list 指紋（seed 指紋判準＝與 last_fingerprint 比）
+    ('days_absent', I32),                # 連續不在 list 的天數（seed 缺席判準）
+    ('last_seen_at', TS),                # 最後一次出現在 list（seed 回列判準）
+    ('first_seen_at', TS),               # 首見（n_day_deal 推導的起點）
+    ('deal_source', STR),                # deals｜inferred：DEAL 狀態的來源（#10 拍板）
+    ('snapshot_version', I32),
+]
+SNAPSHOT_FIELDS = [f for f in PARSED_FIELDS if f[0] not in ('run', 'parsed_version')] \
+    + SNAPSHOT_CARRY_FIELDS
+SNAPSHOT_VERSION = 1
+
 _SCALAR_FROM_ITEM = {name for name, _ in PARSED_FIELDS} - {
     'vendor', 'vendor_house_id', 'date', 'run', 'crawled_at',
     'parser_version', 'rough_lat', 'rough_lng', 'author_key', 'parsed_version'}
