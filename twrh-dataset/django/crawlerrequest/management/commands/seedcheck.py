@@ -73,13 +73,16 @@ class Command(BaseCommand):
             ).values_list('vendor_house_id', flat=True))
             yesterday_source = 'house_ts'
 
+        # 只載 OPENED：select_seeds 四類全部先交集 open_ids，非 OPENED 列載了也用不到；
+        # House 是全歷史（2026-09-11 雲上 853 萬列 vs OPENED 7.1 萬），全載＝每戶一個
+        # HouseState 撐破 2 GB task memory（9/11 seedcheck 兩次 exit 137 OOM）
         state = {}
-        for hid, status, crawled, fp_changed in House.objects.filter(
-                vendor=vendor).values_list(
-                'vendor_house_id', 'deal_status', 'detail_crawled_at',
+        for hid, crawled, fp_changed in House.objects.filter(
+                vendor=vendor, deal_status=enums.DealStatusType.OPENED).values_list(
+                'vendor_house_id', 'detail_crawled_at',
                 'list_fingerprint_changed_at').iterator(chunk_size=20000):
             state[hid] = seeding.HouseState(
-                open=(status == enums.DealStatusType.OPENED),
+                open=True,
                 detail_crawled_at=crawled,
                 fingerprint_changed_at=fp_changed)
 
