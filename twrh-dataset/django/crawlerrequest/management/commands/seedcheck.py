@@ -33,6 +33,8 @@ class Command(BaseCommand):
         parser.add_argument('--vendor', default='591 租屋網')
         parser.add_argument('--refresh-days', type=int,
                             default=int(os.environ.get('TWRH_DETAIL_REFRESH_DAYS', '7')))
+        parser.add_argument('--refresh-jitter', type=int,
+                            default=int(os.environ.get('TWRH_DETAIL_REFRESH_JITTER', '2')))
         parser.add_argument('--strict', action='store_true')
         parser.add_argument('--sample', type=int, default=5,
                             help='不一致時各印幾個 house_id')
@@ -95,7 +97,8 @@ class Command(BaseCommand):
         now = seeded_at or timezone.now()
         result = seeding.select_seeds(
             today_stubs, yesterday_ids, state, now,
-            refresh_days=options['refresh_days'])
+            refresh_days=options['refresh_days'],
+            refresh_jitter_days=options['refresh_jitter'])
 
         db_seeds = set(db_rows.values_list('seed__id', flat=True))
 

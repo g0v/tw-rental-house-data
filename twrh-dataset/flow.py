@@ -83,11 +83,14 @@ class Ctx:
             self.state_dir = flow_state_dir(self.date)
         self.seed_mode = os.environ.get('TWRH_DETAIL_SEED_MODE', 'full')
         self.refresh_days = os.environ.get('TWRH_DETAIL_REFRESH_DAYS', '7')
+        # ±N 天 per-house 抖動（預設 2）：攤平 bootstrap 回波（2026-09-10 43,827 戶同日到期）
+        self.refresh_jitter = os.environ.get('TWRH_DETAIL_REFRESH_JITTER', '2')
 
     def seed_mode_flags(self):
         if self.seed_mode == 'diff':
             return ['-a', 'seed_mode=diff',
-                    '-a', 'refresh_days={}'.format(self.refresh_days)]
+                    '-a', 'refresh_days={}'.format(self.refresh_days),
+                    '-a', 'refresh_jitter={}'.format(self.refresh_jitter)]
         return []
 
     def crawl(self, spider, *args):
