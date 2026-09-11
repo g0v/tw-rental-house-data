@@ -13,7 +13,7 @@ errback 列無人釋放。這裡把這些語意鎖成測試，作為 1-1 狀態�
 import os
 import sys
 import threading
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from unittest import mock
 
@@ -1677,3 +1677,141 @@ class ManifestChecksTests(TestCase):
             self.assertEqual(runs['run']['seedcheck']['line'], 'seedcheck: AGREE — {}')
             self.assertEqual(runs['sweep-0502']['filequeuecheck']['verdict'], 'DIFF')
             self.assertTrue(os.path.exists(mf.manifest_path('2026-09-11', 'checks', base)))
+
+
+class DealEventAndSnapshotTests(QueueTestMixin, TestCase):
+    '''4d deal event：契約判別（只帶 deal 欄的 GenericHouseItem）、shard → deals 分區；
+    4c snapshot：DB bootstrap 的 carry 欄對應、snapshotfold（前日缺→昨日由 DB 摺出、
+    今日 provisional：list 覆蓋／detail 全欄覆蓋／deal event 勝／已關閉無訊號不攜帶）、
+    同日重跑冪等。'''
+
+    def setUp(self):
+        super().setUp()
+        self.env = mock.patch.dict(os.environ, {'TWRH_RAW_BUCKET': ''})
+        self.env.start()
+        self.vendor = Vendor.objects.get(name=VENDOR_NAME)
+        y, m, d = (int(x) for x in TEST_DATE.split('-'))
+        self.day = date(y, m, d)
+        self.yesterday = self.day - timedelta(days=1)
+
+    def tearDown(self):
+        self.env.stop()
+        super().tearDown()
+
+    def at(self, day, hour):
+        return timezone.make_aware(datetime(day.year, day.month, day.day, hour))
+
+    def write_rows(self, tree, run, rows, date_str):
+        from rental import artifacts
+        with mock.patch.dict(os.environ, {'TWRH_RUN_ID': run}):
+            writer = artifacts.ShardWriter(tree)
+            for row in rows:
+                writer.append({'vendor': '591', 'date': date_str, 'run': run, **row})
+            writer.close()
+
+    def test_deal_event_contract_and_pack(self):
+        from django.core.management import call_command
+        from rental import artifacts, contracts
+        deal_time = self.at(self.yesterday, 0)
+        item = {'vendor': VENDOR_NAME, 'vendor_house_id': 'h1', 'deal_status': 2,
+                'deal_time': deal_time, 'n_day_deal': 3}
+        self.assertTrue(contracts.is_deal_event(item))
+        self.assertFalse(contracts.is_deal_event({**item, 'monthly_price': 1}))   # detail 列
+        self.assertFalse(contracts.is_deal_event({**item, 'deal_status': 0}))
+        row = contracts.deal_event_row('591', 'h1', TEST_DATE, 'run', timezone.now(), deal_time, 3)
+        self.assertEqual(set(row), {name for name, _ in contracts.DEAL_EVENT_FIELDS})
+        self.write_rows('deals', 'run', [{k: v for k, v in row.items() if k not in ('vendor', 'date', 'run')}], TEST_DATE)
+        call_command('artifactpack', '--tree', 'deals', '--date', TEST_DATE, '--no-upload')
+        rows = artifacts.read_deal_events('591', TEST_DATE)
+        self.assertEqual([(r['vendor_house_id'], r['deal_time'], r['n_day_deal']) for r in rows],
+                         [('h1', deal_time, 3)])
+        self.assertTrue(os.path.exists(artifacts.partition_path('deals', '591', TEST_DATE, 'run')))
+
+    def seed_yesterday_db(self):
+        '''昨日 DB 狀態：h1 昨日 detail（在 list）、h2 只在 list（合成列、指紋在上次 detail 後變過）、
+        h3 DEAL（三天沒在 list）。'''
+        from rental.models import HouseEtc
+        y = self.yesterday
+        old = self.at(y - timedelta(days=9), 3)
+        h1 = House.objects.create(vendor=self.vendor, vendor_house_id='h1', monthly_price=10000,
+                                  detail_crawled_at=self.at(y, 3), list_crawled_at=self.at(y, 2))
+        House.objects.filter(pk=h1.pk).update(created=old)
+        HouseEtc.objects.create(house=h1, vendor=self.vendor, vendor_house_id='h1',
+                                list_dict={'price': '10000', 'title': 't1'})
+        HouseTS.objects.create(vendor=self.vendor, vendor_house_id='h1', year=y.year, month=y.month,
+                               day=y.day, hour=0, monthly_price=10000, floor_ping=20.0,
+                               crawled_at=self.at(y, 3), list_crawled_at=self.at(y, 2))
+        h2 = House.objects.create(vendor=self.vendor, vendor_house_id='h2', monthly_price=7000,
+                                  detail_crawled_at=self.at(y - timedelta(days=5), 3),
+                                  list_crawled_at=self.at(y, 2), list_fingerprint_changed_at=self.at(y, 2))
+        HouseEtc.objects.create(house=h2, vendor=self.vendor, vendor_house_id='h2',
+                                list_dict={'price': '7500', 'title': 't2'})
+        HouseTS.objects.create(vendor=self.vendor, vendor_house_id='h2', year=y.year, month=y.month,
+                               day=y.day, hour=0, monthly_price=7500, is_synthesized=True,
+                               list_crawled_at=self.at(y, 2))
+        House.objects.create(vendor=self.vendor, vendor_house_id='h3', deal_status=enums.DealStatusType.DEAL,
+                             deal_time=self.at(y, 0), n_day_deal=4, list_crawled_at=self.at(y - timedelta(days=3), 2))
+        HouseTS.objects.create(vendor=self.vendor, vendor_house_id='h3', year=y.year, month=y.month,
+                               day=y.day, hour=0, deal_status=enums.DealStatusType.DEAL,
+                               deal_time=self.at(y, 0), n_day_deal=4)
+        return old
+
+    def test_bootstrap_rows_carry_fields(self):
+        from rental import contracts, snapshot_db
+        created = self.seed_yesterday_db()
+        by = {r['vendor_house_id']: r for r in snapshot_db.bootstrap_rows(self.vendor, self.yesterday)}
+        self.assertEqual(sorted(by), ['h1', 'h2', 'h3'])
+        fp1 = contracts.list_fingerprint({'price': '10000', 'title': 't1'})
+        self.assertEqual((by['h1']['source'], by['h1']['last_detail_at'], by['h1']['last_fingerprint'],
+                          by['h1']['fingerprint_at_last_detail'], by['h1']['days_absent'],
+                          by['h1']['first_seen_at'], by['h1']['floor_ping'], by['h1']['deal_source']),
+                         ('detail', self.at(self.yesterday, 3), fp1, fp1, 0, created, 20.0, None))
+        self.assertEqual((by['h2']['source'], by['h2']['fingerprint_at_last_detail'], by['h2']['monthly_price']),
+                         ('list', None, 7500))          # 指紋在上次 detail 後變過 → None（＝視為已變）
+        self.assertIsNotNone(by['h2']['last_fingerprint'])
+        self.assertEqual((by['h3']['source'], by['h3']['deal_status'], by['h3']['deal_source'],
+                          by['h3']['days_absent'], by['h3']['n_day_deal']),
+                         ('carry', int(enums.DealStatusType.DEAL), 'deals', 3, 4))
+        self.assertEqual(set(by['h1']), {name for name, _ in contracts.SNAPSHOT_FIELDS})
+
+    def test_snapshotfold_bootstraps_yesterday_and_folds_today(self):
+        from django.core.management import call_command
+        from rental import artifacts, contracts, snapshot
+        self.seed_yesterday_db()
+        t_list, t_detail, t_deal = self.at(self.day, 2), self.at(self.day, 3), self.at(self.day, 6)
+        self.write_rows('list', 'run', [
+            {'vendor_house_id': 'h1', 'seen_at': t_list.isoformat(), 'fingerprint': 'newfp',
+             'monthly_price': 12000}], TEST_DATE)
+        self.write_rows('parsed', 'run', [
+            {'vendor_house_id': 'h2', 'crawled_at': t_detail.isoformat(), 'deal_status': 0,
+             'monthly_price': 8000, 'floor_ping': 9.5}], TEST_DATE)
+        self.write_rows('deals', 'run', [
+            {'vendor_house_id': 'h1', 'seen_at': t_deal.isoformat(),
+             'deal_time': self.at(self.day, 0).isoformat(), 'n_day_deal': 2}], TEST_DATE)
+        for tree in ('list', 'parsed', 'deals'):
+            call_command('artifactpack', '--tree', tree, '--date', TEST_DATE, '--no-upload')
+
+        call_command('snapshotfold', '--date', TEST_DATE, '--no-upload')
+        prev = {r['vendor_house_id']: r for r in artifacts.read_snapshot('591', self.yesterday.isoformat())}
+        self.assertEqual(sorted(prev), ['h1', 'h2', 'h3'])           # 昨日由 DB bootstrap
+        today = {r['vendor_house_id']: r for r in artifacts.read_snapshot('591', TEST_DATE)}
+        self.assertEqual(sorted(today), ['h1', 'h2'])                # h3 已關閉且無訊號：不攜帶
+        h1, h2 = today['h1'], today['h2']
+        self.assertEqual((h1['source'], h1['monthly_price'], h1['floor_ping'], h1['last_fingerprint'],
+                          h1['fingerprint_at_last_detail'], h1['last_seen_at'], h1['days_absent']),
+                         ('list', 12000, 20.0, 'newfp', prev['h1']['last_fingerprint'], t_list, 0))
+        self.assertEqual((h1['deal_status'], h1['deal_time'], h1['n_day_deal'], h1['deal_source']),
+                         (snapshot.DEAL, self.at(self.day, 0), 2, 'deals'))
+        self.assertEqual((h2['source'], h2['monthly_price'], h2['floor_ping'], h2['last_detail_at'],
+                          h2['fingerprint_at_last_detail'], h2['days_absent'], h2['first_seen_at']),
+                         ('detail', 8000, 9.5, t_detail, prev['h2']['last_fingerprint'], 1, prev['h2']['first_seen_at']))
+        self.assertEqual(h1['date'], TEST_DATE)
+        self.assertEqual(set(h1), {name for name, _ in contracts.SNAPSHOT_FIELDS})
+
+        # 同日重跑：前日仍缺、昨日已在 → 不動昨日；今日重摺結果相同
+        call_command('snapshotfold', '--date', TEST_DATE, '--no-upload')
+        again = {r['vendor_house_id']: r for r in artifacts.read_snapshot('591', TEST_DATE)}
+        self.assertEqual(again, today)
+        # --bootstrap 明確重摺某日
+        call_command('snapshotfold', '--bootstrap', '--date', self.yesterday.isoformat(), '--no-upload')
+        self.assertEqual(len(artifacts.read_snapshot('591', self.yesterday.isoformat())), 3)

@@ -34,6 +34,8 @@ class CrawlerPipeline(object):
         # GenericHouseItem 到再寫 stub（兩個 item 同一 response 連續到達）
         self.stub_writer = artifact_sink.ShardWriter('list')
         self.parsed_writer = artifact_sink.ShardWriter('parsed')
+        # 4d：deal591 的成交事件（vendor 給的 deal_time／n_day_deal）→ deals 分區
+        self.deals_writer = artifact_sink.ShardWriter('deals')
         self._pending_stub = {}      # house_id -> fingerprint
         self._pending_parsed = set()  # house_id（detail dict 已到）
         self._parser_version = None
@@ -46,12 +48,13 @@ class CrawlerPipeline(object):
     def close_spider(self, spider=None):
         self.stub_writer.close()
         self.parsed_writer.close()
+        self.deals_writer.close()
 
     def item_vendor (self, item):
         return self.vendorMap[item['vendor']]
 
     def write_artifact_rows(self, item, y, m, d):
-        '''4a list stub／4b parsed 列 → scratch shard。失敗只記 log、不影響
+        '''4a list stub／4b parsed／4d deal event 列 → scratch shard。失敗只記 log、不影響
         DB 寫入（雙寫期 DB 是真相；分區檔缺漏由 artifactpack／manifest 對數抓）。'''
         if not artifact_sink.enabled():
             return
@@ -61,6 +64,11 @@ class CrawlerPipeline(object):
         run = artifact_sink.run_id()
         now = timezone.now()
         try:
+            if artifact_sink.is_deal_event(item):
+                self.deals_writer.append(artifact_sink.deal_event_row(
+                    short, house_id, date_str, run, now,
+                    item['deal_time'], item.get('n_day_deal')))
+                return
             if house_id in self._pending_stub:
                 fingerprint = self._pending_stub.pop(house_id)
                 self.stub_writer.append(artifact_sink.list_stub(

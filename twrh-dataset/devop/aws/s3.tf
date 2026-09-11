@@ -100,6 +100,9 @@ resource "aws_iam_role_policy" "crawler_raw_upload" {
           # 一輪一檔、key 帶 run id，正常永不覆蓋
           "${aws_s3_bucket.raw.arn}/list/*",
           "${aws_s3_bucket.raw.arn}/parsed/*",
+          # 4d deal events（一輪一檔）、4c snapshot（一天一檔，final 覆寫 provisional）
+          "${aws_s3_bucket.raw.arn}/deals/*",
+          "${aws_s3_bucket.raw.arn}/snapshot/*",
         ]
       },
       {

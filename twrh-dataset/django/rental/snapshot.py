@@ -60,7 +60,7 @@ def fold(prev_rows, stubs, parsed_rows, deal_events, date_str, vendor='591'):
 
     out = []
     for hid in sorted(set(prev) | set(stub_by) | set(parsed_by) | set(deal_by)):
-        yesterday = prev.get(hid)
+        yesterday = prev.pop(hid, None)   # 每戶只看一次：處理完即釋放昨日列（記憶體）
         stub = stub_by.get(hid)
         parsed = parsed_by.get(hid)
         deal = deal_by.get(hid)

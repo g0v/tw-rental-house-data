@@ -301,6 +301,19 @@ def stage_seedcheck(ctx):
     advisory_check(ctx, 'seedcheck')
 
 
+def stage_dealevents(_ctx):
+    # 4d：本輪 deal event shards → deals/<vendor>/<date>/<run>.parquet（＋S3）
+    _artifactpack('deals')
+
+
+def stage_snapshot(_ctx):
+    # 4c：昨日 final＋今日 provisional snapshot（前日缺＝昨日由 DB bootstrap）；
+    # 雙寫期 advisory：失敗大聲講、不擋 pipeline
+    result = manage('snapshotfold', check=False)
+    if result.returncode != 0:
+        print('!!! snapshotfold failed (advisory during dual-write)')
+
+
 def stage_parsed(_ctx):
     # 4b：本輪 parsed shards → parsed/<vendor>/<date>/<run>.parquet（＋S3）
     _artifactpack('parsed')
@@ -433,7 +446,9 @@ RUN_STAGES = [
     ('filequeuecheck', stage_filequeuecheck, None),
     ('rawpack', stage_rawpack, rawpack_artifacts),
     ('parsed', stage_parsed, None),
+    ('dealevents', stage_dealevents, None),
     ('parsedcheck', stage_parsedcheck, None),
+    ('snapshot', stage_snapshot, None),
     ('synthts', stage_synthts, None),
     ('sync', stage_sync, None),
     ('manifest', stage_manifest, manifest_artifacts),

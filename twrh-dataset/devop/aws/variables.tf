@@ -78,7 +78,10 @@ variable "crawler_cpu" {
 
 variable "crawler_memory" {
   type    = number
-  default = 2048 # 實測 RSS 峰值 ~240 MB，2 GB 餘裕充足
+  # 爬取本身 RSS 峰值 ~240 MB；Phase 4 的 manage 指令把整日分區讀進 python dict
+  # （snapshotfold 本機實測峰值 ~0.9 GB／10 萬列；seedcheck 2026-09-11 全載 House 曾撞 2 GB
+  # exit 137）——留一倍餘裕
+  default = 3072
 }
 
 variable "enable_rds" {

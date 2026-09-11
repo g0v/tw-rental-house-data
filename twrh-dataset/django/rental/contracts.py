@@ -221,6 +221,30 @@ def parsed_row(vendor_short, house_id, date_str, run, crawled_at,
     return row
 
 
+# deal591 的成交事件 item 只帶這幾個 key（沒有 detail 欄位）——pipeline 用它分辨
+# 「成交事件」與「detail 解析列」，兩者都是 GenericHouseItem
+DEAL_EVENT_ITEM_KEYS = {'vendor', 'vendor_house_id', 'deal_status', 'deal_time', 'n_day_deal'}
+DEAL_STATUS_DEAL = 2   # rental.enums.DealStatusType.DEAL（只增不改）
+
+
+def is_deal_event(item):
+    return item.get('deal_status') == DEAL_STATUS_DEAL and \
+        item.get('deal_time') is not None and set(item.keys()) <= DEAL_EVENT_ITEM_KEYS
+
+
+def deal_event_row(vendor_short, house_id, date_str, run, seen_at, deal_time, n_day_deal):
+    return {
+        'vendor': vendor_short,
+        'vendor_house_id': str(house_id),
+        'date': date_str,
+        'run': run,
+        'seen_at': seen_at.isoformat(),
+        'deal_time': _plain(deal_time),
+        'n_day_deal': n_day_deal,
+        'event_version': DEAL_EVENT_VERSION,
+    }
+
+
 # --- pyarrow 映射（只在 pack 時用） ---------------------------------------------
 
 def arrow_schema(fields):
@@ -241,24 +265,23 @@ def _parse_ts(value):
     return datetime.fromisoformat(value)
 
 
+def coerce_value(value, kind):
+    if value is None or value == '':
+        return None
+    if kind == TS:
+        return _parse_ts(value)
+    if kind in (I32, I64):
+        return int(value)
+    if kind == F64:
+        return float(value)
+    if kind == BOOL:
+        return bool(value)
+    if kind == JSON:
+        return value if isinstance(value, str) else json.dumps(
+            value, ensure_ascii=False, sort_keys=True)
+    return str(value)
+
+
 def coerce_row(row, fields):
     '''jsonl 列 → 符合 schema 的 python dict（缺欄補 None、型別收斂）。'''
-    out = {}
-    for name, kind in fields:
-        value = row.get(name)
-        if value is None:
-            out[name] = None
-        elif kind == TS:
-            out[name] = _parse_ts(value)
-        elif kind in (I32, I64):
-            out[name] = int(value)
-        elif kind == F64:
-            out[name] = float(value)
-        elif kind == BOOL:
-            out[name] = bool(value)
-        elif kind == JSON:
-            out[name] = value if isinstance(value, str) else json.dumps(
-                value, ensure_ascii=False, sort_keys=True)
-        else:
-            out[name] = str(value)
-    return out
+    return {name: coerce_value(row.get(name), kind) for name, kind in fields}

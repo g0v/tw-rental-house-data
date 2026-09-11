@@ -6,6 +6,8 @@ S3 同名前綴）：
     <artifact_dir>/scratch/<tree>/<vendor>/<date>/<run>.<host>.<pid>.jsonl   爬取行程直寫
     <artifact_dir>/list/<vendor>/<date>/<run>.jsonl.zst                       4a list stub
     <artifact_dir>/parsed/<vendor>/<date>/<run>.parquet                       4b parsed
+    <artifact_dir>/deals/<vendor>/<date>/<run>.parquet                        4d deal events
+    <artifact_dir>/snapshot/<vendor>/<date>.parquet                           4c snapshot（一天一檔）
 
 一輪（flow run id：run／sweep-HHMM）一檔、**不做同日改寫**：sweep 每輪
 自己的檔，讀取端 glob 整個日期目錄即當日全部。這是刻意與 rawpack
@@ -29,7 +31,13 @@ from rental import contracts
 TREES = {
     'list': (contracts.LIST_STUB_FIELDS, 'jsonl.zst'),
     'parsed': (contracts.PARSED_FIELDS, 'parquet'),
+    # 4d：deal591 成交事件，一輪一檔、事件全留（不去重）
+    'deals': (contracts.DEAL_EVENT_FIELDS, 'parquet'),
 }
+# 4c：snapshot 不是 shard 打包而是摺疊產物——一天一檔 snapshot/<vendor>/<date>.parquet，
+# 日跑先把昨日重摺成 final（輸入齊全）、再摺今日 provisional；final 覆寫 provisional
+# 是這棵樹裡唯一刻意的同 key 覆寫（bucket 有 versioning）
+SNAPSHOT_TREE = 'snapshot'
 
 
 def artifact_dir():
@@ -129,13 +137,104 @@ def list_partition_files(vendor_short, date_str, bucket=None):
     return partition_files('list', vendor_short, date_str, bucket)
 
 
-def read_parsed_rows(vendor_short, date_str, bucket=None):
-    '''當日全部 parsed 列（跨 run，list of dict；不含 scratch）。'''
+def read_parquet_rows(tree, vendor_short, date_str, bucket=None):
+    '''當日全部分區列（跨 run，list of dict；不含 scratch）。'''
     import pyarrow.parquet as pq
     rows = []
-    for path in partition_files('parsed', vendor_short, date_str, bucket):
+    for path in partition_files(tree, vendor_short, date_str, bucket):
         rows.extend(pq.read_table(path).to_pylist())
     return rows
+
+
+def read_parsed_rows(vendor_short, date_str, bucket=None):
+    return read_parquet_rows('parsed', vendor_short, date_str, bucket)
+
+
+def read_deal_events(vendor_short, date_str, bucket=None):
+    return read_parquet_rows('deals', vendor_short, date_str, bucket)
+
+
+# --- snapshot（4c）------------------------------------------------------------
+
+def snapshot_path(vendor_short, date_str):
+    return os.path.join(artifact_dir(), SNAPSHOT_TREE, vendor_short, date_str + '.parquet')
+
+
+def snapshot_s3_key(vendor_short, date_str):
+    return '{}/{}/{}.parquet'.format(SNAPSHOT_TREE, vendor_short, date_str)
+
+
+def snapshot_exists(vendor_short, date_str, bucket=None):
+    return _fetch_snapshot(vendor_short, date_str, bucket) is not None
+
+
+def _fetch_snapshot(vendor_short, date_str, bucket=None):
+    '''本地檔路徑；沒有且給了 bucket 就從 S3 拉回；都沒有回 None。'''
+    path = snapshot_path(vendor_short, date_str)
+    if os.path.exists(path):
+        return path
+    if not bucket:
+        return None
+    import boto3
+    from botocore.exceptions import ClientError
+    s3 = boto3.client('s3')
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        s3.download_file(bucket, snapshot_s3_key(vendor_short, date_str), path)
+    except ClientError as err:
+        if err.response.get('Error', {}).get('Code') in ('404', 'NoSuchKey', 'NotFound'):
+            return None
+        raise
+    return path
+
+
+def read_snapshot(vendor_short, date_str, bucket=None):
+    '''某日 snapshot 列（list of dict）；不存在回 None（與空列表區分）。'''
+    path = _fetch_snapshot(vendor_short, date_str, bucket)
+    if path is None:
+        return None
+    import pyarrow.parquet as pq
+    return pq.read_table(path).to_pylist()
+
+
+def write_snapshot(rows, vendor_short, date_str):
+    '''摺疊結果 → snapshot/<vendor>/<date>.parquet（tmp＋rename）。回傳 (path, n_rows)。'''
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    fields = contracts.SNAPSHOT_FIELDS
+    # 逐欄建 array、不先複製成第二份 dict 列表：10 萬列 × 60 欄在 2 GB task 裡
+    # 要省著用（from_pylist 會多一份中間物）
+    rows = sorted(rows, key=lambda r: r['vendor_house_id'])
+    schema = contracts.arrow_schema(fields)
+    columns = []
+    for (name, kind), arrow_field in zip(fields, schema):
+        columns.append(pa.array(
+            [contracts.coerce_value(r.get(name), kind) for r in rows], type=arrow_field.type))
+    n = len(rows)
+    del rows
+    path = snapshot_path(vendor_short, date_str)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.tmp'
+    pq.write_table(pa.Table.from_arrays(columns, schema=schema), tmp, compression='zstd')
+    os.replace(tmp, path)
+    return path, n
+
+
+def upload_snapshot(bucket, vendor_short, date_str, path):
+    '''snapshot 上 S3；同 key 覆寫是設計內的（final 蓋 provisional），印出來讓 log 看得到。'''
+    import boto3
+    from botocore.exceptions import ClientError
+    s3 = boto3.client('s3')
+    key = snapshot_s3_key(vendor_short, date_str)
+    try:
+        s3.head_object(Bucket=bucket, Key=key)
+        print('    NOTE overwriting existing s3://{}/{} (snapshot refold)'.format(bucket, key))
+    except ClientError as err:
+        if err.response.get('Error', {}).get('Code') not in ('404', 'NoSuchKey', 'NotFound'):
+            raise
+    s3.upload_file(path, bucket, key)
+    print('    uploaded s3://{}/{}'.format(bucket, key))
+    return key
 
 
 def read_list_stubs(vendor_short, date_str, bucket=None):
@@ -196,7 +295,7 @@ def _existing_rows(tree, path):
 
 def pack_run(tree, vendor_short, date_str, run, shard_paths, keep_scratch=False):
     '''一輪 shards → 分區檔。同 run 本地既有檔＝與之聯集（flow --from 重跑）。
-    parsed 依 vendor_house_id 去重、後爬者勝；list 是觀測紀錄，全留。
+    parsed 依 vendor_house_id 去重、後爬者勝；list／deals 是觀測／事件紀錄，全留。
     回傳 (path, n_rows)。'''
     fields, _ext = TREES[tree]
     rows = _existing_rows(tree, partition_path(tree, vendor_short, date_str, run))
