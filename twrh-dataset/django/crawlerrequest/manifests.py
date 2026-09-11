@@ -15,6 +15,7 @@ stage 對應現制（3-2 flow 收斂前的過渡分界）：
   deals    — 「已成交」列表產出的成交事件（#229）：當日 TS 的 DEAL 列
   snapshot — syncstateful／synthts 之後的當日 TS 總覽
 '''
+import os
 from datetime import datetime, timedelta
 from importlib.metadata import version, PackageNotFoundError
 
@@ -113,6 +114,96 @@ def _enum_or_none(enum_cls, value):
         return value
 
 
+def _partition_block(stage, date_obj):
+    '''並列輸出（4a–4d 雙寫期）：同一 stage 由分區檔算出的計數，與 DB 版並排放在
+    manifest 的 `partitions` 節（每 vendor 一塊，key＝短名）。缺分區＝該 vendor 不出現；
+    算失敗只留 error、不影響 DB 版（manifest stage 不能因分區檔紅）。切換階梯走完後
+    DB 版退場、這裡升為唯一。'''
+    from rental import artifacts
+    from rental.models import Vendor
+    from rental.raws import vendor_dirname
+    bucket = os.environ.get('TWRH_RAW_BUCKET')
+    date_str = date_obj.isoformat()
+    out = {}
+    for vendor in Vendor.objects.all():
+        short = vendor_dirname(vendor.name)
+        try:
+            block = _PARTITION_COUNTERS[stage](short, date_str, bucket, artifacts)
+        except Exception as err:  # noqa: BLE001
+            block = {'error': '{}: {}'.format(type(err).__name__, err)}
+        if block:
+            out[short] = block
+    return out
+
+
+def _count_list(short, date_str, bucket, artifacts):
+    houses, runs, n = set(), set(), 0
+    for stub in artifacts.read_list_stubs(short, date_str, bucket):
+        n += 1
+        houses.add(stub['vendor_house_id'])
+        runs.add(stub.get('run'))
+    if not n:
+        return None
+    return {'n_stubs': n, 'n_houses': len(houses), 'runs': sorted(r for r in runs if r)}
+
+
+def _count_parquet(tree, short, date_str, bucket, artifacts, columns):
+    import pyarrow.parquet as pq
+    tables = [pq.read_table(path, columns=columns)
+              for path in artifacts.partition_files(tree, short, date_str, bucket)]
+    return [row for table in tables for row in table.to_pylist()]
+
+
+def _count_parsed(short, date_str, bucket, artifacts):
+    rows = _count_parquet('parsed', short, date_str, bucket, artifacts, ['vendor_house_id', 'run'])
+    if not rows:
+        return None
+    return {'n_rows': len(rows), 'n_houses': len({r['vendor_house_id'] for r in rows}),
+            'runs': sorted({r['run'] for r in rows if r['run']})}
+
+
+def _count_deals(short, date_str, bucket, artifacts):
+    rows = _count_parquet('deals', short, date_str, bucket, artifacts,
+                          ['vendor_house_id', 'deal_time', 'run'])
+    if not rows:
+        return None
+    by_date = {}
+    for r in rows:
+        key = timezone.localtime(r['deal_time']).date().isoformat() if r['deal_time'] else 'unknown'
+        by_date[key] = by_date.get(key, 0) + 1
+    return {'n_events': len(rows), 'n_houses': len({r['vendor_house_id'] for r in rows}),
+            'runs': sorted({r['run'] for r in rows if r['run']}),
+            'by_deal_date': dict(sorted(by_date.items()))}
+
+
+def _count_snapshot(short, date_str, bucket, artifacts):
+    import pyarrow.parquet as pq
+    path = artifacts._fetch_snapshot(short, date_str, bucket)
+    if path is None:
+        return None
+    table = pq.read_table(path, columns=['deal_status', 'source', 'deal_source'])
+    by_source, by_deal_source, by_status = {}, {}, {}
+    for r in table.to_pylist():
+        by_source[r['source']] = by_source.get(r['source'], 0) + 1
+        by_status[r['deal_status']] = by_status.get(r['deal_status'], 0) + 1
+        if r['deal_source']:
+            by_deal_source[r['deal_source']] = by_deal_source.get(r['deal_source'], 0) + 1
+    return {
+        'n_total': table.num_rows,
+        'n_opened': by_status.get(int(DealStatusType.OPENED), 0),
+        'n_closed': by_status.get(int(DealStatusType.NOT_FOUND), 0),
+        'n_dealt': by_status.get(int(DealStatusType.DEAL), 0),
+        'by_source': dict(sorted(by_source.items())),
+        'by_deal_source': dict(sorted(by_deal_source.items())),
+    }
+
+
+_PARTITION_COUNTERS = {
+    'list': _count_list, 'detail': _count_parsed,
+    'deals': _count_deals, 'snapshot': _count_snapshot,
+}
+
+
 def build_list_manifest(date_obj, source='live'):
     ts = _ts_of(date_obj)
     opened = HouseTS.objects.filter(**ts, deal_status=DealStatusType.OPENED)
@@ -148,6 +239,7 @@ def build_list_manifest(date_obj, source='live'):
             'ratio_all_open': round(n_in_list / n_open, 4) if n_open else None,
             'n_pending_absent': n_pending_absent,
         },
+        'partitions': _partition_block('list', date_obj),
     }
 
 
@@ -200,6 +292,7 @@ def build_detail_manifest(date_obj, source='live'):
         },
         'fill_rate': fill_rate,
         'dist': invariants(generics),
+        'partitions': _partition_block('detail', date_obj),
     }
 
 
@@ -234,6 +327,7 @@ def build_deals_manifest(date_obj, source='live'):
             'n': len(n_days),
             'median_n_day_deal': median,
         },
+        'partitions': _partition_block('deals', date_obj),
     }
 
 
@@ -252,6 +346,7 @@ def build_snapshot_manifest(date_obj, source='live'):
             'n_closed': by_deal.get(int(DealStatusType.NOT_FOUND), 0),
             'n_dealt': by_deal.get(int(DealStatusType.DEAL), 0),
         },
+        'partitions': _partition_block('snapshot', date_obj),
     }
 
 

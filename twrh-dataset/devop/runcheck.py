@@ -177,6 +177,8 @@ def main():
         if stage == 'deals':
             parts.append('by_deal_date={}'.format(json.dumps(m.get('by_deal_date', {}))))
             parts.append('median_n_day_deal={}'.format((m.get('dist') or {}).get('median_n_day_deal')))
+        if m.get('partitions') is not None:
+            parts.append('partitions={}'.format(json.dumps(m.get('partitions'), ensure_ascii=False)))
         print('   {}: {}'.format(stage, ' | '.join(parts)))
     print('-- raw 日包 raw/591/{}.tar.zst: {}'.format(day, raw_pack(s3, day) or '（無）'))
 

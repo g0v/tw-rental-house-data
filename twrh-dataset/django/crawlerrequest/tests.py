@@ -1839,3 +1839,200 @@ class DealEventAndSnapshotTests(QueueTestMixin, TestCase):
         # --bootstrap 明確重摺某日
         call_command('snapshotfold', '--bootstrap', '--date', self.yesterday.isoformat(), '--no-upload')
         self.assertEqual(len(artifacts.read_snapshot('591', self.yesterday.isoformat())), 3)
+
+
+class SnapshotCheckTests(QueueTestMixin, TestCase):
+    '''4c 對帳：snapshot parquet 對 HouseTS（parsed 欄＋狀態欄）與 House（carry 欄）。
+    DB bootstrap 摺出的 snapshot 對回 DB 必 AGREE；戶集合差異、欄位差、狀態差、carry 差
+    各進各的桶；檢查過去日時 carry 只對 TS 可推的兩項。'''
+
+    def setUp(self):
+        super().setUp()
+        import tempfile
+        self.tmp = tempfile.mkdtemp(prefix='twrh-snapshotcheck-')
+        self.env = mock.patch.dict(os.environ, {'TWRH_ARTIFACT_DIR': self.tmp, 'TWRH_RAW_BUCKET': ''})
+        self.env.start()
+        self.vendor = Vendor.objects.get(name=VENDOR_NAME)
+        y, m, d = (int(x) for x in TEST_DATE.split('-'))
+        self.day = date(y, m, d)
+
+    def tearDown(self):
+        import shutil
+        self.env.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        super().tearDown()
+
+    def at(self, day, hour):
+        return timezone.make_aware(datetime(day.year, day.month, day.day, hour))
+
+    def seed_db(self):
+        from django.contrib.gis.geos import Point
+        from rental.models import Author, HouseEtc
+        d = self.day
+        author = Author.objects.create(truth='0912')
+        h1 = House.objects.create(vendor=self.vendor, vendor_house_id='h1', monthly_price=15000,
+                                  detail_crawled_at=self.at(d, 3), list_crawled_at=self.at(d, 2))
+        HouseEtc.objects.create(house=h1, vendor=self.vendor, vendor_house_id='h1',
+                                list_dict={'price': '15000', 'title': 't1'})
+        HouseTS.objects.create(vendor=self.vendor, vendor_house_id='h1', year=d.year, month=d.month,
+                               day=d.day, hour=0, monthly_price=15000, imgs=['a'], author=author,
+                               rough_coordinate=Point(25.03, 121.56, srid=4326),
+                               crawled_at=self.at(d, 3), list_crawled_at=self.at(d, 2))
+        House.objects.create(vendor=self.vendor, vendor_house_id='h2', monthly_price=7000,
+                             detail_crawled_at=self.at(d - timedelta(days=4), 3),
+                             list_crawled_at=self.at(d - timedelta(days=1), 2))
+        HouseTS.objects.create(vendor=self.vendor, vendor_house_id='h2', year=d.year, month=d.month,
+                               day=d.day, hour=0, monthly_price=7000, is_synthesized=True)
+        House.objects.create(vendor=self.vendor, vendor_house_id='h3', deal_status=enums.DealStatusType.DEAL,
+                             deal_time=self.at(d, 0), n_day_deal=4, list_crawled_at=self.at(d - timedelta(days=2), 2))
+        HouseTS.objects.create(vendor=self.vendor, vendor_house_id='h3', year=d.year, month=d.month,
+                               day=d.day, hour=0, deal_status=enums.DealStatusType.DEAL,
+                               deal_time=self.at(d, 0), n_day_deal=4)
+
+    def write_snapshot(self, rows):
+        from rental import artifacts
+        artifacts.write_snapshot(rows, '591', TEST_DATE)
+
+    def run_check(self, *args):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        from django.core.management import call_command
+        import json
+        out = StringIO()
+        with redirect_stdout(out):
+            call_command('snapshotcheck', '--date', TEST_DATE, *args)
+        line = [l for l in out.getvalue().splitlines() if l.startswith('snapshotcheck: ')][0]
+        verdict, _, payload = line[len('snapshotcheck: '):].partition(' — ')
+        return verdict, json.loads(payload)
+
+    def test_bootstrap_snapshot_agrees_and_diffs_are_bucketed(self):
+        from rental import snapshot, snapshot_db
+        self.seed_db()
+        rows = snapshot_db.bootstrap_rows(self.vendor, self.day)
+        self.write_snapshot(rows)
+        verdict, report = self.run_check()
+        self.assertEqual((verdict, report['carry_mode'], report['matched'],
+                          report['snapshot_rows'], report['db_rows']),
+                         ('AGREE', 'house', 3, 3, 3), report)
+
+        # 欄位差／狀態差／carry 差／戶集合差各進各的桶
+        HouseTS.objects.filter(vendor_house_id='h1').update(monthly_price=16000)
+        HouseTS.objects.filter(vendor_house_id='h3').update(deal_status=enums.DealStatusType.OPENED)
+        House.objects.filter(vendor_house_id='h2').update(list_crawled_at=self.at(self.day, 5))
+        HouseTS.objects.create(vendor=self.vendor, vendor_house_id='h4', year=self.day.year,
+                               month=self.day.month, day=self.day.day, hour=0, is_synthesized=True)
+        extra = snapshot._blank('591', 'h5', TEST_DATE)
+        extra['source'] = 'carry'
+        self.write_snapshot(rows + [extra])
+        verdict, report = self.run_check()
+        self.assertEqual(verdict, 'DIFF')
+        self.assertEqual(report['mismatch_by_field'], {'monthly_price': 1})
+        self.assertEqual(report['state_mismatch'], {'deal_status': 1})
+        self.assertEqual(set(report['carry_mismatch']), {'last_seen_at', 'days_absent'})
+        self.assertEqual(report['only_db'], {'opened/synthesized': 1})
+        self.assertEqual(report['only_snapshot'], {'carry': 1})
+        with self.assertRaises(SystemExit):
+            self.run_check('--strict')
+
+    def test_past_day_checks_carry_from_ts_only(self):
+        from rental import snapshot_db
+        self.seed_db()
+        rows = snapshot_db.bootstrap_rows(self.vendor, self.day)
+        # 昨日 final 的情境：House 現值已被「今日」改寫，carry 只對 TS 可推的兩項
+        House.objects.filter(vendor_house_id='h1').update(
+            detail_crawled_at=self.at(self.day + timedelta(days=1), 3),
+            list_crawled_at=self.at(self.day + timedelta(days=1), 2))
+        self.write_snapshot(rows)
+        tomorrow = (self.day + timedelta(days=1)).isoformat()
+        with mock.patch.dict(os.environ, {'TWRH_TARGET_DATE': tomorrow}):
+            verdict, report = self.run_check()
+        self.assertEqual((verdict, report['carry_mode']), ('AGREE', 'ts'), report)
+        rows[0]['days_absent'] = 2      # h1 在 list 卻 days_absent≠0
+        self.write_snapshot(rows)
+        with mock.patch.dict(os.environ, {'TWRH_TARGET_DATE': tomorrow}):
+            verdict, report = self.run_check()
+        self.assertEqual((verdict, report['carry_mismatch']), ('DIFF', {'days_absent': 1}))
+
+    def test_missing_snapshot_skips(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        from django.core.management import call_command
+        out = StringIO()
+        with redirect_stdout(out):
+            call_command('snapshotcheck', '--date', TEST_DATE)
+        self.assertIn('no snapshot for', out.getvalue())
+
+
+class ManifestPartitionsTests(TestCase):
+    '''manifest 並列輸出：四份 manifest 各帶由分區檔算出的 partitions 節（每 vendor 一塊）；
+    缺分區＝該 vendor 不出現；算失敗只留 error。'''
+    fixtures = ['vendors']
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.mkdtemp(prefix='twrh-manifest-partitions-')
+        self.env = mock.patch.dict(os.environ, {'TWRH_ARTIFACT_DIR': self.tmp, 'TWRH_RAW_BUCKET': ''})
+        self.env.start()
+
+    def tearDown(self):
+        import shutil
+        self.env.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def write_rows(self, tree, run, rows):
+        from rental import artifacts
+        with mock.patch.dict(os.environ, {'TWRH_RUN_ID': run}):
+            writer = artifacts.ShardWriter(tree)
+            for row in rows:
+                writer.append({'vendor': '591', 'date': TEST_DATE, 'run': run, **row})
+            writer.close()
+
+    def test_partitions_alongside_db_counts(self):
+        from django.core.management import call_command
+        from rental import artifacts, snapshot
+        from crawlerrequest import manifests
+        y, m, d = (int(x) for x in TEST_DATE.split('-'))
+        now = timezone.now()
+        deal_time = timezone.make_aware(datetime(y, m, d))
+        self.write_rows('list', 'run', [
+            {'vendor_house_id': 'a', 'seen_at': now.isoformat(), 'fingerprint': 'f'},
+            {'vendor_house_id': 'b', 'seen_at': now.isoformat(), 'fingerprint': 'g'}])
+        self.write_rows('list', 'sweep-0801', [
+            {'vendor_house_id': 'a', 'seen_at': now.isoformat(), 'fingerprint': 'f'}])
+        self.write_rows('parsed', 'run', [
+            {'vendor_house_id': 'a', 'crawled_at': now.isoformat()},
+            {'vendor_house_id': 'c', 'crawled_at': now.isoformat()}])   # 同戶同輪會去重，故用兩戶
+        self.write_rows('deals', 'run', [
+            {'vendor_house_id': 'b', 'seen_at': now.isoformat(),
+             'deal_time': deal_time.isoformat(), 'n_day_deal': 2}])
+        for tree in ('list', 'parsed', 'deals'):
+            call_command('artifactpack', '--tree', tree, '--date', TEST_DATE, '--no-upload')
+        s1 = snapshot._blank('591', 'a', TEST_DATE); s1['source'] = 'detail'
+        s2 = snapshot._blank('591', 'b', TEST_DATE)
+        s2.update({'source': 'list', 'deal_status': snapshot.DEAL, 'deal_source': 'deals'})
+        artifacts.write_snapshot([s1, s2], '591', TEST_DATE)
+
+        built = {}
+        for path in manifests.build_all(date(y, m, d), base_dir=self.tmp):
+            import json
+            with open(path) as f:
+                mf = json.load(f)
+            built[mf['stage']] = mf
+        self.assertEqual(built['list']['partitions']['591'],
+                         {'n_stubs': 3, 'n_houses': 2, 'runs': ['run', 'sweep-0801']})
+        self.assertEqual(built['detail']['partitions']['591'],
+                         {'n_rows': 2, 'n_houses': 2, 'runs': ['run']})
+        self.assertEqual(built['deals']['partitions']['591'],
+                         {'n_events': 1, 'n_houses': 1, 'runs': ['run'], 'by_deal_date': {TEST_DATE: 1}})
+        self.assertEqual(built['snapshot']['partitions']['591'],
+                         {'n_total': 2, 'n_opened': 1, 'n_closed': 0, 'n_dealt': 1,
+                          'by_source': {'detail': 1, 'list': 1}, 'by_deal_source': {'deals': 1}})
+        # DB 版數字仍在（並列，不是取代）
+        self.assertEqual(built['snapshot']['counts']['n_total'], 0)
+        # 其他 vendor 無分區 → 不出現
+        self.assertEqual(set(built['list']['partitions']), {'591'})
+
+    def test_partitions_absent_is_empty(self):
+        from crawlerrequest import manifests
+        y, m, d = (int(x) for x in TEST_DATE.split('-'))
+        self.assertEqual(manifests.build_snapshot_manifest(date(y, m, d))['partitions'], {})

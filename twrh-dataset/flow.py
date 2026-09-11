@@ -32,7 +32,7 @@ import os
 import shutil
 import subprocess
 import sys
-from datetime import date as date_cls, datetime
+from datetime import date as date_cls, datetime, timedelta
 
 BASE = os.path.dirname(os.path.realpath(__file__))
 LOGS_DIR = os.path.join(BASE, '..', 'logs')
@@ -122,10 +122,11 @@ def manage(*args, check=True, **kwargs):
                check=check, **kwargs)
 
 
-def advisory_check(ctx, name, *args):
-    '''advisory 對帳 stage（seedcheck／filequeuecheck／parsedcheck）：跑指令、原樣轉印
-    輸出、把「<name>: AGREE｜DIFF」判定記進 manifests/<date>/checks.json（qualitycheck
-    的 Slack 摘要讀它）。子程序死掉沒判定行＝crashed(exit N)，不再無痕。'''
+def advisory_check(ctx, name, *args, record_as=None):
+    '''advisory 對帳 stage（seedcheck／filequeuecheck／parsedcheck／snapshotcheck）：跑指令、
+    原樣轉印輸出、把「<name>: AGREE｜DIFF」判定記進 manifests/<date>/checks.json（qualitycheck
+    的 Slack 摘要讀它；record_as 讓同一指令對不同日的兩次各記一筆）。子程序死掉沒判定行
+    ＝crashed(exit N)，不再無痕。'''
     result = manage(name, *args, check=False, capture_output=True, text=True)
     sys.stdout.write(result.stdout)
     sys.stderr.write(result.stderr)
@@ -142,8 +143,8 @@ def advisory_check(ctx, name, *args):
         verdict = 'crashed(exit {})'.format(result.returncode) \
             if result.returncode else 'no-output'
     if not DRY_RUN:
-        manifest_files.record_check(ctx.date, ctx.run_id, name, verdict, line)
-    print('{} → {}'.format(name, verdict), flush=True)
+        manifest_files.record_check(ctx.date, ctx.run_id, record_as or name, verdict, line)
+    print('{} → {}'.format(record_as or name, verdict), flush=True)
     return result
 
 
@@ -324,6 +325,15 @@ def stage_parsedcheck(ctx):
     advisory_check(ctx, 'parsedcheck')
 
 
+def stage_snapshotcheck(ctx):
+    # 4c 驗收（synthts／sync 之後，DB 當日列已齊）：昨日 final 與今日 provisional 各對一次
+    # HouseTS／House；advisory。昨日那筆記成 snapshotcheck-final（House 現值已是今日，
+    # carry 欄只對 TS 可推的兩項）
+    yesterday = (datetime.strptime(ctx.date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
+    advisory_check(ctx, 'snapshotcheck', '--date', yesterday, record_as='snapshotcheck-final')
+    advisory_check(ctx, 'snapshotcheck')
+
+
 def stage_synthts(ctx):
     if ctx.seed_mode == 'diff':
         manage('synthts')
@@ -451,6 +461,7 @@ RUN_STAGES = [
     ('snapshot', stage_snapshot, None),
     ('synthts', stage_synthts, None),
     ('sync', stage_sync, None),
+    ('snapshotcheck', stage_snapshotcheck, None),
     ('manifest', stage_manifest, manifest_artifacts),
     ('quality', stage_quality, None),
     ('logs', stage_logs, None),

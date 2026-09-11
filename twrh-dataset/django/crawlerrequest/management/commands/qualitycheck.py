@@ -68,7 +68,8 @@ class Command(BaseCommand):
             return None
         parts = []
         warn = False
-        for name in ('seedcheck', 'filequeuecheck', 'parsedcheck'):
+        for name in ('seedcheck', 'filequeuecheck', 'parsedcheck',
+                     'snapshotcheck-final', 'snapshotcheck'):
             verdict = run.get(name, {}).get('verdict', '—')
             if verdict != 'AGREE':
                 warn = True
