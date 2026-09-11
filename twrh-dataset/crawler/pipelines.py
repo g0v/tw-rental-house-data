@@ -69,6 +69,12 @@ class CrawlerPipeline(object):
                     short, house_id, date_str, run, now,
                     item['deal_time'], item.get('n_day_deal')))
                 return
+            if artifact_sink.is_closure(item):
+                # detail 404／拒解析：沒有 detail dict 也要留一列（只帶 deal_status），
+                # snapshot fold 才看得到關閉；欄位全 NULL 與 DB 的 NOT_FOUND 列同形
+                self.parsed_writer.append(artifact_sink.parsed_row(
+                    short, house_id, date_str, run, now, self._parser_version, item))
+                return
             if house_id in self._pending_stub:
                 fingerprint = self._pending_stub.pop(house_id)
                 self.stub_writer.append(artifact_sink.list_stub(

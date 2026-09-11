@@ -1234,6 +1234,14 @@ class ContractTests(TestCase):
         self.assertEqual(len(fp), 16)
         self.assertNotIn('A', fp)
 
+    def test_closure_item_is_detected(self):
+        from rental import contracts
+        closed = {'vendor': VENDOR_NAME, 'vendor_house_id': 'h', 'deal_status': 1}
+        self.assertTrue(contracts.is_closure(closed))
+        self.assertFalse(contracts.is_closure({**closed, 'deal_status': 0}))
+        self.assertFalse(contracts.is_closure({**closed, 'monthly_price': 1}))   # 解析列
+        self.assertFalse(contracts.is_deal_event(closed))
+
     def test_stub_and_parsed_rows_are_normalized(self):
         from rental import contracts
         now = timezone.now()
@@ -1403,6 +1411,47 @@ class ParsedCheckTests(QueueTestMixin, TestCase):
             call_command('parsedcheck', '--date', TEST_DATE)
         self.assertIn('parsedcheck: DIFF', out.getvalue())
         self.assertIn('"monthly_price": 1', out.getvalue())
+
+
+class PipelineClosureRowTests(QueueTestMixin, TestCase):
+    '''detail 404 的 GenericHouseItem（只帶 deal_status=NOT_FOUND）也要落 parsed 列，
+    snapshot fold 才摺得出 NOT_FOUND（DEAL sticky 由 fold 處理）。'''
+
+    def setUp(self):
+        super().setUp()
+        import tempfile
+        self.tmp = tempfile.mkdtemp(prefix='twrh-closure-')
+        self.env = mock.patch.dict(os.environ, {'TWRH_ARTIFACT_DIR': self.tmp, 'TWRH_RAW_BUCKET': '',
+                                                'TWRH_RUN_ID': 'run', 'TWRH_RAW_SINK': '0'})
+        self.env.start()
+
+    def tearDown(self):
+        import shutil
+        self.env.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        super().tearDown()
+
+    def test_not_found_item_writes_parsed_row_and_folds_closed(self):
+        from django.core.management import call_command
+        from crawler.pipelines import CrawlerPipeline
+        from rental import artifacts, snapshot
+        from scrapy_twrh.items import GenericHouseItem
+        y, m, d = (int(x) for x in TEST_DATE.split('-'))
+        pipeline = CrawlerPipeline()
+        pipeline.process_item(GenericHouseItem(
+            vendor=VENDOR_NAME, vendor_house_id='gone', deal_status=enums.DealStatusType.NOT_FOUND), None)
+        pipeline.close_spider()
+        call_command('artifactpack', '--tree', 'parsed', '--date', TEST_DATE, '--no-upload')
+        rows = artifacts.read_parsed_rows('591', TEST_DATE)
+        self.assertEqual([(r['vendor_house_id'], r['deal_status'], r['monthly_price']) for r in rows],
+                         [('gone', int(enums.DealStatusType.NOT_FOUND), None)])
+        self.assertEqual(House.objects.get(vendor_house_id='gone').deal_status,
+                         enums.DealStatusType.NOT_FOUND)
+        prev = snapshot._blank('591', 'gone', '2026-01-14')
+        prev['monthly_price'] = 9000
+        today = {r['vendor_house_id']: r for r in snapshot.fold([prev], [], rows, [], TEST_DATE)}
+        self.assertEqual((today['gone']['deal_status'], today['gone']['source']),
+                         (snapshot.NOT_FOUND, 'detail'))
 
 
 class FileQueueTests(TestCase):
