@@ -16,8 +16,10 @@ days_absent／last_seen_at。兩者語意對齊——`fingerprint_at_last_detail
 detail_crawled_at` 的舊判準。
 '''
 import hashlib
+import json
+import os
 from collections import namedtuple
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 HouseState = namedtuple('HouseState', [
     'open',                        # deal_status == OPENED
@@ -30,6 +32,36 @@ HouseState.__new__.__defaults__ = (False, None, None, None)
 SeedResult = namedtuple('SeedResult', [
     'stale', 'fingerprint', 'absent', 'returned', 'seeds',
     'n_open', 'n_in_list', 'skipped'])
+
+
+def seed_stamp_path(day):
+    '''DB 生種子時留的 stamp：`logs/progress/<date>.seed.json`（與 persist_queue 的
+    progress 檔同目錄＝repo 根的 logs/）。內容＝spider 算 stale 用的 `now` 與四類計數。
+    seedcheck 讀它把「現在」釘在同一刻——釘 RequestTS.created 仍晚幾分鐘
+    （查詢在 now 之後跑），N 天前那幾分鐘內 detail 過的戶就被純函數多判 stale
+    （2026-09-12：only_pure 23、全在 stale 類）。'''
+    root = os.environ.get('TWRH_PROGRESS_DIR') or os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'logs', 'progress')
+    return os.path.join(root, '{}.seed.json'.format(day.isoformat()))
+
+
+def write_seed_stamp(day, now, classes, n_seeds):
+    path = seed_stamp_path(day)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w') as f:
+        json.dump({'now': now.isoformat(),
+                   'classes': dict(classes), 'seeds': n_seeds}, f, ensure_ascii=False)
+    return path
+
+
+def read_seed_stamp(day):
+    '''回 (now: aware datetime, stamp dict)；沒有 stamp 回 (None, None)。'''
+    path = seed_stamp_path(day)
+    if not os.path.exists(path):
+        return None, None
+    with open(path) as f:
+        stamp = json.load(f)
+    return datetime.fromisoformat(stamp['now']), stamp
 
 
 def refresh_days_for(house_id, refresh_days, jitter_days=0):

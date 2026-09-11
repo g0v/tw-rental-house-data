@@ -93,8 +93,14 @@ class Command(BaseCommand):
             year=day.year, month=day.month, day=day.day)
         # 「現在」釘在 DB 生種子的時刻：stale 判準是 detail_crawled_at < now−refresh_days，
         # seedcheck 晚幾分鐘跑就會多算幾百戶（2026-09-10：晚 3 分鐘 +756）
-        seeded_at = db_rows.order_by('created').values_list('created', flat=True).first()
-        now = seeded_at or timezone.now()
+        # 優先讀 spider 留的 stamp（同一個 now）；沒有才退回第一列 created（仍晚幾分鐘）
+        now, stamp = seeding.read_seed_stamp(day)
+        now_source = 'seed_stamp'
+        if now is None:
+            now = db_rows.order_by('created').values_list('created', flat=True).first()
+            now_source = 'seeded_at'
+        if now is None:
+            now, now_source = timezone.now(), 'wallclock'
         result = seeding.select_seeds(
             today_stubs, yesterday_ids, state, now,
             refresh_days=options['refresh_days'],
@@ -119,7 +125,10 @@ class Command(BaseCommand):
             'only_db': len(only_db),
             'yesterday_source': yesterday_source,
             'now': now.isoformat(timespec='seconds'),
+            'now_source': now_source,
         }
+        if stamp:
+            report['db_classes'] = stamp.get('classes')
         agree = not only_pure and not only_db
         print('seedcheck: {} — {}'.format('AGREE' if agree else 'DIFF',
                                           json.dumps(report, ensure_ascii=False)))

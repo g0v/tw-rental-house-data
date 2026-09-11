@@ -441,6 +441,26 @@ class SeedMatrixTests(QueueTestMixin, TestCase):
         self.assertEqual(plain, {hid for hid in ids if
                                  House.objects.get(vendor_house_id=hid).detail_crawled_at < now - timedelta(days=7)})
 
+    def test_diff_seed_leaves_now_stamp_for_seedcheck(self):
+        '''spider 把算 stale 用的 now 與四類計數留在 logs/progress/<date>.seed.json；
+        seedcheck 讀同一個 now（釘 RequestTS.created 仍晚幾分鐘：2026-09-12 only_pure 23）。'''
+        import tempfile
+        from unittest import mock
+        from rental import seeding
+        self.make_house('h1', detail_crawled_at=timezone.now() - timedelta(days=30))
+        self.put_in_list('h1', self.today)
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict(os.environ, {'TWRH_PROGRESS_DIR': tmp}):
+            before = timezone.now()
+            seeds = self.make_spider(seed_mode='diff', refresh_days=7).gen_diff_seeds()
+            now, stamp = seeding.read_seed_stamp(self.today)
+            self.assertEqual(seeds, ['h1'])
+            self.assertTrue(before <= now <= timezone.now())
+            self.assertEqual(stamp['classes']['stale'], 1)
+            self.assertEqual(stamp['seeds'], 1)
+            self.assertTrue(seeding.seed_stamp_path(self.today).startswith(tmp))
+        self.assertEqual(seeding.read_seed_stamp(self.today - timedelta(days=3000)), (None, None))
+
     def test_diff_mode_fresh_returned_not_reseeded(self):
         '''回列但 12 小時內 detail 過＝同輪已處理，不重排。'''
         now = timezone.now()

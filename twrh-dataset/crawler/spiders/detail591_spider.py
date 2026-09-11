@@ -179,6 +179,10 @@ class Detail591Spider(Rental591Spider):
             'returned %d -> union %d (open %d, in-list %d, skipped %d)',
             len(stale), len(fingerprint), len(absent), len(returned),
             len(seeds), len(open_ids), len(in_list_today), skipped)
+        # stamp 給 seedcheck 釘同一個 now（見 seeding.seed_stamp_path）
+        seeding.write_seed_stamp(today, now, {
+            'stale': len(stale), 'fingerprint': len(fingerprint),
+            'absent': len(absent), 'returned': len(returned)}, len(seeds))
         return sorted(seeds)
 
     def parse_detail_and_done (self, response):
