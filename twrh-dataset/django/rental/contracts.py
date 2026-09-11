@@ -235,6 +235,18 @@ def is_deal_event(item):
         item.get('deal_time') is not None and set(item.keys()) <= DEAL_EVENT_ITEM_KEYS
 
 
+# detail 404／舊版模板拒解析時，package 只 yield 這三個 key（deal_status=NOT_FOUND）、沒有
+# RawHouseItem——關閉訊號也要進 parsed 分區，snapshot 才摺得出 NOT_FOUND
+# （2026-09-12 首個 snapshotcheck：3,924 戶 DB 已關閉、snapshot 仍 OPENED）
+CLOSURE_ITEM_KEYS = {'vendor', 'vendor_house_id', 'deal_status'}
+DEAL_STATUS_NOT_FOUND = 1   # rental.enums.DealStatusType.NOT_FOUND（只增不改）
+
+
+def is_closure(item):
+    return item.get('deal_status') == DEAL_STATUS_NOT_FOUND and \
+        set(item.keys()) <= CLOSURE_ITEM_KEYS
+
+
 def deal_event_row(vendor_short, house_id, date_str, run, seen_at, deal_time, n_day_deal):
     return {
         'vendor': vendor_short,
