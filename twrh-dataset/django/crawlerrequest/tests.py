@@ -1448,10 +1448,50 @@ class PipelineClosureRowTests(QueueTestMixin, TestCase):
         self.assertEqual(House.objects.get(vendor_house_id='gone').deal_status,
                          enums.DealStatusType.NOT_FOUND)
         prev = snapshot._blank('591', 'gone', '2026-01-14')
-        prev['monthly_price'] = 9000
+        prev.update({'monthly_price': 9000, 'rough_lat': 25.0, 'source': 'detail',
+                     'last_detail_at': timezone.now()})
         today = {r['vendor_house_id']: r for r in snapshot.fold([prev], [], rows, [], TEST_DATE)}
-        self.assertEqual((today['gone']['deal_status'], today['gone']['source']),
-                         (snapshot.NOT_FOUND, 'detail'))
+        # 404 只改狀態：租金／座標保留最後已知值、source 不變成 detail
+        self.assertEqual((today['gone']['deal_status'], today['gone']['source'],
+                          today['gone']['monthly_price'], today['gone']['rough_lat']),
+                         (snapshot.NOT_FOUND, 'carry', 9000, 25.0))
+        # DEAL sticky：昨日 DEAL 的戶 404 仍是 DEAL
+        prev['deal_status'] = snapshot.DEAL
+        today = {r['vendor_house_id']: r for r in snapshot.fold([prev], [], rows, [], TEST_DATE)}
+        self.assertEqual(today['gone']['deal_status'], snapshot.DEAL)
+
+    def test_synthts_fills_closed_and_dealt_rows_from_house(self):
+        from django.core.management import call_command
+        y, m, d = (int(x) for x in TEST_DATE.split('-'))
+        vendor = Vendor.objects.get(name=VENDOR_NAME)
+        old = timezone.now() - timedelta(days=3)
+        House.objects.create(vendor=vendor, vendor_house_id='c', monthly_price=12000, floor_ping=10.0,
+                             deal_status=enums.DealStatusType.NOT_FOUND, detail_crawled_at=old)
+        HouseTS.objects.create(vendor=vendor, vendor_house_id='c', year=y, month=m, day=d, hour=0,
+                               deal_status=enums.DealStatusType.NOT_FOUND)
+        House.objects.create(vendor=vendor, vendor_house_id='k', monthly_price=8000,
+                             deal_status=enums.DealStatusType.DEAL, deal_time=timezone.now(), n_day_deal=2,
+                             detail_crawled_at=old)
+        HouseTS.objects.create(vendor=vendor, vendor_house_id='k', year=y, month=m, day=d, hour=0,
+                               deal_status=enums.DealStatusType.DEAL, deal_time=timezone.now(), n_day_deal=2)
+        # Issue #9：House 已回滾成 DEAL、當日列是 NOT_FOUND → 狀態三欄不動
+        House.objects.create(vendor=vendor, vendor_house_id='s', monthly_price=5000,
+                             deal_status=enums.DealStatusType.DEAL, deal_time=timezone.now(), n_day_deal=1)
+        HouseTS.objects.create(vendor=vendor, vendor_house_id='s', year=y, month=m, day=d, hour=0,
+                               deal_status=enums.DealStatusType.NOT_FOUND)
+        # 早已關閉、今天沒列的戶：不建列
+        House.objects.create(vendor=vendor, vendor_house_id='z', monthly_price=1,
+                             deal_status=enums.DealStatusType.NOT_FOUND)
+        call_command('synthts')
+        c = HouseTS.objects.get(vendor_house_id='c')
+        k = HouseTS.objects.get(vendor_house_id='k')
+        s_row = HouseTS.objects.get(vendor_house_id='s')
+        self.assertEqual((c.monthly_price, c.floor_ping, c.is_synthesized, c.deal_status),
+                         (12000, 10.0, True, enums.DealStatusType.NOT_FOUND))
+        self.assertEqual((k.monthly_price, k.is_synthesized, k.deal_status), (8000, True, enums.DealStatusType.DEAL))
+        self.assertEqual((s_row.monthly_price, s_row.deal_status, s_row.deal_time),
+                         (5000, enums.DealStatusType.NOT_FOUND, None))
+        self.assertFalse(HouseTS.objects.filter(vendor_house_id='z').exists())
 
 
 class FileQueueTests(TestCase):
