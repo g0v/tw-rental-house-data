@@ -156,6 +156,11 @@ def main():
                     ', '.join('{} {}'.format(c, p) for c, p in sorted(s['deal_pages'].items()))))
 
     print('-- S3 manifests/{}:'.format(day))
+    checks = manifest(s3, day, 'checks')
+    if checks:
+        for run_id, items in sorted((checks.get('runs') or {}).items()):
+            print('   checks {}: {}'.format(run_id, ' / '.join(
+                '{} {}'.format(n, c.get('verdict')) for n, c in sorted(items.items()))))
     for stage in ('list', 'detail', 'deals', 'snapshot'):
         m = manifest(s3, day, stage)
         if not m:

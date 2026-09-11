@@ -6,6 +6,7 @@ dot-path 取值——貢獻者 `aws s3 sync` 拉回 manifests/ 分區後，
 '''
 import json
 import os
+from datetime import datetime, timezone
 
 SCHEMA_VERSION = 1
 STAGES = ('list', 'detail', 'deals', 'snapshot')
@@ -46,3 +47,26 @@ def get_metric(manifest, dotted):
             return None
         node = node[part]
     return node
+
+
+# --- advisory 對帳結果（seedcheck／filequeuecheck／parsedcheck）-----------------
+# flow 的 advisory stage 把判定記到 manifests/<date>/checks.json：qualitycheck 的
+# Slack 摘要讀它、runcheck 印它。沒有這層時 seedcheck 被 OOM SIGKILL 只留「stage 有
+# 標頭無輸出」（2026-09-11），門檻空轉一天才被人看到。
+
+CHECKS_STAGE = 'checks'
+
+
+def load_checks(date_str, base_dir=None):
+    return load_manifest(date_str, CHECKS_STAGE, base_dir) or \
+        {'date': date_str, 'stage': CHECKS_STAGE, 'runs': {}}
+
+
+def record_check(date_str, run_id, name, verdict, line='', base_dir=None, at=None):
+    '''把一次 advisory 檢查的判定併進當日 checks.json（同 run 同 name 後寫者勝）。'''
+    checks = load_checks(date_str, base_dir)
+    checks.setdefault('runs', {}).setdefault(run_id, {})[name] = {
+        'verdict': verdict, 'line': line[:400],
+        'at': at or datetime.now(timezone.utc).isoformat(timespec='seconds')}
+    write_manifest(checks, base_dir)
+    return checks

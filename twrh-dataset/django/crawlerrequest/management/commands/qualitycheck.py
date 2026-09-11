@@ -14,7 +14,7 @@ from datetime import date, datetime
 import sentry_sdk
 from django.core.management.base import BaseCommand, CommandError
 
-from crawlerrequest import manifests, quality
+from crawlerrequest import manifest_files, manifests, quality
 from crawlerrequest.notify import send_slack
 
 
@@ -54,7 +54,32 @@ class Command(BaseCommand):
         if n_events is not None:
             lines.append('• 成交事件（deals stage）: `{}`，中位 n_day_deal `{}`'.format(
                 n_events, deals.get('dist', {}).get('median_n_day_deal', '?')))
+        checks_line = self.checks_line(date_str)
+        if checks_line:
+            lines.append(checks_line)
         return '\n'.join(lines)
+
+    def checks_line(self, date_str):
+        '''雙軌 advisory 對帳（flow 記在 checks.json）：日跑 run 的三項判定一行帶出；
+        非 AGREE（DIFF／crashed）標 ⚠️——這是 Phase 4 切換階梯的門檻，不能無聲。'''
+        runs = manifest_files.load_checks(date_str).get('runs', {})
+        run = runs.get('run', {})
+        if not run:
+            return None
+        parts = []
+        warn = False
+        for name in ('seedcheck', 'filequeuecheck', 'parsedcheck'):
+            verdict = run.get(name, {}).get('verdict', '—')
+            if verdict != 'AGREE':
+                warn = True
+            parts.append('{} `{}`'.format(name, verdict))
+        sweeps_off = [rid for rid, checks in runs.items() if rid != 'run'
+                      and any(c.get('verdict') != 'AGREE' for c in checks.values())]
+        line = '• 雙軌對帳: ' + ' / '.join(parts)
+        if sweeps_off:
+            line += '，sweep 非 AGREE: `{}`'.format(', '.join(sorted(sweeps_off)))
+            warn = True
+        return ('⚠️ ' if warn else '') + line
 
     def handle(self, *_args, **options):
         if options['date']:
@@ -79,6 +104,9 @@ class Command(BaseCommand):
             if advisories:
                 body += '\n*advisory*\n' + '\n'.join(
                     '• ' + r.line() for r in advisories)
+            checks_line = self.checks_line(date_str)
+            if checks_line:
+                body += '\n' + checks_line
             body += '\n_manifests/{}/_'.format(date_str)
             print('{}: {} hard failure(s), {} advisory'.format(
                 date_str, len(failures), len(advisories)))

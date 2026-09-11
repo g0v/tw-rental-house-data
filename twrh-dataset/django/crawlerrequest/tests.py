@@ -1658,3 +1658,22 @@ class QueueBusyTests(QueueTestMixin, TestCase):
             updated=timezone.now() - timedelta(hours=3))
         self.assertEqual(self.busy(), 0)
         self.assertEqual(self.busy(hours=4), 1)
+
+
+class ManifestChecksTests(TestCase):
+    '''advisory 對帳判定落 manifests/<date>/checks.json（flow advisory_check →
+    qualitycheck Slack 摘要）：同 run 同 name 後寫者勝、不同 run 並存、缺檔回空殼。'''
+
+    def test_record_and_load(self):
+        import tempfile
+        from crawlerrequest import manifest_files as mf
+        with tempfile.TemporaryDirectory() as base:
+            self.assertEqual(mf.load_checks('2026-09-11', base)['runs'], {})
+            mf.record_check('2026-09-11', 'run', 'seedcheck', 'crashed(exit -9)', '', base)
+            mf.record_check('2026-09-11', 'run', 'seedcheck', 'AGREE', 'seedcheck: AGREE — {}', base)
+            mf.record_check('2026-09-11', 'sweep-0502', 'filequeuecheck', 'DIFF', 'filequeuecheck: DIFF', base)
+            runs = mf.load_checks('2026-09-11', base)['runs']
+            self.assertEqual(runs['run']['seedcheck']['verdict'], 'AGREE')
+            self.assertEqual(runs['run']['seedcheck']['line'], 'seedcheck: AGREE — {}')
+            self.assertEqual(runs['sweep-0502']['filequeuecheck']['verdict'], 'DIFF')
+            self.assertTrue(os.path.exists(mf.manifest_path('2026-09-11', 'checks', base)))

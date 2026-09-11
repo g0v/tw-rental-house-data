@@ -37,7 +37,9 @@ from datetime import date as date_cls, datetime
 BASE = os.path.dirname(os.path.realpath(__file__))
 LOGS_DIR = os.path.join(BASE, '..', 'logs')
 sys.path.insert(0, BASE)
+sys.path.insert(0, os.path.join(BASE, 'django'))
 from crawler import vendor_profiles  # noqa: E402
+from crawlerrequest import manifest_files  # noqa: E402  純函數層，無 Django
 
 DRY_RUN = False
 
@@ -101,15 +103,48 @@ class Ctx:
 
 
 def run(cmd, **kwargs):
-    print('+ {}'.format(' '.join(cmd)))
+    print('+ {}'.format(' '.join(cmd)), flush=True)
     if DRY_RUN:
         return subprocess.CompletedProcess(cmd, 0, '', '')
-    return subprocess.run(cmd, cwd=BASE, **kwargs)
+    check = kwargs.pop('check', True)
+    result = subprocess.run(cmd, cwd=BASE, **kwargs)
+    if result.returncode:
+        # 非零一律留痕（負數＝訊號，-9＝OOM SIGKILL）：advisory stage 的 check=False
+        # 以前把退出碼吞掉，2026-09-11 seedcheck 被 OOM 殺掉在 log 上完全無痕
+        print('!!! exit {}: {}'.format(result.returncode, ' '.join(cmd[:6])), flush=True)
+        if check:
+            raise subprocess.CalledProcessError(result.returncode, cmd)
+    return result
 
 
-def manage(*args, check=True):
+def manage(*args, check=True, **kwargs):
     return run(['poetry', 'run', 'python', 'django/manage.py', *args],
-               check=check)
+               check=check, **kwargs)
+
+
+def advisory_check(ctx, name, *args):
+    '''advisory 對帳 stage（seedcheck／filequeuecheck／parsedcheck）：跑指令、原樣轉印
+    輸出、把「<name>: AGREE｜DIFF」判定記進 manifests/<date>/checks.json（qualitycheck
+    的 Slack 摘要讀它）。子程序死掉沒判定行＝crashed(exit N)，不再無痕。'''
+    result = manage(name, *args, check=False, capture_output=True, text=True)
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    sys.stdout.flush()
+    verdict, line = None, ''
+    for out in result.stdout.splitlines():
+        if out.startswith(name + ':'):
+            line = out
+            rest = out[len(name) + 1:].strip()
+            verdict = 'AGREE' if rest.startswith('AGREE') else \
+                'DIFF' if rest.startswith('DIFF') else 'skip'
+            break
+    if verdict is None:
+        verdict = 'crashed(exit {})'.format(result.returncode) \
+            if result.returncode else 'no-output'
+    if not DRY_RUN:
+        manifest_files.record_check(ctx.date, ctx.run_id, name, verdict, line)
+    print('{} → {}'.format(name, verdict), flush=True)
+    return result
 
 
 def archive_scrapy_log(ctx, name):
@@ -251,9 +286,9 @@ def _artifactpack(tree):
               'scratch/local partition retained)'.format(tree))
 
 
-def stage_filequeuecheck(_ctx):
+def stage_filequeuecheck(ctx):
     # 4e 雙軌：檔案 queue 記帳對 request_ts；advisory
-    manage('filequeuecheck', check=False)
+    advisory_check(ctx, 'filequeuecheck')
 
 
 def stage_liststubs(_ctx):
@@ -261,9 +296,9 @@ def stage_liststubs(_ctx):
     _artifactpack('list')
 
 
-def stage_seedcheck(_ctx):
+def stage_seedcheck(ctx):
     # 4a 驗收：純函數從 stub 重算 seeds 對 queue；advisory，不擋 pipeline
-    manage('seedcheck', check=False)
+    advisory_check(ctx, 'seedcheck')
 
 
 def stage_parsed(_ctx):
@@ -271,9 +306,9 @@ def stage_parsed(_ctx):
     _artifactpack('parsed')
 
 
-def stage_parsedcheck(_ctx):
+def stage_parsedcheck(ctx):
     # 4b 驗收：當日 parquet 逐欄對 HouseTS；advisory（雙寫期 DB 是真相）
-    manage('parsedcheck', check=False)
+    advisory_check(ctx, 'parsedcheck')
 
 
 def stage_synthts(ctx):

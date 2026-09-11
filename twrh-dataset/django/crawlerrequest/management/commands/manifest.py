@@ -14,7 +14,7 @@ from datetime import date, datetime, timedelta
 
 from django.core.management.base import BaseCommand, CommandError
 
-from crawlerrequest import manifests
+from crawlerrequest import manifest_files, manifests
 
 
 def _parse(value):
@@ -66,5 +66,12 @@ class Command(BaseCommand):
                     s3.upload_file(path, bucket, key)
                     print('  -> s3://{}/{}'.format(bucket, key))
                 n += 1
+            # flow advisory stage 記的 checks.json（seedcheck／filequeuecheck／parsedcheck
+            # 判定）一併上雲，runcheck 讀 S3 就看得到門檻狀態
+            checks_path = manifest_files.manifest_path(current.isoformat(), manifest_files.CHECKS_STAGE)
+            if s3 is not None and os.path.exists(checks_path):
+                key = 'manifests/{}/checks.json'.format(current.isoformat())
+                s3.upload_file(checks_path, bucket, key)
+                print('  -> s3://{}/{}'.format(bucket, key))
             current += timedelta(days=1)
         print('{} manifest(s) written'.format(n))
