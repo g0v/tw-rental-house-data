@@ -73,7 +73,7 @@ poetry run python django/manage.py qualitycheck        # 1-2：quality/assertion
 poetry run python django/manage.py rawpack --reconcile # 3-1：當日 raw scratch 打成 raws/<vendor>/<date>.tar.zst＋index（同日多次 run＝與既有日包聯集）；--reconcile 報 member 數 vs queue done（D5 後 DB 無 raw，只報量）
 poetry run python django/manage.py artifactpack --tree list    # 4a：list stub shards → artifacts/list/<vendor>/<date>/<run>.jsonl.zst（＋S3 list/）
 poetry run python django/manage.py artifactpack --tree parsed  # 4b：parsed shards → artifacts/parsed/<vendor>/<date>/<run>.parquet（＋S3 parsed/）；一輪一檔、永不改寫別輪
-poetry run python django/manage.py seedcheck [--date] [--strict]   # 4a 驗收：純函數（rental/seeding.py）從 stub 重算四類 seeds 對 queue；advisory
+poetry run python django/manage.py seedcheck [--date] [--strict]   # 4a 驗收：純函數（rental/seeding.py）從 stub 重算四類 seeds 對 queue；advisory。只在 flow seed→detail 之間有效（事後跑 detail_crawled_at 已更新必 DIFF）；只載 OPENED（House 全歷史 850 萬列全載會 OOM）
 poetry run python django/manage.py parsedcheck [--date] [--strict] # 4b 驗收：當日 parsed parquet 逐欄對 HouseTS（DB Point 約定 x=lat／y=lng；parquet NULL 而 DB 有值另計，不算錯）
 poetry run python django/manage.py filequeuecheck [--date] [--strict]  # 4e 雙軌：檔案 queue（artifacts/queue/<vendor>/<date>/<type>/seeds｜terminals）對 request_ts 逐型計數
 poetry run python django/manage.py export -p           # periodic export：每月 1 日出上月（flow run 第一個 stage，爬取前）
@@ -214,7 +214,9 @@ delete or replace it with a copy.
 5. `syncstateful -ts` derives deal status / `n_day_deal` from the time series for houses the
    crawler only flagged; rows that already carry vendor-provided `deal_time` + `n_day_deal`
    (the deals stage) are copied as-is.
-6. `manifest` writes `manifests/<date>/{list,detail,deals,snapshot}.json`; `qualitycheck` asserts
+6. `manifest` writes `manifests/<date>/{list,detail,deals,snapshot}.json` (plus `checks.json`, written by
+   flow's advisory stages seedcheck／filequeuecheck／parsedcheck with their AGREE｜DIFF｜crashed verdict —
+   the qualitycheck Slack summary carries them as one「雙軌對帳」line); `qualitycheck` asserts
    `quality/assertions.yaml` against them and posts the single Slack summary/alert (errors also go
    to Sentry). `Stats` rows are frozen since D3 (statscheck retired).
 7. `export -p` writes `[YYYYMM][CSV][Raw] TW-Rental-Data.zip` into `twrh-dataset/datas/`.
