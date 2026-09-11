@@ -1713,9 +1713,13 @@ class DealEventAndSnapshotTests(QueueTestMixin, TestCase):
         from django.core.management import call_command
         from rental import artifacts, contracts
         deal_time = self.at(self.yesterday, 0)
-        item = {'vendor': VENDOR_NAME, 'vendor_house_id': 'h1', 'deal_status': 2,
-                'deal_time': deal_time, 'n_day_deal': 3}
+        # key 組＝scrapy_twrh deal_mixin 實際 yield 的（含 vendor_house_url；
+        # 2026-09-12 首夜就是少這個 key 判假、整晚事件沒落 shard）
+        item = {'vendor': VENDOR_NAME, 'vendor_house_id': 'h1', 'vendor_house_url': 'u',
+                'deal_status': 2, 'deal_time': deal_time, 'n_day_deal': 3}
         self.assertTrue(contracts.is_deal_event(item))
+        self.assertTrue(contracts.is_deal_event({k: v for k, v in item.items()
+                                                 if k != 'vendor_house_url'}))
         self.assertFalse(contracts.is_deal_event({**item, 'monthly_price': 1}))   # detail 列
         self.assertFalse(contracts.is_deal_event({**item, 'deal_status': 0}))
         row = contracts.deal_event_row('591', 'h1', TEST_DATE, 'run', timezone.now(), deal_time, 3)

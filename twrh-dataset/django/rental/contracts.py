@@ -222,8 +222,11 @@ def parsed_row(vendor_short, house_id, date_str, run, crawled_at,
 
 
 # deal591 的成交事件 item 只帶這幾個 key（沒有 detail 欄位）——pipeline 用它分辨
-# 「成交事件」與「detail 解析列」，兩者都是 GenericHouseItem
-DEAL_EVENT_ITEM_KEYS = {'vendor', 'vendor_house_id', 'deal_status', 'deal_time', 'n_day_deal'}
+# 「成交事件」與「detail 解析列」，兩者都是 GenericHouseItem。
+# 必須與 scrapy_twrh deal_mixin 實際 yield 的 key 一致：2026-09-12 首夜漏了
+# vendor_house_url，整晚 6,841 筆事件 is_deal_event 判假、deals 分區空
+DEAL_EVENT_ITEM_KEYS = {'vendor', 'vendor_house_id', 'vendor_house_url',
+                        'deal_status', 'deal_time', 'n_day_deal'}
 DEAL_STATUS_DEAL = 2   # rental.enums.DealStatusType.DEAL（只增不改）
 
 
