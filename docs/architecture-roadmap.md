@@ -370,20 +370,32 @@ Phase 1 一起做；順序由觸發時點決定，不硬性綁死。
 比 **zip 內 CSV 逐 byte 一致**（不比 zip 位元組——受 mtime／寫入順序影響）；
 4c 雙寫 9/11 起、平行三天，最早 9/14–9/15 可跑第一次，一致即切 export 讀
 parquet、`house_ts` 停寫，drop 提前到 9 月下旬。九月 zip 需 9/1–9/3：
-snapshot 由 DB 窗內 HouseTS 摺出補齊（#11 微調）。**唯一留到 10/1 的是
+snapshot 由 DB 窗內 HouseTS 摺出補齊（#11 微調）。~~**唯一留到 10/1 的是
 不可逆那步**：RDS 先 stop 只付儲存費，10/1 publisher 以 parquet 路徑出九月
-zip、DB 路徑再出一份對照，一致才 destroy——10/1 從門檻變成最後一次確認。
+zip、DB 路徑再出一份對照，一致才 destroy——10/1 從門檻變成最後一次確認。~~
+**2026-09-12 改**：10/1 的 DB 路徑對照取消——S3 停寫 house_ts 後 DB 只有到停寫日的
+資料，10/1 再比只能比一段，資訊不比 9/18–20 三次區間逐 byte 比對多。門檻就是那三次；
+S4 完成、house 三表停寫後 RDS 先留最後一份 RDS snapshot 再 destroy（九月內），
+十月九月 zip 出貨無異常再刪 RDS snapshot。
 
-**切換階梯重排（2026-09-10 拍板，依 4b 一天驗過、export 改區間比對的實況）**：
+**切換階梯重排（2026-09-10 拍板，依 4b 一天驗過、export 改區間比對的實況；2026-09-12 依依賴關係再排、
+取消 10/1 DB 對照）**：
+
+依賴：S1 → S2（pipeline 的指紋變動判定拿 house_etc.list_dict 比，DB 版種子的指紋類靠它，種子先搬到
+snapshot 才能停寫 house_etc）；S1 → S3b（DB 版種子讀 House／HouseTS）；S1 本身要 snapshotcheck 的
+carry 桶先乾淨。S4 只碰 request_ts，與 house 三表無關、可平行、門檻最早到（filequeuecheck 9/13 滿三天）。
+程式碼 S1／S3／S4 可同時開分支；序列化的只有「每晚一個寫入路徑變更」與三天 AGREE 的日曆時間。
 
 | 步 | 條件 | 動作 | 估 |
 |---|---|---|---|
-| S1 seed 純函數上位 | seedcheck 連續 3 天 AGREE | seed stage 改由 `seeding.select_seeds` 產種子（狀態改讀昨日 snapshot carry 欄），DB 判準退役；仍寫 request_ts | 9/16–17 |
-| S2 house_etc 退役 | parsedcheck 連續 3 天 AGREE | 停寫 detail_dict／list_dict；rerun 只出 parquet；drop `house_etc` | 9/16–17 |
-| S3 export 切 parquet | 區間 export 兩路 CSV 逐 byte 一致 3 次 | export 讀 snapshot；house_ts／house 停寫；manifest／quality 改讀分區 | 9/18–20 |
-| S4 queue 出 DB | filequeuecheck 連續 3 天 AGREE＋4e 第二步本機驗過 | 雲上一天雙軌（檔案認領、DB 記帳）→ 隔日 DB 停寫、drop `request_ts` | 9/21–23 |
-| S5 RDS stop | **S4 完成即 stop**（維護者拍板 2026-09-10，不等 10/1）；10/1 對照時臨時 start | 只付儲存費 | 9/24 起 |
-| S6 RDS destroy＋4f 去 Django | 10/1 parquet 路徑出九月 zip、DB 路徑對照一致 | destroy；4f | 10/2 後 |
+| S4a queue 雲上雙軌 | filequeuecheck 連續 3 天 AGREE（9/13 到）＋4e 第二步本機驗過（9/15） | 檔案認領、DB 記帳一天；queuebusy／manifest queue 統計改讀檔案 | 9/15 |
+| S1 seed 純函數上位 | seedcheck 連續 3 天 AGREE（9/13 起算） | seed stage 改由 `seeding.select_seeds` 產種子（狀態改讀昨日 snapshot carry 欄），DB 判準退役；仍寫 request_ts | 9/16 |
+| S4b queue 出 DB | S4a 一天雙軌一致 | DB 停寫 request_ts、drop | 9/17 |
+| S2 house_etc 退役 | parsedcheck 連續 3 天 AGREE（已到）＋S1 上線一晚無紅 | 停寫 detail_dict／list_dict；rerun 只出 parquet；drop `house_etc` | 9/18 |
+| S3a export 切 parquet（讀取端） | #11 回填完（9/13）、export 讀 snapshot 落碼 | 區間 export 兩路 CSV 逐 byte 比對 3 次；manifest／quality 改讀分區。只改讀取端，可與上面重疊 | 9/18–20 |
+| S3b house 三表停寫 | S3a 三次一致 | house／house_ts 停寫；synthts／syncstateful 退役 | 9/21 |
+| S5 RDS 收尾 | S1–S4 全完成、house 三表停寫（DB 無任何讀寫點） | 留最後一份 RDS snapshot → **destroy（九月內，維護者明講授權）** | 9/22–24 |
+| S6 4f 去 Django；刪 RDS snapshot | 10/1 parquet 路徑出九月 zip、月報綠；十月確認無異常 | 4f；刪 RDS snapshot | 10 月 |
 
 程式週（9/11–9/15）：9/11 4d 寫入側＋4c 接線（bootstrap 工具）✅、9/12 首夜兩個小修（deal key 白名單、seed now stamp）＋snapshotcheck＋manifest 並列輸出 ✅、
 9/13 4d 推導側＋#11 回填、9/14 export 讀 snapshot 首次區間比對、9/15 緩衝／4e 第二步落碼。
@@ -675,6 +687,10 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 
 ## 編修紀錄
 
+- **2026-09-12** 切換階梯依依賴關係再排（S4 提前與 S1 平行、S3 拆讀取端／停寫、S2 在 S1 後）；
+  **取消 10/1 DB 路徑對照**（停寫後 DB 只剩一段，資訊不比三次區間比對多）：RDS 於 S1–S4 完成、
+  house 三表停寫後留 RDS snapshot 即 destroy（九月內），十月出貨確認後刪 RDS snapshot。
+  同日：關閉／成交當天保留最後已知狀態（closure 三件＋synthts 補齊 9/1–9/11）。
 - **2026-09-09** **Phase 3 結案**（9/9 早日跑綠）；Phase 4 衝刺開工（清理 migration、4a、4b）。
   前一日：D6b 上線、開放問題 #8／#10／#11 拍板、#12 去 Django 記入、衝刺表壓成五天、
   4c／export 門檻改區間比對。
