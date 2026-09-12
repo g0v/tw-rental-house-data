@@ -10,6 +10,10 @@ House（現值＝最新 snapshot）。
 - 在 list：last_fingerprint＝最後一次 stub 指紋
 - 今日有 detail（parsed）：整列覆蓋，source='detail'，last_detail_at＝crawled_at，
   fingerprint_at_last_detail＝last_fingerprint（今日在 list 就是今日的，否則是最後已知的）
+- 今日 detail 是 404／拒解析（parsed 列只帶 deal_status=NOT_FOUND、其餘 NULL）：只當
+  狀態訊號——deal_status 改 NOT_FOUND（DEAL sticky 照舊），租金／座標等沿用最後已知值，
+  source／last_detail_at 不動（DB 的 detail_crawled_at 也不因 404 更新）。關閉當天那列
+  保留最後已知狀態，與 synthts 補齊關閉／成交列同形（2026-09-12 拍板）
 - 只在 list：list 給的欄位（價格／格局…）覆蓋、其餘沿用昨日，source='list'
 - 都沒有：整列沿用昨日，source='carry'，days_absent+1
 - 在 list：last_seen_at＝最後 seen_at、days_absent=0；first_seen_at 只在首見時設
@@ -30,6 +34,14 @@ _LIST_FIELDS = [name for name, _ in contracts.LIST_STUB_FIELDS
                                 'seen_at', 'fingerprint', 'stub_version')]
 _PARSED_COPY = [name for name, _ in contracts.PARSED_FIELDS
                 if name not in ('vendor', 'vendor_house_id', 'date', 'run', 'parsed_version')]
+_CLOSURE_BLANK = [name for name in _PARSED_COPY
+                  if name not in ('deal_status', 'crawled_at', 'parser_version')]
+
+
+def is_closure_row(parsed):
+    '''pipeline 對 detail 404／拒解析寫的 parsed 列：只帶 deal_status=NOT_FOUND，其餘 NULL。'''
+    return parsed.get('deal_status') == NOT_FOUND and \
+        all(parsed.get(name) is None for name in _CLOSURE_BLANK)
 
 
 def _latest(rows, key='crawled_at'):
@@ -76,7 +88,16 @@ def fold(prev_rows, stubs, parsed_rows, deal_events, date_str, vendor='591'):
         if stub is not None and stub.get('fingerprint'):
             row['last_fingerprint'] = stub['fingerprint']
 
-        if parsed is not None:
+        if parsed is not None and is_closure_row(parsed):
+            # 404：只改狀態、不清值（DEAL sticky）
+            if not (yesterday is not None and yesterday['deal_status'] == DEAL):
+                row['deal_status'] = NOT_FOUND
+            if stub is not None:
+                for name in _LIST_FIELDS:
+                    if stub.get(name) is not None:
+                        row[name] = stub[name]
+                row['source'] = 'list'
+        elif parsed is not None:
             for name in _PARSED_COPY:
                 if name in parsed:
                     row[name] = parsed[name]

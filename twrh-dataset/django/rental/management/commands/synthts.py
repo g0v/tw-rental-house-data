@@ -32,6 +32,10 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
+            '--closed-only', action='store_true',
+            help='只跑關閉／成交列補齊（回補過去日期用：第一段會對 OPENED 戶建當日列，'
+                 '對過去日期會生出當時不存在的戶）')
+        parser.add_argument(
             '--fresh-hours', type=int, default=12,
             help='detail_crawled_at 在 N 小時內視為本輪已爬、不合成（預設 12，'
                  '與 detail591 diff 種子的同輪窗口一致）')
@@ -44,6 +48,10 @@ class Command(BaseCommand):
             'hour': models.current_stepped_hour(),
         }
         fresh_cutoff = timezone.now() - timedelta(hours=options['fresh_hours'])
+
+        if options['closed_only']:
+            self.fill_closed(ts)
+            return
 
         # 本輪爬過 detail 的物件快照已完整，不需要合成
         targets = House.objects.filter(
@@ -81,3 +89,42 @@ class Command(BaseCommand):
 
         print('{}/{}/{}: synthts filled {} (rows created {}, untouched {})'.format(
             ts['year'], ts['month'], ts['day'], n_filled, n_created, n_untouched))
+        self.fill_closed(ts)
+
+    def fill_closed(self, ts):
+        copy_fields = [
+            f.name for f in House._meta.get_fields()
+            if getattr(f, 'concrete', False) and f.name not in SKIP_FIELDS
+            and any(tf.name == f.name for tf in HouseTS._meta.get_fields()
+                    if getattr(tf, 'concrete', False))
+        ]
+        # 關閉／成交列（2026-09-12 拍板）：pipeline 對 404 只寫 deal_status、deal591 只寫
+        # 三個事件欄，當日列其餘全 NULL——公開 CSV 成交當天那列沒租金沒座標。這裡把
+        # House 現值（最後一次 detail）補進去，與 snapshot「關閉當天保留最後已知狀態」
+        # 同形（S3 export 兩路比對的前提）。只補既有列、不建列；狀態三欄不動
+        # （Issue #9 sticky：House 可能已回滾成 DEAL 而該列是 NOT_FOUND）。
+        state_fields = {'deal_status', 'deal_time', 'n_day_deal'}
+        closed_fields = [name for name in copy_fields if name not in state_fields]
+        n_closed_filled = 0
+        closed_rows = list(HouseTS.objects.filter(**ts).exclude(
+            deal_status=DealStatusType.OPENED))
+        for i in range(0, len(closed_rows), 1000):
+            chunk = closed_rows[i:i + 1000]
+            houses = {(h.vendor_id, h.vendor_house_id): h for h in House.objects.filter(
+                vendor__in={r.vendor_id for r in chunk},
+                vendor_house_id__in=[r.vendor_house_id for r in chunk])}
+            for house_ts in chunk:
+                house = houses.get((house_ts.vendor_id, house_ts.vendor_house_id))
+                if house is None:
+                    continue
+                filled = [name for name in closed_fields
+                          if getattr(house_ts, name) is None and getattr(house, name) is not None]
+                if not filled:
+                    continue
+                for name in filled:
+                    setattr(house_ts, name, getattr(house, name))
+                house_ts.is_synthesized = True
+                house_ts.save(update_fields=filled + ['is_synthesized', 'updated'])
+                n_closed_filled += 1
+        print('{}/{}/{}: synthts filled {} closed/dealt rows from House'.format(
+            ts['year'], ts['month'], ts['day'], n_closed_filled))

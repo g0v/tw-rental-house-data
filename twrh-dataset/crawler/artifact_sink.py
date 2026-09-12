@@ -6,7 +6,7 @@ scrapy 側的轉發。
 '''
 from rental.artifacts import ShardWriter, run_id, vendor_dirname  # noqa: F401
 from rental.contracts import (  # noqa: F401
-    deal_event_row, is_deal_event, list_fingerprint, list_stub, parsed_row)
+    deal_event_row, is_closure, is_deal_event, list_fingerprint, list_stub, parsed_row)
 
 
 def enabled():
