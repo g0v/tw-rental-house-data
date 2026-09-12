@@ -354,12 +354,12 @@ Phase 1 一起做；順序由觸發時點決定，不硬性綁死。
 | 日 | 做什麼 | 驗收 |
 |---|---|---|
 | 9/9（三）✅ 程式上線 | Phase 3 結案；清理 migration；4a list stub＋seed 純函數（仍寫舊欄位）；**4b** parsed parquet 雙寫＋rerun_from_raws 改產 parquet（純追加寫入、不動讀取端，與 4a 同晚上線可接受）——**已於 9/9 早併入並 migrate**，白天 sweep 驗分區檔、9/10 早驗 seedcheck | seed 純函數對當日資料重算與 DB 判準一致；當日 parquet 列數＝house_etc 更新數 |
-| 9/10（四） | **4e 檔案分片 queue 動工**：分片＋終結檔機制與 seeds 來源無關，不必等 4c；先與 request_ts 雙軌（終結檔照寫、seeds==terminals 兩邊各算一次） | 本機 local executor 兩軌對帳一致 |
-| 9/11（五） | 4c snapshot parquet 雙寫（carry 五欄＋成交日來源欄摺入、synthts 併入 stage） | snapshot 對 house_ts 逐欄一致 |
-| 9/12（六） | 4c 收尾＋manifest 改讀 parquet；**4d** deals parquet，DEAL 推導改 deals＋snapshot 純函數，雙寫 House | 兩軌 DEAL 一致 |
-| 9/13（日） | 4e 本機驗完＋B 層矩陣重寫成檔案版；sweep 的 queuebusy 改看檔案 | 矩陣綠 |
-| 9/14（一） | 4e 雲上一天雙軌（**當晚單獨上線**，不疊其他寫入路徑變更） | seeds==terminals 由檔案算出，與 request_ts 對帳一致 |
-| 9/15（二） | 緩衝，不排事；提早則進切換階梯 | — |
+| 9/10（四）✅ | **4e 檔案分片 queue 動工**（實況：9/9 午備妥於 `arch-4e`、9/10 07:00 併入，雙軌記帳＋filequeuecheck 上線；9/11 起連日 AGREE）：分片＋終結檔機制與 seeds 來源無關，不必等 4c；先與 request_ts 雙軌（終結檔照寫、seeds==terminals 兩邊各算一次） | 本機 local executor 兩軌對帳一致 |
+| 9/11（五）✅ | 4c snapshot parquet 雙寫（carry 五欄＋成交日來源欄摺入、synthts 併入 stage）（實況：4d 寫入側＋4c 接線同日上線 `f4809864`，bootstrap 起點 9/11；synthts 仍是獨立 stage、留到 S3 export 切換時退場） | snapshot 對 house_ts 逐欄一致 |
+| 9/12（六）✅ | 4c 收尾＋manifest 改讀 parquet；**4d** deals parquet，DEAL 推導改 deals＋snapshot 純函數，雙寫 House（實況：首夜兩紅修畢；snapshotcheck＋manifest partitions **並列**上線（改讀順延 S3）；首個實測抓到 404 關閉缺口→closure 三件併入、關閉／成交當天保留最後已知狀態；4d 推導側順延 9/13） | 兩軌 DEAL 一致 |
+| 9/13（日） | ~~4e 本機驗完＋B 層矩陣重寫成檔案版；sweep 的 queuebusy 改看檔案~~ → 依 9/10 重排：4d 推導側＋#11 回填（9/1–9/10 由 HouseTS 摺出；DB 關閉列已於 9/12 先補齊） | 矩陣綠 |
+| 9/14（一） | ~~4e 雲上一天雙軌~~（已於 9/10 提前上線）→ 依 9/10 重排：export 讀 snapshot，首次區間兩路 CSV 逐 byte 比對 | seeds==terminals 由檔案算出，與 request_ts 對帳一致 |
+| 9/15（二） | 緩衝／4e 第二步（切認領路徑）落碼；提早則進切換階梯 | — |
 
 底線：每晚只上一個動到 pipeline 寫入路徑的變更（9/7 一晚疊三個的教訓）；
 衝刺期間有紅先停下歸因；維護者同期 vendor survey。
