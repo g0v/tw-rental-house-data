@@ -15,7 +15,7 @@ tags:
 <!--more-->
 
 > 附註：
-> - 逐年資料，指的是以年為單位釋出的原始資料，包含 [2020](http://bit.ly/tw-rental-data-2020-raw-csv) 與 [2021](https://tw-rental-data.s3.us-west-2.amazonaws.com/[202101][CSV][Raw]%20TW-Rental-Data.zip)兩份。
+> - 逐年資料，指的是以年為單位釋出的原始資料，包含 [2020](https://twrh.s3.ap-northeast-3.amazonaws.com/2020/%5B2020%5D%5BCSV%5D%5BRaw%5D%20TW-Rental-Data.zip) 與 [2021](https://twrh.s3.ap-northeast-3.amazonaws.com/2021/%5B2021%5D%5BCSV%5D%5BRaw%5D%20TW-Rental-Data.zip)兩份。
 > - 逐月資料，指的是以月為單位釋出的原始資料，同樣使用 2020 與 2021 ，兩年共 24 個資料集
 
 ## 對照逐年與逐月資料，可知 8-9 月資料找回大半，但 7 月資料缺失依然
