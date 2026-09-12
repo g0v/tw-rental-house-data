@@ -1482,7 +1482,14 @@ class PipelineClosureRowTests(QueueTestMixin, TestCase):
         # 早已關閉、今天沒列的戶：不建列
         House.objects.create(vendor=vendor, vendor_house_id='z', monthly_price=1,
                              deal_status=enums.DealStatusType.NOT_FOUND)
+        # 回補過去日期用 --closed-only：不建 OPENED 戶的列
+        House.objects.create(vendor=vendor, vendor_house_id='o', monthly_price=3,
+                             deal_status=enums.DealStatusType.OPENED)
+        call_command('synthts', '--closed-only')
+        self.assertFalse(HouseTS.objects.filter(vendor_house_id='o').exists())
+        self.assertEqual(HouseTS.objects.get(vendor_house_id='c').monthly_price, 12000)
         call_command('synthts')
+        self.assertTrue(HouseTS.objects.filter(vendor_house_id='o').exists())
         c = HouseTS.objects.get(vendor_house_id='c')
         k = HouseTS.objects.get(vendor_house_id='k')
         s_row = HouseTS.objects.get(vendor_house_id='s')
