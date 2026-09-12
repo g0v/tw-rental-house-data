@@ -66,7 +66,7 @@ poetry run scrapy crawl deal591 -L INFO -a lookback_days=7      # #229 deals sta
 # Django management commands (all under django/, not backend/ as the README says)
 poetry run python django/manage.py queuefinalize       # 1-1 收工鐵律 seeds==terminals；紅→exit 1＋Slack；附終結列滾動清理（90d）
 poetry run python django/manage.py queuebusy --vendor "591 租屋網"   # 同 vendor 同日 bucket 2h 內有 in_flight 即 exit 1（flow sweep 互斥）
-poetry run python django/manage.py synthts             # L-C diff 模式：合成被 skip 物件的當日 HouseTS（標 is_synthesized）
+poetry run python django/manage.py synthts             # L-C diff 模式：合成被 skip 物件的當日 HouseTS（標 is_synthesized）；第二段把當日關閉／成交列的 NULL 欄從 House 補齊（--closed-only 只跑第二段，回補過去日用）
 poetry run python django/manage.py syncstateful -ts    # sync deal status into time-series
 poetry run python django/manage.py manifest            # 1-2：產 manifests/<date>/{list,detail,snapshot}.json（--from/--to --source backfill 可回補）
 poetry run python django/manage.py qualitycheck        # 1-2：quality/assertions.yaml × manifest 斷言，單一 Slack 通道（D3 起唯一觀測通道；statscheck／distcheck／fill-rate ext 已退役）
@@ -306,6 +306,8 @@ Set it manually (or use `flow.py run --date`) when re-running part of a pipeline
 - `RequestTS` (crawlerrequest app) — crawl queue；`Stats` 已於 Phase 4 清理（0006）drop。
 - GeoDjango `PointField` (WGS84 / SRID 4326) for `rough_coordinate`.
 - Deal status is sticky: once a house is `DEAL`, the pipeline will not overwrite it with `NOT_FOUND`.
+- 關閉／成交當天那列保留最後已知狀態（2026-09-12 拍板）：DB 由 synthts 第二段從 House 補齊；snapshot 由 fold
+  對 404 關閉列（pipeline 寫的只帶 deal_status 的 parsed 列，`contracts.is_closure`）只改狀態不清值。
 - `RequestTS.request_type` has three values: `LIST` / `DETAIL` / `DEAL`; queuefinalize's zero-seed
   rule applies to list/detail only (a day without a deals run is legal), residue rules to all.
 - Raw HTML（arch 3-1／D5）：pipeline 落 `raws/scratch/`，收尾 `rawpack` 打成
