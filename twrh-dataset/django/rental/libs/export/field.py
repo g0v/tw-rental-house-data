@@ -12,7 +12,8 @@ class Field():
         enum=None,
         annotate=None,
         fn=None,
-        child_fields=[]):
+        child_fields=[],
+        source=None):
 
         self.column = column
         self.zh = zh
@@ -24,6 +25,10 @@ class Field():
 
         if field:
             self.en = '{}_{}'.format(self.en, field)
+
+        # 查詢結果裡讀哪個 key；預設同 en（含 field 後綴）。annotate 名不能與 model
+        # 欄位同名（Django 擋 conflicts with a field），要覆寫既有欄位時用它另起名
+        self.source = source or self.en
 
         if not annotate and self.field:
             self.annotate = KeyTextTransform(self.field, self.column)
