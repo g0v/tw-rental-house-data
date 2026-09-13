@@ -197,6 +197,35 @@ def read_snapshot(vendor_short, date_str, bucket=None):
     return pq.read_table(path).to_pylist()
 
 
+def read_snapshot_rows_for(vendor_short, date_str, hids, bucket=None):
+    '''某日 snapshot 裡指定戶的列（pyarrow 過濾，不整檔 to_pylist）；檔不存在回 []。'''
+    if not hids:
+        return []
+    path = _fetch_snapshot(vendor_short, date_str, bucket)
+    if path is None:
+        return []
+    import pyarrow.parquet as pq
+    return pq.read_table(path, filters=[('vendor_house_id', 'in', sorted(hids))]).to_pylist()
+
+
+def find_closed_rows(vendor_short, hids, before_date, days, bucket=None):
+    '''往前掃 days 天（before_date 之前、不含）的 snapshot，取每戶最近的一列：
+    給 fold 的 closed_rows（關閉多日後才進成交列表的戶）。回 {hid: row}。'''
+    from datetime import date as date_cls, timedelta
+    found, todo = {}, set(hids)
+    day = date_cls.fromisoformat(before_date)
+    for _ in range(days):
+        if not todo:
+            break
+        day -= timedelta(days=1)
+        for row in read_snapshot_rows_for(vendor_short, day.isoformat(), todo, bucket):
+            hid = row['vendor_house_id']
+            if hid in todo:
+                found[hid] = row
+                todo.discard(hid)
+    return found
+
+
 def write_snapshot(rows, vendor_short, date_str):
     '''摺疊結果 → snapshot/<vendor>/<date>.parquet（tmp＋rename）。回傳 (path, n_rows)。'''
     import pyarrow as pa
