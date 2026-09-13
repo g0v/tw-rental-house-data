@@ -2,6 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
 <title>共用照片檢視</title>
 <style>
   :root { --fg:#222; --muted:#777; --line:#ddd; --bg:#fafafa; --card:#fff; --acc:#0b6; }
@@ -89,7 +90,7 @@
       <td>${esc(h.author)}</td><td class="agent">${esc(h.agent)}</td><td>${esc(h.era)}</td><td class="num">${esc(h.n_photos)}</td>
     </tr>`).join('');
     return `<section class="card">
-      <div><a href="${esc(p.url)}" target="_blank" rel="noopener"><img loading="lazy" src="${esc(p.url)}" alt=""></a>
+      <div><a href="${esc(p.url)}" target="_blank" rel="noopener"><img loading="lazy" referrerpolicy="no-referrer" src="${esc(p.url)}" alt=""></a>
         <div class="meta">${esc(p.pid)}<br>上傳 ${esc(uploadDate(p.pid))}</div></div>
       <div><h2>${p.n} 個物件共用${tags}</h2>
         <table><thead><tr><th>物件</th><th>首見</th><th>狀態</th><th>租金</th><th>坪</th><th>樓</th><th>型態</th><th>區</th><th>地址</th><th>刊登者</th><th>仲介</th><th>來源</th><th>照片數</th></tr></thead>
