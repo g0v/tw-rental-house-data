@@ -1,5 +1,6 @@
 from django.core.paginator import Paginator
-from django.db.models import F
+from django.db.models import Case, CharField, F, Value, When
+from django.db.models.functions import Concat
 from rental.libs import filters
 from rental.models import House
 from rental import enums
@@ -10,7 +11,13 @@ class RawExport(Export):
     headers = [
         Field('vendor_house_id', '物件編號'),
         Field('vendor', '租屋平台', fn=Export.lookup_vendor),
-        Field('vendor_house_url', '物件網址'),
+        # 物件網址：2026 改版後 detail 解析不再帶 URL、House.vendor_house_url 恆空
+        # （202603／202608 月包整欄 '-'），改由 vendor 樣板生成；其他 vendor 退回存值
+        Field('vendor_house_url', '物件網址', source='house_url', annotate=Case(
+            When(vendor__name='591 租屋網',
+                 then=Concat(Value('https://rent.591.com.tw/'), F('vendor_house_id'),
+                             output_field=CharField())),
+            default=F('vendor_house_url'), output_field=CharField())),
         Field('created', '物件首次發現時間'),
         Field('updated', '物件最後更新時間'),
         Field('top_region', '縣市', enum=enums.TopRegionType),
@@ -96,7 +103,7 @@ class RawExport(Export):
 
         for header in self.headers:
             if header.annotate:
-                dict_fields[header.en] = header.annotate
+                dict_fields[header.source] = header.annotate
             elif header.en != header.column:
                 extra_fields[header.en] = F(header.column)
             else:

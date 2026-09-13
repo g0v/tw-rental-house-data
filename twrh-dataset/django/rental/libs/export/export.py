@@ -2,6 +2,9 @@ import json
 import csv
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
+from django.db.models import TextField
+from django.db.models.fields.json import KeyTextTransform
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from .json_writer import ListWriter
 from .field import Field
@@ -29,7 +32,16 @@ class Export(ABC):
         self.vendors = {}
 
         for facility in self.facilities:
-            self.headers.append(Field('facilities', '提供家具_{}？'.format(facility), field=facility))
+            annotate = None
+            if facility in ('桌子', '椅子'):
+                # 591 2026 模板把桌子、椅子合併成一項「桌椅」——兩欄照舊語意出，
+                # 沒有各自的 key 時退回「桌椅」（2026-09-13，schema 1.0 前的 0.3 修正）
+                annotate = Coalesce(
+                    KeyTextTransform(facility, 'facilities'),
+                    KeyTextTransform('桌椅', 'facilities'),
+                    output_field=TextField())
+            self.headers.append(Field('facilities', '提供家具_{}？'.format(facility),
+                                      field=facility, annotate=annotate))
 
     @classmethod
     def lookup_vendor(cls, vendor_id):
@@ -111,12 +123,13 @@ class Export(ABC):
             obj = {}
             for header in self.headers:
                 field = header.en
-                if field not in house:
+                source = header.source
+                if source not in house:
                     row.append(header.to_human(None))
                     obj[field] = header.to_machine(None)
                 else:
-                    val = header.to_human(house[field], use_tf)
-                    json_val = header.to_machine(house[field])
+                    val = header.to_human(house[source], use_tf)
+                    json_val = header.to_machine(house[source])
 
                     if print_enum:
                         obj[field] = json_val
