@@ -129,7 +129,15 @@ class Command(BaseCommand):
         parsed = artifacts.read_parsed_rows(short, date_str, read_bucket)
         deals = artifacts.read_deal_events(short, date_str, read_bucket)
         n_prev, n_stubs, n_parsed, n_deals = len(prev_rows), len(stubs), len(parsed), len(deals)
-        rows = snapshot.fold(prev_rows, stubs, parsed, deals, date_str, vendor=short)
+        # 4d：關閉多日後才進成交列表的戶，昨日 snapshot 已無此戶 → 回看 deal lookback 天的
+        # snapshot 取最後一列，成交列才帶得出最後已知值（沒找到＝只帶成交欄的空白列）
+        orphans = {e['vendor_house_id'] for e in deals} - {r['vendor_house_id'] for r in prev_rows}
+        lookback = int(os.environ.get('TWRH_DEAL_LOOKBACK_DAYS', '7'))   # 同 vendor profile 預設
+        closed_rows = artifacts.find_closed_rows(short, orphans, prev_day.isoformat(), lookback, read_bucket)
+        n_orphans, n_closed = len(orphans), len(closed_rows)
+        rows = snapshot.fold(prev_rows, stubs, parsed, deals, date_str, vendor=short,
+                             closed_rows=closed_rows)
+        del closed_rows
         del prev_rows, stubs, parsed, deals   # fold 已 pop 掉昨日列；放掉輸入，寫檔前騰記憶體
         by_source = {}
         for r in rows:
@@ -140,6 +148,10 @@ class Command(BaseCommand):
               '{} -> {} ({:.1f} MB)'.format(
                   short, day, kind, n_prev, n_stubs, n_parsed, n_deals,
                   n, by_source, path, os.path.getsize(path) / 1e6))
+        if n_orphans:
+            print('    deal events for houses not in {} snapshot: {} (recovered from earlier '
+                  'snapshots: {}, blank deal-only rows: {})'.format(
+                      prev_day, n_orphans, n_closed, n_orphans - n_closed))
         self.upload(bucket, short, day, path)
 
     def upload(self, bucket, short, day, path):

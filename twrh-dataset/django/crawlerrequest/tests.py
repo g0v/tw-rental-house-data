@@ -1936,6 +1936,36 @@ class DealEventAndSnapshotTests(QueueTestMixin, TestCase):
         call_command('snapshotfold', '--bootstrap', '--date', self.yesterday.isoformat(), '--no-upload')
         self.assertEqual(len(artifacts.read_snapshot('591', self.yesterday.isoformat())), 3)
 
+    def test_snapshotfold_recovers_late_deal_from_earlier_snapshot(self):
+        '''4d：今日 deals 事件的戶不在昨日 snapshot、但在前幾天的 snapshot 有 → 補值。'''
+        from django.core.management import call_command
+        from rental import artifacts, snapshot
+        y = self.yesterday
+        before2 = y - timedelta(days=2)
+        gone = snapshot._blank('591', 'gone', before2.isoformat())
+        gone.update({'monthly_price': 6500, 'floor_ping': 9.0, 'source': 'detail', 'deal_status': snapshot.NOT_FOUND,
+                     'first_seen_at': self.at(before2 - timedelta(days=10), 1), 'last_seen_at': self.at(before2, 1),
+                     'days_absent': 0})
+        artifacts.write_snapshot([gone], '591', before2.isoformat())
+        artifacts.write_snapshot([snapshot._blank('591', 'other', y.isoformat())], '591', y.isoformat())
+        deal_time = self.at(y, 0)
+        self.write_rows('deals', 'run', [{'vendor_house_id': 'gone', 'seen_at': self.at(self.day, 6).isoformat(),
+                                          'deal_time': deal_time.isoformat(), 'n_day_deal': 12,
+                                          'event_version': 1}], TEST_DATE)
+        call_command('artifactpack', '--tree', 'deals', '--date', TEST_DATE, '--no-upload')
+        with mock.patch.dict(os.environ, {'TWRH_DEAL_LOOKBACK_DAYS': '7'}):
+            call_command('snapshotfold', '--date', TEST_DATE, '--no-upload')
+        today = {r['vendor_house_id']: r for r in artifacts.read_snapshot('591', TEST_DATE)}
+        self.assertEqual((today['gone']['deal_status'], today['gone']['deal_source'], today['gone']['n_day_deal'],
+                          today['gone']['monthly_price'], today['gone']['floor_ping'], today['gone']['days_absent']),
+                         (snapshot.DEAL, 'deals', 12, 6500, 9.0, 3))
+        self.assertEqual(today['gone']['first_seen_at'], gone['first_seen_at'])
+        # 回看窗只有 1 天 → 找不到 → 空白 deal-only 列
+        with mock.patch.dict(os.environ, {'TWRH_DEAL_LOOKBACK_DAYS': '1'}):
+            call_command('snapshotfold', '--date', TEST_DATE, '--no-upload')
+        today = {r['vendor_house_id']: r for r in artifacts.read_snapshot('591', TEST_DATE)}
+        self.assertEqual((today['gone']['deal_status'], today['gone']['monthly_price']), (snapshot.DEAL, None))
+
     def test_backfill_past_day_from_ts_without_house_carry(self):
         '''#11：過去日由 HouseTS 摺出，carry 欄只留該日列推得出的；已存在的天跳過、--force 才覆寫。'''
         from django.core.management import call_command
@@ -1975,6 +2005,75 @@ class DealEventAndSnapshotTests(QueueTestMixin, TestCase):
             call_command('snapshotfold', '--backfill', '--no-upload')
         with self.assertRaises(CommandError):
             call_command('snapshotfold', '--backfill', '--from', TEST_DATE, '--to', y_str, '--no-upload')
+
+
+class DealDeriveTests(TestCase):
+    '''4d 推導側（rental/deals.py，無 DB）：deals 事件勝、inferred 語意、n_day_deal 推導、
+    關閉多日後才進成交列表的戶由 closed_rows 補值。'''
+
+    def test_n_day_deal_inferred_uses_taipei_calendar_days(self):
+        from datetime import datetime, timezone, timedelta
+        from rental.deals import n_day_deal_inferred
+        tpe = timezone(timedelta(hours=8))
+        first = datetime(2026, 1, 10, 23, 30, tzinfo=tpe)          # 台北 1/10 深夜（UTC 1/10 15:30）
+        deal = datetime(2026, 1, 13, 0, 0, tzinfo=tpe)             # vendor 給的成交日 1/13 00:00+08
+        self.assertEqual(n_day_deal_inferred(deal, first), 3)
+        self.assertEqual(n_day_deal_inferred(deal, first.astimezone(timezone.utc)), 3)   # 同一刻、不同 tz
+        self.assertEqual(n_day_deal_inferred(first, deal), 0)                            # 倒過來夾 0
+        self.assertIsNone(n_day_deal_inferred(None, first))
+        self.assertIsNone(n_day_deal_inferred('2026-01-13', first))                     # 非 datetime（測試用字串）
+
+    def test_apply_deal_semantics(self):
+        from datetime import datetime, timezone, timedelta
+        from rental.deals import apply_deal, deal_state, DEAL
+        tpe = timezone(timedelta(hours=8))
+        first = datetime(2026, 1, 10, tzinfo=tpe)
+        # 事件勝：vendor 三欄照抄
+        row = {'deal_status': 0, 'first_seen_at': first, 'deal_source': None, 'n_day_deal': None, 'deal_time': None}
+        apply_deal(row, {'deal_time': datetime(2026, 1, 12, tzinfo=tpe), 'n_day_deal': 5})
+        self.assertEqual(deal_state(row), {'deal_status': DEAL, 'deal_time': datetime(2026, 1, 12, tzinfo=tpe),
+                                           'n_day_deal': 5, 'deal_source': 'deals'})
+        # 事件沒給 n_day_deal → 推導補、來源仍是 deals
+        row = {'deal_status': 0, 'first_seen_at': first}
+        apply_deal(row, {'deal_time': datetime(2026, 1, 12, tzinfo=tpe), 'n_day_deal': None})
+        self.assertEqual((row['deal_source'], row['n_day_deal']), ('deals', 2))
+        # 昨日 sticky 帶來的 DEAL、無來源標記 → inferred，n_day_deal 由 deal_time − first_seen_at 推
+        row = {'deal_status': DEAL, 'deal_time': datetime(2026, 1, 14, tzinfo=tpe), 'first_seen_at': first,
+               'deal_source': None, 'n_day_deal': None}
+        apply_deal(row, None)
+        self.assertEqual((row['deal_source'], row['n_day_deal']), ('inferred', 4))
+        # 已有 vendor n_day_deal 的 DEAL 不動
+        row = {'deal_status': DEAL, 'deal_time': datetime(2026, 1, 14, tzinfo=tpe), 'first_seen_at': first,
+               'deal_source': 'deals', 'n_day_deal': 9}
+        apply_deal(row, None)
+        self.assertEqual((row['deal_source'], row['n_day_deal']), ('deals', 9))
+        # 非 DEAL 完全不碰
+        row = {'deal_status': 1, 'deal_source': None, 'n_day_deal': None}
+        apply_deal(row, None)
+        self.assertEqual(deal_state(row), {'deal_status': 1, 'deal_time': None, 'n_day_deal': None, 'deal_source': None})
+
+    def test_fold_recovers_closed_house_for_late_deal_event(self):
+        from rental.snapshot import fold, DEAL, NOT_FOUND
+        stub = lambda hid, at: {'vendor_house_id': hid, 'seen_at': at, 'fingerprint': 'f', 'monthly_price': 9000}
+        d1 = fold([], [stub('g', 'T1')], [{'vendor_house_id': 'g', 'crawled_at': 'T1d', 'deal_status': 0,
+                                           'monthly_price': 9000, 'floor_ping': 8.0}], [], '2026-01-15')
+        # 1/16 detail 404 → NOT_FOUND（保留最後已知值）；1/17 無訊號 → 不攜帶
+        d2 = fold(d1, [], [{'vendor_house_id': 'g', 'crawled_at': 'T2d', 'deal_status': NOT_FOUND}], [], '2026-01-16')
+        self.assertEqual((d2[0]['deal_status'], d2[0]['monthly_price']), (NOT_FOUND, 9000))
+        d3 = fold(d2, [], [], [], '2026-01-17')
+        self.assertEqual(d3, [])
+        event = [{'vendor_house_id': 'g', 'seen_at': 'T4', 'deal_time': 'D', 'n_day_deal': 3}]
+        # 1/18 成交事件到，昨日 snapshot 無此戶：沒給 closed_rows → 空白 deal-only 列
+        blank = fold(d3, [], [], event, '2026-01-18')[0]
+        self.assertEqual((blank['deal_status'], blank['deal_source'], blank['monthly_price'], blank['first_seen_at']),
+                         (DEAL, 'deals', None, None))
+        # 給 closed_rows（1/16 那列）→ 租金／坪數／首見沿用，days_absent 依日期差遞推（1/16 列 1 ＋ 1/16→1/18 差 2）
+        got = fold(d3, [], [], event, '2026-01-18', closed_rows={'g': d2[0]})[0]
+        self.assertEqual((got['deal_status'], got['deal_source'], got['n_day_deal'], got['monthly_price'],
+                          got['floor_ping'], got['first_seen_at'], got['source'], got['days_absent']),
+                         (DEAL, 'deals', 3, 9000, 8.0, 'T1', 'carry', 3))   # 1/15 最後在 list：16、17、18 三天缺席
+        # closed_rows 只對「有事件且昨日不在」的戶生效：無事件的戶不會因此復活
+        self.assertEqual(fold(d3, [], [], [], '2026-01-18', closed_rows={'g': d2[0]}), [])
 
 
 class SnapshotCheckTests(QueueTestMixin, TestCase):

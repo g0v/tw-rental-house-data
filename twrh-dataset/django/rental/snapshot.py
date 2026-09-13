@@ -22,10 +22,17 @@ House（現值＝最新 snapshot）。
   昨日非 DEAL → NOT_FOUND（推導型成交留給下游，deal_source 不設）
 - 已關閉（NOT_FOUND／DEAL）且今日無任何訊號的戶：不再攜帶（snapshot 只含
   當日仍有意義的列＝OPENED 或今日有事件），與現制 HouseTS「open 每日一列」一致
+- 關閉多日後才進 591 成交列表的戶（591 成交後數日仍補列）：昨日 snapshot 已無此戶，
+  呼叫端可把「近幾天 snapshot 裡最後一列」用 closed_rows 傳進來當昨日列，成交列才帶得出
+  租金／座標等最後已知值（4d 推導側；沒給就退回只帶成交欄的空白列＝snapshotcheck 的
+  deal_only_rows）。days_absent 依兩列日期差遞推。
+- 成交段語意（deals 事件勝、inferred、n_day_deal 推導）在 rental/deals.py
 
 不 import Django。
 '''
-from rental import contracts
+from datetime import date as date_cls
+
+from rental import contracts, deals
 
 OPENED, NOT_FOUND, DEAL = 0, 1, 2   # rental.enums.DealStatusType 的整數值（只增不改）
 
@@ -63,16 +70,30 @@ def _blank(vendor, hid, date_str):
     return row
 
 
-def fold(prev_rows, stubs, parsed_rows, deal_events, date_str, vendor='591'):
-    '''回傳今日 snapshot 列（list of dict，依 vendor_house_id 排序）。'''
+def _day_gap(date_str, prev_date):
+    try:
+        return max((date_cls.fromisoformat(date_str) - date_cls.fromisoformat(prev_date)).days, 1)
+    except (TypeError, ValueError):
+        return 1
+
+
+def fold(prev_rows, stubs, parsed_rows, deal_events, date_str, vendor='591', closed_rows=None):
+    '''回傳今日 snapshot 列（list of dict，依 vendor_house_id 排序）。
+    closed_rows：{hid: 近幾天 snapshot 的最後一列}，只對「今日有 deals 事件但昨日不在 snapshot」
+    的戶生效（見模組說明）。'''
     prev = {r['vendor_house_id']: r for r in prev_rows}
     stub_by = _latest(stubs, 'seen_at')
     parsed_by = _latest(parsed_rows, 'crawled_at')
     deal_by = _latest(deal_events, 'seen_at')
+    closed_rows = closed_rows or {}
 
     out = []
     for hid in sorted(set(prev) | set(stub_by) | set(parsed_by) | set(deal_by)):
         yesterday = prev.pop(hid, None)   # 每戶只看一次：處理完即釋放昨日列（記憶體）
+        gap = 1
+        if yesterday is None and hid in deal_by and hid in closed_rows:
+            yesterday = closed_rows[hid]
+            gap = _day_gap(date_str, yesterday.get('date'))
         stub = stub_by.get(hid)
         parsed = parsed_by.get(hid)
         deal = deal_by.get(hid)
@@ -121,16 +142,8 @@ def fold(prev_rows, stubs, parsed_rows, deal_events, date_str, vendor='591'):
             if row.get('first_seen_at') is None:
                 row['first_seen_at'] = stub.get('seen_at')
         elif yesterday is not None:
-            row['days_absent'] = (yesterday.get('days_absent') or 0) + 1
+            row['days_absent'] = (yesterday.get('days_absent') or 0) + gap
 
-        if deal is not None:
-            # vendor 的成交事件永遠勝（#229 deals stage）
-            row['deal_status'] = DEAL
-            row['deal_time'] = deal.get('deal_time')
-            row['n_day_deal'] = deal.get('n_day_deal')
-            row['deal_source'] = 'deals'
-        elif row['deal_status'] == DEAL and row.get('deal_source') is None:
-            row['deal_source'] = 'inferred'
-
+        deals.apply_deal(row, deal)   # vendor 事件永遠勝（#229）；inferred／n_day_deal 推導見 deals.py
         out.append(row)
     return out
