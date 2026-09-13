@@ -2132,3 +2132,74 @@ class ManifestPartitionsTests(TestCase):
         from crawlerrequest import manifests
         y, m, d = (int(x) for x in TEST_DATE.split('-'))
         self.assertEqual(manifests.build_snapshot_manifest(date(y, m, d))['partitions'], {})
+
+
+class ItemHygieneTests(QueueTestMixin, TestCase):
+    '''item_hygiene（schema 1.0 §1 P1／P3）：list 的 tag 版 facilities 不蓋 detail 的完整清單；
+    detail 的 None rough_address 不蓋 list 給的街道級地址。pipeline 對 item 每個 key 都 setattr，
+    所以擋法＝在 yield 前把 key 拿掉。'''
+
+    def test_strip_functions_are_pure_and_key_scoped(self):
+        from crawler.spiders.item_hygiene import strip_list_item, strip_detail_item
+        from scrapy_twrh.items import GenericHouseItem
+        li = GenericHouseItem(vendor=VENDOR_NAME, vendor_house_id='a', monthly_price=1,
+                              facilities={'電梯': True}, rough_address='中山北路二段')
+        self.assertIs(strip_list_item(li), li)
+        self.assertNotIn('facilities', li)
+        self.assertEqual((li['monthly_price'], li['rough_address']), (1, '中山北路二段'))
+        # 沒帶 facilities 的 list item 也不炸
+        strip_list_item(GenericHouseItem(vendor=VENDOR_NAME, vendor_house_id='b'))
+        di = GenericHouseItem(vendor=VENDOR_NAME, vendor_house_id='a', rough_address=None,
+                              facilities={'桌子': True, '冰箱': False})
+        self.assertIs(strip_detail_item(di), di)
+        self.assertNotIn('rough_address', di)
+        self.assertEqual(di['facilities'], {'桌子': True, '冰箱': False})
+        # detail 有值的地址保留（未來解析器補上時不被誤刪）
+        di2 = GenericHouseItem(vendor=VENDOR_NAME, vendor_house_id='a', rough_address='忠孝東路')
+        strip_detail_item(di2)
+        self.assertEqual(di2['rough_address'], '忠孝東路')
+
+    def test_pipeline_keeps_detail_facilities_and_list_address(self):
+        from crawler.pipelines import CrawlerPipeline
+        from crawler.spiders.item_hygiene import strip_list_item, strip_detail_item
+        from scrapy_twrh.items import GenericHouseItem
+        with mock.patch.dict(os.environ, {'TWRH_RAW_BUCKET': '', 'TWRH_RUN_ID': 'run', 'TWRH_RAW_SINK': '0'}):
+            pipeline = CrawlerPipeline()
+            detail_fac = {'桌子': True, '椅子': True, '冰箱': False}
+            # list 先到：帶街道級地址與 tag 版 facilities
+            pipeline.process_item(strip_list_item(GenericHouseItem(
+                vendor=VENDOR_NAME, vendor_house_id='h', monthly_price=10000,
+                rough_address='中山北路二段', facilities={'電梯': True})), None)
+            # detail 到：完整家具清單、地址 None
+            pipeline.process_item(strip_detail_item(GenericHouseItem(
+                vendor=VENDOR_NAME, vendor_house_id='h', monthly_price=10000,
+                rough_address=None, facilities=dict(detail_fac))), None)
+            # 隔輪 list 又來（同日 sweep 或次日日跑都一樣）
+            pipeline.process_item(strip_list_item(GenericHouseItem(
+                vendor=VENDOR_NAME, vendor_house_id='h', monthly_price=10000,
+                rough_address='中山北路二段', facilities={'電梯': True, '陽台': True})), None)
+            pipeline.close_spider()
+        house = House.objects.get(vendor_house_id='h')
+        ts = HouseTS.objects.get(vendor_house_id='h')
+        self.assertEqual((house.facilities, house.rough_address), (detail_fac, '中山北路二段'))
+        self.assertEqual((ts.facilities, ts.rough_address), (detail_fac, '中山北路二段'))
+
+    def test_spiders_strip_at_yield(self):
+        '''接線驗證：list591 兩個 yield 點與 detail591 的 yield 點都經過 hygiene。'''
+        from crawler.spiders.list591_spider import List591Spider
+        from crawler.spiders.detail591_spider import Detail591Spider
+        from scrapy_twrh.items import GenericHouseItem, RawHouseItem
+        raw = RawHouseItem(house_id='h', raw=b'', dict={})
+        gen = lambda: GenericHouseItem(vendor=VENDOR_NAME, vendor_house_id='h',
+                                       facilities={'電梯': True}, rough_address=None)
+        ls = List591Spider.__new__(List591Spider)
+        ls.frontier_pages = 0
+        ls.default_parse_list = lambda response: iter([raw, gen()])
+        out = list(ls.parse_list_and_stop(None))
+        self.assertNotIn('facilities', out[1])
+        self.assertIs(out[0], raw)
+        ds = Detail591Spider.__new__(Detail591Spider)
+        ds.default_parse_detail = lambda response: iter([gen()])
+        out = list(ds.parse_detail_and_done(None))
+        self.assertNotIn('rough_address', out[0])
+        self.assertEqual(out[0]['facilities'], {'電梯': True})

@@ -1,9 +1,10 @@
 from scrapy import Request, signals
-from scrapy_twrh.items import RawHouseItem
+from scrapy_twrh.items import GenericHouseItem, RawHouseItem
 from scrapy_twrh.spiders.rental591 import Rental591Spider, util
 from rental.enums import TopRegionType
 from rental.models import House
 from .persist_queue import PersistQueue
+from .item_hygiene import strip_list_item
 
 class List591Spider(Rental591Spider):
     name = 'list591'
@@ -104,6 +105,8 @@ class List591Spider(Rental591Spider):
                     self.persist_queue.gen_persist_request(meta._asdict())
                 continue
             else:
+                if type(item) is GenericHouseItem:
+                    strip_list_item(item)
                 yield item
         yield True
 
@@ -125,6 +128,8 @@ class List591Spider(Rental591Spider):
         self.logger.info('[frontier] %s page %d: %d items, %d unseen',
                          meta.name, meta.page + 1, len(ids), len(unseen))
         for item in items:
+            if type(item) is GenericHouseItem:
+                strip_list_item(item)
             yield item
         if unseen and ids and meta.page + 1 < self.frontier_pages:
             self.persist_queue.gen_persist_request({

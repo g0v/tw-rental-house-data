@@ -8,9 +8,11 @@ from rental.models import House, HouseTS
 from crawlerrequest.models import RequestTS
 from crawlerrequest.enums import RequestType
 from rental import enums
+from scrapy_twrh.items import GenericHouseItem
 from scrapy_twrh.spiders.rental591 import Rental591Spider, util
 from rental import seeding
 from .persist_queue import PersistQueue
+from .item_hygiene import strip_detail_item
 
 class Detail591Spider(Rental591Spider):
     name = "detail591"
@@ -188,6 +190,8 @@ class Detail591Spider(Rental591Spider):
     def parse_detail_and_done (self, response):
         for item in self.default_parse_detail(response):
             if item:
+                if type(item) is GenericHouseItem:
+                    strip_detail_item(item)
                 yield item
         yield True
 
