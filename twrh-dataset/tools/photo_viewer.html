@@ -87,13 +87,14 @@
       <td class="num">${h.price == null ? '' : Number(h.price).toLocaleString()}</td>
       <td class="num">${esc(h.ping)}</td><td>${esc(h.floor)}${h.total_floor != null ? '/' + esc(h.total_floor) : ''}</td>
       <td>${esc(h.ptype)}</td><td>${esc(h.region)}</td><td class="addr">${esc(h.address)}</td>
-      <td>${esc(h.author)}</td><td class="agent">${esc(h.agent)}</td><td>${esc(h.era)}</td><td class="num">${esc(h.n_photos)}</td>
+      <td>${esc(h.author)}</td><td class="agent">${esc(h.agent)}</td><td>${esc(h.era)}</td><td class="num">${esc(h.n_photos)}</td><td class="num">${esc(h.n_shared)}</td>
     </tr>`).join('');
+    const g = p.group ? `<div class="meta">所屬群：${p.group.size} 戶，群內共用 ${p.group.shared_photos} 張／相異 ${p.group.distinct_photos} 張（群 #${p.group.id}）</div>` : '';
     return `<section class="card">
       <div><a href="${esc(p.url)}" target="_blank" rel="noopener"><img loading="lazy" referrerpolicy="no-referrer" src="${esc(p.url)}" alt=""></a>
         <div class="meta">${esc(p.pid)}<br>上傳 ${esc(uploadDate(p.pid))}</div></div>
-      <div><h2>${p.n} 個物件共用${tags}</h2>
-        <table><thead><tr><th>物件</th><th>首見</th><th>狀態</th><th>租金</th><th>坪</th><th>樓</th><th>型態</th><th>區</th><th>地址</th><th>刊登者</th><th>仲介</th><th>來源</th><th>照片數</th></tr></thead>
+      <div><h2>${p.n} 個物件共用${tags}</h2>${g}
+        <table><thead><tr><th>物件</th><th>首見</th><th>狀態</th><th>租金</th><th>坪</th><th>樓</th><th>型態</th><th>區</th><th>地址</th><th>刊登者</th><th>仲介</th><th>來源</th><th>照片數</th><th>與群重複</th></tr></thead>
         <tbody>${rows}</tbody></table></div>
     </section>`;
   }

@@ -47,7 +47,7 @@ def region_names():
         return ident, ident, ident
 
 
-def write_photos_json(path, shared, houses, photos, sources, top):
+def write_photos_json(path, shared, houses, photos, sources, top, comp_of=None, gstats=None, house_shared=None):
     '''給 tools/photo_viewer.html 的資料：每張共用照片 → 對到哪些戶（重要欄位），依戶數降冪，取前 top 張。'''
     import json
     top_name, sub_name, ptype_name = region_names()
@@ -68,12 +68,15 @@ def write_photos_json(path, shared, houses, photos, sources, top):
                 'address': d.get('rough_address'), 'author': (d.get('author_id') or '')[:8] or None,
                 'agent': d.get('agent_org'), 'era': '|'.join(sorted(sources.get(h, ()))),
                 'n_photos': len(photos.get(h, ())),
+                'n_shared': (house_shared or {}).get(h),
             })
         authors = {r['author'] for r in rows if r['author']}
         prices = {r['price'] for r in rows if r['price'] is not None}
+        g = gstats[comp_of[next(iter(hs))]] if comp_of and gstats else None
         out.append({'pid': pid, 'url': photo_url(pid, FULL), 'thumb': photo_url(pid), 'n': len(hs),
                     'same_author': len(authors) == 1 if authors else None,
-                    'same_price': len(prices) == 1 if prices else None, 'houses': rows})
+                    'same_price': len(prices) == 1 if prices else None,
+                    'group': g, 'houses': rows})
     with open(path, 'w') as f:
         json.dump({'generated': datetime.datetime.now().isoformat(timespec='seconds'),
                    'n_shared_photos_total': len(shared), 'photos': out}, f, ensure_ascii=False)
@@ -135,6 +138,23 @@ def components(photos):
     return idx, shared, list(comp.values())
 
 
+def group_photo_stats(comps, photos):
+    '''每群：共用張數（群內 ≥2 戶都有的照片）、相異張數、每戶「與群內他戶重複的張數」。
+    回傳 (house→群序號, [每群 dict], house→n_shared)。'''
+    of, stats, house_shared = {}, [], {}
+    for ci, c in enumerate(comps):
+        cnt = collections.Counter()
+        for h in c:
+            of[h] = ci
+            cnt.update(photos[h])
+        shared_here = {pid for pid, n in cnt.items() if n >= 2}
+        for h in c:
+            house_shared[h] = len(photos[h] & shared_here)
+        stats.append({'id': ci, 'size': len(c), 'shared_photos': len(shared_here), 'distinct_photos': len(cnt),
+                      'max_house_photos': max(len(photos[h]) for h in c)})
+    return of, stats, house_shared
+
+
 def year_of(desc):
     c = desc.get('created')
     return c.year if hasattr(c, 'year') else None
@@ -163,6 +183,19 @@ def main():
     lines.append('components: {} size dist: {}'.format(len(comps), sorted(collections.Counter(min(len(c), 20) for c in comps).items())))
     cross_year = [c for c in comps if len({year_of(houses.get(h, {})) for h in c} - {None}) >= 2]
     lines.append('components spanning >=2 created-years: {}'.format(len(cross_year)))
+    comp_of, gstats, house_shared = group_photo_stats(comps, photos)
+    bucket = lambda n: '1' if n == 1 else '2' if n == 2 else '3-5' if n <= 5 else '6-10' if n <= 10 else '11+'
+    lines.append('shared photos per group: ' + str(sorted(collections.Counter(bucket(g['shared_photos']) for g in gstats).items(),
+                                                          key=lambda kv: ['1', '2', '3-5', '6-10', '11+'].index(kv[0]))))
+    two = [g for g in gstats if g['size'] == 2]
+    if two:
+        full = sum(1 for g in two if g['shared_photos'] == g['distinct_photos'])
+        one = sum(1 for g in two if g['shared_photos'] == 1 and g['distinct_photos'] > 1)   # 只重一張、其餘不同
+        lines.append('2-house groups {}: share only 1 of several photos {} ({:.1f}%), share every photo (identical album) {} ({:.1f}%)'.format(
+            len(two), one, 100 * one / len(two), full, 100 * full / len(two)))
+    lines.append('houses in groups: shared/own photos ratio dist: ' + str(sorted(collections.Counter(
+        'all' if house_shared[h] == len(photos[h]) else '>=half' if house_shared[h] * 2 >= len(photos[h]) else '<half'
+        for h in comp_of).items())))
     # pair-level semantics where desc available
     same_author = same_price = same_region = n_pairs = 0
     for c in comps:
@@ -183,11 +216,14 @@ def main():
 
     with open(os.path.join(args.out_dir, 'components.csv'), 'w', newline='') as f:
         w = csv.writer(f)
-        w.writerow(['component_id', 'component_size', 'vendor_house_id', 'n_photos', 'sources'] + DESC)
+        w.writerow(['component_id', 'component_size', 'component_shared_photos', 'component_distinct_photos',
+                    'vendor_house_id', 'n_photos', 'n_shared_with_group', 'sources'] + DESC)
         for ci, c in enumerate(comps):
+            g = gstats[ci]
             for h in sorted(c):
                 d = houses.get(h, {})
-                w.writerow([ci, len(c), h, len(photos[h]), '|'.join(sorted(sources[h]))] + [d.get(k) for k in DESC])
+                w.writerow([ci, len(c), g['shared_photos'], g['distinct_photos'], h, len(photos[h]), house_shared[h],
+                            '|'.join(sorted(sources[h]))] + [d.get(k) for k in DESC])
 
     rnd = random.Random(args.seed)
     strata = {
@@ -206,7 +242,7 @@ def main():
         for c in pick:
             hs = sorted(c)
             shared_here = [pid for pid, v in shared.items() if len(v & c) >= 2]
-            parts.append('<div class="grp"><b>群 {} 戶</b>，共用照片 {} 張<table><tr><th>物件</th><th>首見</th><th>狀態</th><th>租金</th><th>坪</th><th>樓</th><th>區</th><th>地址</th><th>刊登者</th><th>仲介</th><th>era／來源</th><th>照片數</th></tr>'.format(len(hs), len(shared_here)))
+            parts.append('<div class="grp"><b>群 {} 戶</b>，共用照片 {} 張／群內相異 {} 張<table><tr><th>物件</th><th>首見</th><th>狀態</th><th>租金</th><th>坪</th><th>樓</th><th>區</th><th>地址</th><th>刊登者</th><th>仲介</th><th>era／來源</th><th>照片數</th></tr>'.format(len(hs), len(shared_here), len(set().union(*(photos[h] for h in hs)))))
             for h in hs:
                 d = houses.get(h, {})
                 parts.append('<tr><td><a href="https://rent.591.com.tw/{0}" target="_blank">{0}</a></td><td>{1}</td><td>{2}</td><td>{3}</td><td>{4}</td><td>{5}/{6}</td><td>{7}/{8}</td><td>{9}</td><td>{10}</td><td>{11}</td><td>{12}</td><td>{13}</td></tr>'.format(
@@ -219,7 +255,8 @@ def main():
                 for p in shared_here[:12] if photo_url(p)) + '</div></div>')
     with open(os.path.join(args.out_dir, 'review.html'), 'w') as f:
         f.write('\n'.join(parts))
-    n_json = write_photos_json(os.path.join(args.out_dir, 'photos.json'), shared, houses, photos, sources, args.top)
+    n_json = write_photos_json(os.path.join(args.out_dir, 'photos.json'), shared, houses, photos, sources, args.top,
+                               comp_of, gstats, house_shared)
     print('-> {}/review.html, components.csv, summary.txt, photos.json ({} photos; open tools/photo_viewer.html and load it)'.format(
         args.out_dir, n_json))
 
