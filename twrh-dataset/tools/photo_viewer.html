@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>共用照片檢視</title>
+<style>
+  :root { --fg:#222; --muted:#777; --line:#ddd; --bg:#fafafa; --card:#fff; --acc:#0b6; }
+  body { margin:0; padding:12px 16px; font:14px/1.45 system-ui, "Noto Sans TC", sans-serif; color:var(--fg); background:var(--bg); }
+  header { display:flex; flex-wrap:wrap; gap:10px 18px; align-items:center; position:sticky; top:0; background:var(--bg); padding:8px 0; border-bottom:1px solid var(--line); z-index:1; }
+  header h1 { font-size:16px; margin:0 8px 0 0; }
+  #drop { border:2px dashed #bbb; padding:6px 12px; border-radius:6px; color:var(--muted); }
+  #drop.over { border-color:var(--acc); color:var(--fg); }
+  .stat { color:var(--muted); }
+  .card { display:grid; grid-template-columns: 320px 1fr; gap:14px; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px; margin:14px 0; }
+  .card img { width:320px; max-width:100%; height:auto; border-radius:4px; background:#eee; cursor:zoom-in; }
+  .card .meta { font-size:12px; color:var(--muted); margin-top:4px; word-break:break-all; }
+  .card h2 { font-size:15px; margin:0 0 6px; }
+  .tag { display:inline-block; font-size:12px; padding:1px 7px; border-radius:10px; background:#eee; margin-left:6px; }
+  .tag.ok { background:#dff5e6; } .tag.warn { background:#fde8d8; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th, td { border-bottom:1px solid var(--line); padding:3px 6px; text-align:left; vertical-align:top; white-space:nowrap; }
+  th { color:var(--muted); font-weight:600; }
+  td.addr, td.agent { white-space:normal; }
+  td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  nav { display:flex; gap:10px; align-items:center; margin:12px 0; }
+  button { padding:4px 12px; }
+  input[type=number] { width:70px; }
+  @media (max-width: 760px) { .card { grid-template-columns: 1fr; } .card img { width:100%; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>共用照片檢視</h1>
+  <label id="drop">拖 photos.json 進來，或 <input type="file" id="file" accept=".json,application/json"></label>
+  <label>最少物件數 <input type="number" id="min" value="2" min="2"></label>
+  <label>搜物件編號 <input type="text" id="q" placeholder="例如 12345678" size="12"></label>
+  <span class="stat" id="stat">尚未載入</span>
+</header>
+<nav id="nav-top"></nav>
+<main id="list"></main>
+<nav id="nav-bottom"></nav>
+<script>
+(function () {
+  const PAGE = 10;
+  let data = null, view = [], page = 0;
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  function load(obj) {
+    data = obj;
+    page = 0;
+    applyFilter();
+  }
+  function applyFilter() {
+    if (!data) return;
+    const min = Math.max(2, parseInt($('#min').value || '2', 10));
+    const q = $('#q').value.trim();
+    view = data.photos.filter((p) => p.n >= min && (!q || p.houses.some((h) => String(h.id).includes(q))));
+    // 已依戶數降冪；保險再排一次
+    view.sort((a, b) => b.n - a.n || (a.pid < b.pid ? -1 : 1));
+    page = Math.min(page, Math.max(0, Math.ceil(view.length / PAGE) - 1));
+    render();
+  }
+  function render() {
+    const total = view.length, pages = Math.max(1, Math.ceil(total / PAGE));
+    $('#stat').textContent = data
+      ? `共用照片 ${data.n_shared_photos_total.toLocaleString()} 張（檔內 ${data.photos.length.toLocaleString()}，篩後 ${total.toLocaleString()}）· 產生 ${data.generated}`
+      : '尚未載入';
+    const navHtml = `<button data-go="-1" ${page === 0 ? 'disabled' : ''}>← 上一頁</button>
+      <span>第 <input type="number" id="pg" value="${page + 1}" min="1" max="${pages}"> / ${pages} 頁</span>
+      <button data-go="1" ${page >= pages - 1 ? 'disabled' : ''}>下一頁 →</button>
+      <span class="stat">← → 鍵可翻頁</span>`;
+    $('#nav-top').innerHTML = navHtml; $('#nav-bottom').innerHTML = navHtml;
+    const slice = view.slice(page * PAGE, page * PAGE + PAGE);
+    $('#list').innerHTML = slice.map(card).join('') || '<p class="stat">沒有符合的照片</p>';
+    window.scrollTo(0, 0);
+  }
+  function card(p) {
+    const tags = [
+      p.same_author === true ? '<span class="tag ok">同刊登者</span>' : p.same_author === false ? '<span class="tag warn">不同刊登者</span>' : '',
+      p.same_price === true ? '<span class="tag ok">同租金</span>' : p.same_price === false ? '<span class="tag warn">租金不同</span>' : '',
+    ].join('');
+    const rows = p.houses.map((h) => `<tr>
+      <td><a href="https://rent.591.com.tw/${esc(h.id)}" target="_blank" rel="noopener">${esc(h.id)}</a></td>
+      <td>${esc(h.created)}</td><td>${esc(h.status)}</td>
+      <td class="num">${h.price == null ? '' : Number(h.price).toLocaleString()}</td>
+      <td class="num">${esc(h.ping)}</td><td>${esc(h.floor)}${h.total_floor != null ? '/' + esc(h.total_floor) : ''}</td>
+      <td>${esc(h.ptype)}</td><td>${esc(h.region)}</td><td class="addr">${esc(h.address)}</td>
+      <td>${esc(h.author)}</td><td class="agent">${esc(h.agent)}</td><td>${esc(h.era)}</td><td class="num">${esc(h.n_photos)}</td>
+    </tr>`).join('');
+    return `<section class="card">
+      <div><a href="${esc(p.url)}" target="_blank" rel="noopener"><img loading="lazy" src="${esc(p.url)}" alt=""></a>
+        <div class="meta">${esc(p.pid)}<br>上傳 ${esc(uploadDate(p.pid))}</div></div>
+      <div><h2>${p.n} 個物件共用${tags}</h2>
+        <table><thead><tr><th>物件</th><th>首見</th><th>狀態</th><th>租金</th><th>坪</th><th>樓</th><th>型態</th><th>區</th><th>地址</th><th>刊登者</th><th>仲介</th><th>來源</th><th>照片數</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>
+    </section>`;
+  }
+  function uploadDate(pid) {
+    const t = parseInt(String(pid).slice(0, 10), 10);
+    return isNaN(t) ? '' : new Date(t * 1000).toISOString().slice(0, 10);
+  }
+  function go(delta) { page = Math.max(0, page + delta); render(); }
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-go]');
+    if (b) go(parseInt(b.dataset.go, 10));
+  });
+  document.addEventListener('change', (e) => {
+    if (e.target.id === 'pg') { page = Math.max(0, Math.min(parseInt(e.target.value, 10) - 1 || 0, Math.ceil(view.length / PAGE) - 1)); render(); }
+    if (e.target.id === 'min') applyFilter();
+  });
+  $('#q').addEventListener('input', () => { page = 0; applyFilter(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.key === 'ArrowRight') go(1);
+    if (e.key === 'ArrowLeft') go(-1);
+  });
+  function readFile(f) {
+    const r = new FileReader();
+    r.onload = () => { try { load(JSON.parse(r.result)); } catch (err) { $('#stat').textContent = 'JSON 讀取失敗：' + err.message; } };
+    r.readAsText(f);
+  }
+  $('#file').addEventListener('change', (e) => e.target.files[0] && readFile(e.target.files[0]));
+  const drop = $('#drop');
+  ['dragenter', 'dragover'].forEach((ev) => document.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach((ev) => document.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+  document.addEventListener('drop', (e) => e.dataTransfer.files[0] && readFile(e.dataTransfer.files[0]));
+  // 同目錄放 photos.json 且用 http 開（python -m http.server）時自動載入；file:// 開會靜默失敗、改用拖放
+  fetch('photos.json').then((r) => r.ok ? r.json() : null).then((j) => j && !data && load(j)).catch(() => {});
+})();
+</script>
+</body>
+</html>

@@ -27,6 +27,59 @@ DESC = ['created', 'deal_status', 'monthly_price', 'floor_ping', 'floor', 'total
         'top_region', 'sub_region', 'rough_address', 'author_id', 'agent_org', 'contact', 'era', 'sample_url']
 
 
+STATUS_NAME = {0: '待出租', 1: '已消失', 2: '已出租'}
+
+
+def _enum_name(enum_cls, value):
+    try:
+        return enum_cls(value).name
+    except (ValueError, TypeError):
+        return value
+
+
+def region_names():
+    try:
+        from scrapy_twrh.spiders import enums
+        return (lambda v: _enum_name(enums.TopRegionType, v)), (lambda v: _enum_name(enums.SubRegionType, v)), \
+               (lambda v: _enum_name(enums.PropertyType, v))
+    except ImportError:
+        ident = lambda v: v
+        return ident, ident, ident
+
+
+def write_photos_json(path, shared, houses, photos, sources, top):
+    '''給 tools/photo_viewer.html 的資料：每張共用照片 → 對到哪些戶（重要欄位），依戶數降冪，取前 top 張。'''
+    import json
+    top_name, sub_name, ptype_name = region_names()
+    items = sorted(shared.items(), key=lambda kv: (-len(kv[1]), kv[0]))[:top]
+    out = []
+    for pid, hs in items:
+        rows = []
+        for h in sorted(hs):
+            d = houses.get(h, {})
+            c = d.get('created')
+            rows.append({
+                'id': h, 'created': c.date().isoformat() if hasattr(c, 'date') else None,
+                'status': STATUS_NAME.get(d.get('deal_status'), d.get('deal_status')),
+                'price': d.get('monthly_price'), 'ping': d.get('floor_ping'),
+                'floor': d.get('floor'), 'total_floor': d.get('total_floor'),
+                'ptype': ptype_name(d.get('property_type')),
+                'region': '{}/{}'.format(top_name(d.get('top_region')), sub_name(d.get('sub_region'))) if d.get('top_region') is not None else None,
+                'address': d.get('rough_address'), 'author': (d.get('author_id') or '')[:8] or None,
+                'agent': d.get('agent_org'), 'era': '|'.join(sorted(sources.get(h, ()))),
+                'n_photos': len(photos.get(h, ())),
+            })
+        authors = {r['author'] for r in rows if r['author']}
+        prices = {r['price'] for r in rows if r['price'] is not None}
+        out.append({'pid': pid, 'url': photo_url(pid, FULL), 'thumb': photo_url(pid), 'n': len(hs),
+                    'same_author': len(authors) == 1 if authors else None,
+                    'same_price': len(prices) == 1 if prices else None, 'houses': rows})
+    with open(path, 'w') as f:
+        json.dump({'generated': datetime.datetime.now().isoformat(timespec='seconds'),
+                   'n_shared_photos_total': len(shared), 'photos': out}, f, ensure_ascii=False)
+    return len(out)
+
+
 def photo_url(pid, tmpl=THUMB):
     try:
         d = datetime.datetime.utcfromtimestamp(int(pid[:10]))
@@ -94,6 +147,7 @@ def main():
     ap.add_argument('--out-dir', required=True)
     ap.add_argument('--sample', type=int, default=40, help='每層抽幾群進 review.html')
     ap.add_argument('--seed', type=int, default=591)
+    ap.add_argument('--top', type=int, default=20000, help='photos.json 收幾張共用最多的照片')
     args = ap.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
     houses, photos, sources = load(args.etc, args.raws)
@@ -165,7 +219,9 @@ def main():
                 for p in shared_here[:12] if photo_url(p)) + '</div></div>')
     with open(os.path.join(args.out_dir, 'review.html'), 'w') as f:
         f.write('\n'.join(parts))
-    print('-> {}/review.html, components.csv, summary.txt'.format(args.out_dir))
+    n_json = write_photos_json(os.path.join(args.out_dir, 'photos.json'), shared, houses, photos, sources, args.top)
+    print('-> {}/review.html, components.csv, summary.txt, photos.json ({} photos; open tools/photo_viewer.html and load it)'.format(
+        args.out_dir, n_json))
 
 
 if __name__ == '__main__':
