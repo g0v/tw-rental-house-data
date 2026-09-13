@@ -5,7 +5,11 @@ busy → exit 1；否則 exit 0。以「近期更新」而非「存在 in_flight
 避免被 SIGKILL 殘留的舊 in_flight 永久擋住（09-05 sweep.sh 的原設計）。
 vendor 條件是 multi-vendor 前置：B 站日跑不該擋 A 站前緣掃描。
 
-    python django/manage.py queuebusy --vendor "591 租屋網" [--hours 2] [--date YYYY-MM-DD]
+    python django/manage.py queuebusy --vendor "591 租屋網" [--hours 2] [--date YYYY-MM-DD] [--source file|db]
+
+S4a 起（TWRH_QUEUE_SOURCE=file）沒有 in_flight 列：改看檔案 queue 的 worker 心跳
+（artifacts/queue/<vendor>/<date>/<type>/active/<run>/<worker>.json 的 mtime 在窗內）；
+--source 未給時跟 TWRH_QUEUE_SOURCE 走（預設 db）。
 '''
 import os
 from datetime import datetime, timedelta
@@ -15,7 +19,9 @@ from django.utils import timezone
 
 from crawlerrequest.models import RequestTS
 from crawlerrequest.enums import RequestStatus
+from rental import filequeue
 from rental.models import Vendor
+from rental.raws import vendor_dirname
 
 
 class Command(BaseCommand):
@@ -25,6 +31,8 @@ class Command(BaseCommand):
         parser.add_argument('--vendor', required=True, help='Vendor.name')
         parser.add_argument('--hours', type=float, default=2.0)
         parser.add_argument('--date', help='YYYY-MM-DD（預設 TWRH_TARGET_DATE／今天）')
+        parser.add_argument('--source', choices=['file', 'db'],
+                            default=os.environ.get('TWRH_QUEUE_SOURCE', 'db'))
 
     def handle(self, *_args, **options):
         override = options['date'] or os.environ.get('TWRH_TARGET_DATE')
@@ -33,12 +41,19 @@ class Command(BaseCommand):
         vendor = Vendor.objects.filter(name=options['vendor']).first()
         if vendor is None:
             raise CommandError('vendor {!r} not in DB'.format(options['vendor']))
-        busy = RequestTS.objects.filter(
-            year=today.year, month=today.month, day=today.day, hour=0,
-            vendor=vendor, status=RequestStatus.IN_FLIGHT,
-            updated__gte=timezone.now() - timedelta(hours=options['hours']),
-        ).count()
-        print('in_flight(<{}h) {} {}: {}'.format(
-            options['hours'], options['vendor'], today, busy))
+        if options['source'] == 'file':
+            active = filequeue.active_workers(
+                vendor_dirname(vendor.name), today.isoformat(), options['hours'])
+            busy = len(active)
+            print('active workers(<{}h) {} {}: {}'.format(
+                options['hours'], options['vendor'], today, busy))
+        else:
+            busy = RequestTS.objects.filter(
+                year=today.year, month=today.month, day=today.day, hour=0,
+                vendor=vendor, status=RequestStatus.IN_FLIGHT,
+                updated__gte=timezone.now() - timedelta(hours=options['hours']),
+            ).count()
+            print('in_flight(<{}h) {} {}: {}'.format(
+                options['hours'], options['vendor'], today, busy))
         if busy:
             raise SystemExit(1)

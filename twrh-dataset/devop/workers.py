@@ -57,13 +57,18 @@ def launch():
     # 4e 檔案 queue 的 run 維度（seeds/<run>、terminals/<run>/）：worker 與 primary 同 run
     if os.environ.get('TWRH_RUN_ID'):
         env.append({'name': 'TWRH_RUN_ID', 'value': os.environ['TWRH_RUN_ID']})
+    # S4a 檔案認領：每個 worker 一個分片 index（1..N，primary 是 0）、count=N+1，
+    # 所以逐個 run-task（不能 count=N 一次發相同 env）；認領來源旗標一併傳
+    for name in ('TWRH_QUEUE_SOURCE', 'TWRH_QUEUE_DB'):
+        if os.environ.get(name):
+            env.append({'name': name, 'value': os.environ[name]})
     arns = []
-    remaining = N
-    while remaining > 0:
-        count = min(10, remaining)  # RunTask 單次上限 10
+    for index in range(1, N + 1):
+        worker_env = env + [{'name': 'TWRH_WORKER_INDEX', 'value': str(index)},
+                            {'name': 'TWRH_WORKER_COUNT', 'value': str(N + 1)}]
         resp = ecs.run_task(
             cluster=CLUSTER, taskDefinition=TASK_DEF, launchType='FARGATE',
-            count=count, startedBy='orchestrate-{}'.format(STAMP)[:36],
+            count=1, startedBy='orchestrate-{}'.format(STAMP)[:36],
             enableExecuteCommand=True,
             networkConfiguration={'awsvpcConfiguration': {
                 'subnets': SUBNETS, 'securityGroups': [SG],
@@ -71,11 +76,10 @@ def launch():
             overrides={'cpu': WCPU, 'memory': WMEM, 'containerOverrides': [{
                 'name': 'crawler', 'cpu': int(WCPU), 'memory': int(WMEM),
                 'command': ['bash', '-c', worker_command()],
-                'environment': env}]})
+                'environment': worker_env}]})
         arns += [t['taskArn'] for t in resp['tasks']]
         for f in resp.get('failures', []):
             print('run-task failure: {}'.format(f), file=sys.stderr)
-        remaining -= count
     print(' '.join(arns))
 
 

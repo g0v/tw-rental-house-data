@@ -46,6 +46,10 @@ class Command(BaseCommand):
         parser.add_argument(
             '--no-cleanup', action='store_true',
             help='skip the rolling cleanup of old terminal rows')
+        parser.add_argument(
+            '--source', choices=['db', 'file'],
+            default=os.environ.get('TWRH_QUEUE_FINALIZE_SOURCE', 'db'),
+            help='對帳來源：db＝request_ts（S4a 仍用，DB 記帳鏡像）；file＝檔案 queue（S4b 起）')
 
     def cleanup(self, days):
         cutoff = timezone.now() - timedelta(days=days)
@@ -76,11 +80,28 @@ class Command(BaseCommand):
 
         # (vendor, type) → {status: count}
         matrix = {}
-        for row in (RequestTS.objects.filter(**this_ts)
-                    .values('vendor', 'request_type', 'status')
-                    .annotate(count=Count('id'))):
-            key = (row['vendor'], row['request_type'])
-            matrix.setdefault(key, {})[row['status']] = row['count']
+        file_errors = {}
+        if options['source'] == 'file':
+            # S4b：檔案 queue 是唯一真相——reconcile 的 done／dead／residue 直接當狀態計數
+            # （residue 記在 FAILED 位，讓下面的殘留規則與 error 分類照跑）
+            from rental import filequeue
+            from rental.raws import vendor_dirname
+            date_iso = '{year:04d}-{month:02d}-{day:02d}'.format(**this_ts)
+            max_attempts = int(os.environ.get('TWRH_QUEUE_MAX_ATTEMPTS', 3))
+            for vendor in Vendor.objects.all():
+                short = vendor_dirname(vendor.name)
+                for type_name in filequeue.type_names(short, date_iso):
+                    r = filequeue.reconcile(short, date_iso, type_name, max_attempts)
+                    key = (vendor.id, RequestType[type_name.upper()])
+                    matrix[key] = {RequestStatus.DONE: r['done'], RequestStatus.DEAD: r['dead'],
+                                   RequestStatus.FAILED: r['residue']}
+                    file_errors[key] = r['errors']
+        else:
+            for row in (RequestTS.objects.filter(**this_ts)
+                        .values('vendor', 'request_type', 'status')
+                        .annotate(count=Count('id'))):
+                key = (row['vendor'], row['request_type'])
+                matrix.setdefault(key, {})[row['status']] = row['count']
 
         problems = []
         lines = []
@@ -125,14 +146,22 @@ class Command(BaseCommand):
                         request_type.name.lower()))
 
         # error 分類統計（紅綠都列，紅燈時進 Slack）
-        error_stats = (RequestTS.objects.filter(**this_ts)
-                       .exclude(status=RequestStatus.DONE)
-                       .exclude(error__isnull=True)
-                       .values('error').annotate(count=Count('id'))
-                       .order_by('-count')[:8])
-        error_lines = [
-            '  {} × {}'.format(row['count'], row['error'])
-            for row in error_stats]
+        if options['source'] == 'file':
+            merged = {}
+            for errs in file_errors.values():
+                for err, n in errs.items():
+                    merged[err] = merged.get(err, 0) + n
+            error_lines = ['  {} × {}'.format(n, err)
+                           for err, n in sorted(merged.items(), key=lambda kv: -kv[1])[:8]]
+        else:
+            error_stats = (RequestTS.objects.filter(**this_ts)
+                           .exclude(status=RequestStatus.DONE)
+                           .exclude(error__isnull=True)
+                           .values('error').annotate(count=Count('id'))
+                           .order_by('-count')[:8])
+            error_lines = [
+                '  {} × {}'.format(row['count'], row['error'])
+                for row in error_stats]
 
         for line in lines:
             print(line)
