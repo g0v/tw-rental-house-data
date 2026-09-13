@@ -69,9 +69,12 @@ def _ts_of(date_obj):
 
 def _queue_stats(ts, request_type, source):
     '''queue 終結統計（1-1 狀態機）。backfill 模式下舊制已刪列，統計不可信
-    ——整節缺席，斷言引擎對缺 metric 的檢查自動降 advisory。'''
+    ——整節缺席，斷言引擎對缺 metric 的檢查自動降 advisory。
+    S4a（TWRH_QUEUE_SOURCE=file）改讀檔案 queue（各 vendor 加總），同欄位。'''
     if source == 'backfill':
         return None
+    if os.environ.get('TWRH_QUEUE_SOURCE', 'db') == 'file':
+        return _queue_stats_file(ts, request_type)
     by_status = dict(
         RequestTS.objects.filter(**ts, request_type=request_type)
         .values_list('status').annotate(n=Count('id')))
@@ -91,6 +94,32 @@ def _queue_stats(ts, request_type, source):
         'residue': residue,
         'dead_ratio': round(dead / seeds, 4) if seeds else 0.0,
         'errors': errors,
+    }
+
+
+def _queue_stats_file(ts, request_type):
+    from rental import filequeue
+    from rental.models import Vendor
+    from rental.raws import vendor_dirname
+    date_str = '{year:04d}-{month:02d}-{day:02d}'.format(**ts)
+    type_name = RequestType(request_type).name.lower()
+    max_attempts = int(os.environ.get('TWRH_QUEUE_MAX_ATTEMPTS', 3))
+    total = {'seeds': 0, 'done': 0, 'dead': 0, 'residue': 0}
+    errors = {}
+    for vendor in Vendor.objects.all():
+        short = vendor_dirname(vendor.name)
+        if type_name not in filequeue.type_names(short, date_str):
+            continue
+        r = filequeue.reconcile(short, date_str, type_name, max_attempts)
+        for k in total:
+            total[k] += r[k]
+        for err, n in r['errors'].items():
+            errors[err] = errors.get(err, 0) + n
+    return {
+        **total,
+        'dead_ratio': round(total['dead'] / total['seeds'], 4) if total['seeds'] else 0.0,
+        'errors': errors,
+        'source': 'file',
     }
 
 

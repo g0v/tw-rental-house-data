@@ -12,7 +12,16 @@ seeds == terminals。這裡用檔案滿足，不需要 DB server：
 - **分片**：worker i／N 對「剩餘集合」排序後依位置輪流分（不用 hash 取模），
   所有 worker 無通訊算出同一結果；attempts 跨檔累計（取該 key 最大值）。
 - **雙軌期（4e 第一步）**：DB queue 仍是認領來源，這裡只是同步記帳；key＝
-  RequestTS.id，`filequeuecheck` 對 DB 逐型比對。切換後 key 改為檔案自派。
+  RequestTS.id，`filequeuecheck` 對 DB 逐型比對。
+- **S4a（4e 第二步，TWRH_QUEUE_SOURCE=file）**：認領改由這裡出——`claimable()` 對
+  「當日全部 seeds」（不是剩餘集合）位置輪分再濾掉已終結；分片對象是靜態集合，所以
+  worker 各自在任意時刻重啟（batch 迴圈）算出的分片都一致、永不重疊（對剩餘集合輪分
+  只在所有 worker 同時開新一輪時成立，交錯重啟會整片撞車）。死掉的 worker 留下的
+  分片由收尾的單 worker 補掃（count=1 拿全部剩餘）。DB 在 S4a 仍照寫一天
+  （TWRH_QUEUE_DB=1，key 仍＝RequestTS.id）供 filequeuecheck 對帳；S4b 停寫後
+  key 改 make_key(seed) 自派。
+- **心跳**：沒有 in_flight，「有人在爬」改看 active/<run>/<worker>.json 的 mtime
+  （queuebusy）；SIGKILL 殘留的心跳過窗即失效。
 
 不 import Django（manage.py／scrapy／離線工具三處共用，4f 去 Django 時
 它就是 queue 的全部）。
@@ -174,6 +183,75 @@ def shard(keys, index, count):
         raise ValueError('index {} out of range for count {}'.format(index, count))
     ordered = sorted(keys)
     return ordered[index::count]
+
+
+def make_key(seed):
+    '''檔案自派 key（S4b，DB 不再給 id）：seed 各欄依名稱排序串起，同 seed 同 key，
+    重排同一戶自然去重、attempts 跨輪累計。'''
+    if isinstance(seed, dict):
+        return '|'.join('{}={}'.format(k, seed[k]) for k in sorted(seed))
+    return str(seed)
+
+
+def claimable(vendor_short, date_str, type_name, index=0, count=1, max_attempts=3):
+    '''worker index／count 的認領清單：[(key, seed, attempts)]。分片對「當日全部 seeds」
+    位置輪分（靜態、重啟一致），再去掉已終結；新種子（attempts 0）排前、可重試的 failed
+    排後（同 DB 版 order by attempts）。'''
+    seeds, _dup = load_seeds(vendor_short, date_str, type_name)
+    terminals = load_terminals(vendor_short, date_str, type_name, max_attempts)
+    out = []
+    for key in shard(list(seeds), index, count):
+        t = terminals.get(key)
+        if t is None:
+            out.append((key, seeds[key], 0))
+        elif t['status'] == 'failed':
+            out.append((key, seeds[key], t['attempts']))
+    out.sort(key=lambda x: (x[2], _natural(x[0])))
+    return out
+
+
+def _natural(key):
+    return (0, int(key)) if key.isdigit() else (1, key)
+
+
+def has_seed_matching(vendor_short, date_str, type_name, **filters):
+    '''當日該型是否有 seed 符合條件（PersistQueue.has_seed 的檔案版；filters 對 seed 的欄位）。'''
+    seeds, _dup = load_seeds(vendor_short, date_str, type_name)
+    for seed in seeds.values():
+        if isinstance(seed, dict) and all(seed.get(k) == v for k, v in filters.items()):
+            return True
+    return False
+
+
+def active_dir(vendor_short, date_str, type_name, run):
+    return os.path.join(queue_dir(vendor_short, date_str, type_name), 'active', run)
+
+
+class Heartbeat:
+    '''worker 存活標記：active/<run>/<worker>.json，touch 更新 mtime、收工刪除。'''
+
+    def __init__(self, vendor_short, date_str, type_name, run, worker):
+        self.path = os.path.join(active_dir(vendor_short, date_str, type_name, run), worker + '.json')
+
+    def touch(self):
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        with open(self.path, 'w', encoding='utf-8') as f:
+            json.dump({'at': _now()}, f)
+
+    def clear(self):
+        try:
+            os.unlink(self.path)
+        except FileNotFoundError:
+            pass
+
+
+def active_workers(vendor_short, date_str, hours=2.0):
+    '''近 hours 小時內 touch 過心跳的 worker 檔（跨所有 type／run）；queuebusy 用。'''
+    import time
+    cutoff = time.time() - hours * 3600
+    base = os.path.join(artifact_dir(), 'queue', vendor_short, date_str)
+    return sorted(p for p in glob.glob(os.path.join(base, '*', 'active', '*', '*.json'))
+                  if os.path.getmtime(p) >= cutoff)
 
 
 def type_names(vendor_short, date_str):

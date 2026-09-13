@@ -1602,6 +1602,181 @@ class FileQueueDualWriteTests(QueueTestMixin, TestCase):
         self.assertIn('file seeds 4 = done 1 + dead 2 + residue 1', out.getvalue())
 
 
+class FileClaimTests(QueueTestMixin, TestCase):
+    '''S4a（4e 第二步）：認領改讀檔案分片、DB 記帳鏡像一天。分片對「當日全部 seeds」位置輪分，
+    worker 任意時刻重啟都算出同一片、永不重疊；收尾單 worker（count=1）補掃殘餘。'''
+
+    def setUp(self):
+        super().setUp()
+        self.env2 = mock.patch.dict(os.environ, {'TWRH_QUEUE_SOURCE': 'file', 'TWRH_RUN_ID': 'run'})
+        self.env2.start()
+
+    def tearDown(self):
+        self.env2.stop()
+        super().tearDown()
+
+    def worker(self, index, count, **kw):
+        with mock.patch.dict(os.environ, {'TWRH_WORKER_INDEX': str(index), 'TWRH_WORKER_COUNT': str(count)}):
+            return make_queue(**kw)
+
+    def drain(self, q):
+        '''認領到沒有為止，回傳 [QueueItem]。'''
+        items = []
+        while True:
+            r = q.next_request()
+            if r is None:
+                break
+            items.append(r.meta['db_request'])
+        return items
+
+    def test_shards_are_disjoint_stable_across_restart_and_mopped_up(self):
+        from crawler.spiders.persist_queue import QueueItem
+        from rental import filequeue as fq
+        primary = self.worker(0, 1)
+        for k in ('a', 'b', 'c', 'd', 'e', 'f', 'g'):
+            primary.gen_persist_request({'id': k})
+        keys = fq.load_seeds('591', TEST_DATE, 'detail')[0]
+        self.assertEqual(len(keys), 7)
+        self.assertEqual(RequestTS.objects.count(), 7)          # DB 記帳鏡像：種子列照建
+        # 三個 worker 各自分片：兩兩不重疊、聯集＝全部
+        w = [self.worker(i, 3, batch_size=0) for i in range(3)]
+        claimed = [self.drain(q) for q in w]
+        sets = [{it.key for it in c} for c in claimed]
+        self.assertEqual(sets[0] | sets[1] | sets[2], set(keys))
+        self.assertFalse(sets[0] & sets[1] or sets[1] & sets[2] or sets[0] & sets[2])
+        self.assertTrue(all(isinstance(it, QueueItem) for c in claimed for it in c))
+        # DB 鏡像：認領＝in_flight、attempts 1
+        for c in claimed:
+            for it in c:
+                self.assertEqual((it.db_row.status, it.db_row.attempts), (RequestStatus.IN_FLIGHT, 1))
+        # worker 0 做完自己的第一個、其餘放掉（模擬 batch 收工）；worker 1 整個死掉（不釋放）
+        first = claimed[0][0]
+        list(w[0].parser_wrapper(make_response(first)))
+        w[0].release_claims()
+        self.assert_completed(first.id)
+        for it in claimed[0][1:]:
+            self.assert_retriable_failure(it.id, 'released:unfinished')
+        # worker 0 重啟（同 index／count）：分片一致，只剩自己未完成的（不含 worker 1／2 的）
+        again = self.drain(self.worker(0, 3))
+        self.assertEqual({it.key for it in again}, sets[0] - {first.key})
+        self.assertTrue(all(it.attempts == 2 for it in again))   # attempts 跨輪累計
+        # 收尾補掃：count=1 拿到所有未終結的（worker 1 死掉留下的、worker 2 沒放掉的、worker 0 重啟中的）
+        mop = self.worker(0, 1)
+        rest = self.drain(mop)
+        self.assertEqual({it.key for it in rest}, set(keys) - {first.key})
+        for it in rest:
+            list(mop.parser_wrapper(make_response(it)))
+        mop.release_claims()
+        r = fq.reconcile('591', TEST_DATE, 'detail')
+        self.assertEqual((r['seeds'], r['done'], r['dead'], r['residue']), (7, 7, 0, 0))
+        self.assertEqual(RequestTS.objects.filter(status=RequestStatus.DONE).count(), 7)
+        from io import StringIO
+        from django.core.management import call_command
+        out = StringIO()
+        with mock.patch('sys.stdout', out):
+            call_command('filequeuecheck', '--date', TEST_DATE)
+        self.assertIn('filequeuecheck: AGREE', out.getvalue())
+
+    def test_failures_accumulate_attempts_then_dead_and_release(self):
+        from rental import filequeue as fq
+
+        def exploding(_response):
+            raise ValueError('boom')
+        q = self.worker(0, 1, parse_response=exploding)
+        q.max_attempts = 2
+        q.gen_persist_request({'id': 'x'})
+        q.gen_persist_request({'id': 'y'})
+        it = q.next_request().meta['db_request']
+        list(q.parser_wrapper(make_response(it, status=500)))     # attempts 1 → failed
+        self.assert_retriable_failure(it.id, 'parse_error:ValueError')
+        self.assertEqual(RequestTS.objects.get(id=it.id).last_status, 500)
+        q2 = self.worker(0, 1, parse_response=exploding)
+        q2.max_attempts = 2
+        items = self.drain(q2)                                    # x（attempts 2）與 y
+        by = {i.key: i for i in items}
+        self.assertEqual(by[it.key].attempts, 2)
+        list(q2.parser_wrapper(make_response(by[it.key])))        # 達上限 → dead
+        self.assertEqual(RequestTS.objects.get(id=it.id).status, RequestStatus.DEAD)
+        q2.release_claims()                                       # y 在手上未做 → failed
+        self.assert_retriable_failure(by[next(k for k in by if k != it.key)].id, 'released:unfinished')
+        r = fq.reconcile('591', TEST_DATE, 'detail', max_attempts=2)
+        self.assertEqual((r['seeds'], r['done'], r['dead'], r['residue']), (2, 0, 1, 1))
+        self.assertTrue(q2.has_request())
+        self.assertEqual(q2.get_total_count(), 1)
+        self.assertFalse(os.path.exists(q2.heartbeat.path))
+
+    def test_file_only_mode_touches_no_db(self):
+        from rental import filequeue as fq
+        with mock.patch.dict(os.environ, {'TWRH_QUEUE_DB': '0'}):
+            q = self.worker(0, 1)
+            q.gen_persist_request({'id': 'h1'})
+            q.gen_persist_request({'id': 'h1'})                   # 重排同一戶：同 key、去重
+            q.gen_persist_request({'id': 'h2'})
+            self.assertEqual(RequestTS.objects.count(), 0)
+            items = self.drain(q)
+            self.assertEqual(sorted(i.key for i in items), ['id=h1', 'id=h2'])
+            self.assertTrue(all(i.db_row is None and i.id == i.key for i in items))
+            list(q.parser_wrapper(make_response(items[0])))
+            q.release_claims()
+            r = fq.reconcile('591', TEST_DATE, 'detail')
+            self.assertEqual((r['seeds'], r['done'], r['residue'], r['duplicate_seed_lines']), (2, 1, 1, 1))
+            self.assertEqual(RequestTS.objects.count(), 0)
+
+    def test_dynamic_seeds_after_load_and_has_seed(self):
+        q = self.worker(0, 1, is_list=True)
+        q.gen_persist_request({'id': 1, 'name': 'A', 'page': 0})
+        self.assertTrue(q.has_seed(seed__id=1))
+        self.assertFalse(q.has_seed(seed__id=2))
+        first = q.next_request()                                   # 載入分片
+        self.assertEqual(first.meta['db_request'].seed['page'], 0)
+        q.gen_persist_request({'id': 1, 'name': 'A', 'page': 1})   # 翻頁：生種子的就是消費者
+        nxt = q.next_request()
+        self.assertEqual(nxt.meta['db_request'].seed['page'], 1)
+        self.assertIsNone(q.next_request())
+
+    def test_queuebusy_reads_heartbeat(self):
+        from django.core.management import call_command
+        import time
+
+        def busy(**kw):
+            try:
+                call_command('queuebusy', '--vendor', VENDOR_NAME, '--source', 'file', **kw)
+            except SystemExit as e:
+                return e.code
+            return 0
+        self.assertEqual(busy(), 0)
+        q = self.worker(0, 1)                                      # 建立即 touch 心跳
+        self.assertEqual(busy(), 1)
+        old = time.time() - 3 * 3600
+        os.utime(q.heartbeat.path, (old, old))                     # SIGKILL 殘留：過窗即不算
+        self.assertEqual(busy(hours=2), 0)
+        q.heartbeat.touch()
+        self.assertEqual(busy(), 1)
+        q.release_claims()                                         # 收工刪心跳
+        self.assertEqual(busy(), 0)
+
+    def test_finalize_and_manifest_read_files(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from crawlerrequest import manifests
+        q = self.worker(0, 1)
+        q.gen_persist_request({'id': 'a'})
+        q.gen_persist_request({'id': 'b'})
+        items = self.drain(q)
+        list(q.parser_wrapper(make_response(items[0])))
+        q.mark_failed(items[1], 'http_403')
+        q.release_claims()
+        stats = manifests._queue_stats(manifests._ts_of(date.fromisoformat(TEST_DATE)), RequestType.DETAIL, 'live')
+        self.assertEqual((stats['seeds'], stats['done'], stats['dead'], stats['residue'], stats['source']),
+                         (2, 1, 0, 1, 'file'))
+        self.assertEqual(stats['errors'], {'http_403': 1})
+        out = StringIO()
+        with mock.patch('sys.stdout', out), mock.patch('crawlerrequest.management.commands.queuefinalize.send_slack'):
+            with self.assertRaises(Exception):
+                call_command('queuefinalize', '--source', 'file', '--no-cleanup')
+        self.assertIn('detail: seeds 2 = done 1 + dead 0 + residue 1', out.getvalue())
+
+
 class SnapshotFoldTests(TestCase):
     '''4c snapshot 摺疊純函數：detail／list／carry 三種來源、carry 欄遞推、
     DEAL sticky、deals 事件優先、已關閉且無訊號不攜帶。無 DB。'''

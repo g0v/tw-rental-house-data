@@ -193,7 +193,7 @@ def stage_seed(ctx):
             raise StageFailed('seed generation failed')
 
 
-def consume_loop(ctx, batch_size, extra_env=None):
+def consume_loop(ctx, batch_size, extra_env=None, tag='detail'):
     '''batch 迴圈（額滿由 spider touch stop marker 通知，dx 4-2）。'''
     import tempfile
     marker = tempfile.mktemp(prefix='twrh-batch-limit.')
@@ -213,7 +213,7 @@ def consume_loop(ctx, batch_size, extra_env=None):
         if result.returncode != 0:
             raise StageFailed('detail batch {} exited {}'.format(
                 n, result.returncode))
-        log = archive_scrapy_log(ctx, 'detail.{}'.format(n))
+        log = archive_scrapy_log(ctx, '{}.{}'.format(tag, n))
         if breaker_tripped(log):
             raise StageFailed('detail breaker tripped at batch {}'.format(n))
         if not os.path.exists(marker):
@@ -230,24 +230,33 @@ def stage_detail(ctx):
     # ecs：開 N 個 consume-only worker（各自新公網 IP），primary 也陪跑
     # 消化 queue（套 worker 節流參數，見 orchestrate 08-31 首航教訓），
     # 最後等 worker 全停——「worker 全停」是唯一可靠收尾閘門
+    # S4a 檔案認領：分片 index／count 由這裡定——primary 0、worker 1..N（workers.py 逐個
+    # 帶 TWRH_WORKER_INDEX 起）、count=N+1；worker 全停後 primary 再以 count=1 補掃一輪，
+    # 把死掉／拖尾 worker 留下的分片收完（DB 認領是動態的，本就不需要）
+    n_workers = int(os.environ.get('TWRH_DETAIL_WORKERS', '1'))
     launch = run(['poetry', 'run', 'python', 'devop/workers.py', 'launch'],
                  capture_output=True, text=True, check=True)
     arns = (launch.stdout or '').strip()
     if not arns and not DRY_RUN:
         raise StageFailed('run-task returned no ARNs')
     print('workers: {}'.format(arns))
-    consume_loop(
-        ctx, os.environ.get('DETAIL_BATCH_SIZE', '10000'),
-        extra_env={
-            'TWRH_CONCURRENT_REQUESTS':
-                os.environ.get('TWRH_WORKER_CONCURRENCY', '1'),
-            'TWRH_DOWNLOAD_DELAY': os.environ.get('TWRH_WORKER_DELAY', '1'),
-        })
+    rate_env = {
+        'TWRH_CONCURRENT_REQUESTS':
+            os.environ.get('TWRH_WORKER_CONCURRENCY', '1'),
+        'TWRH_DOWNLOAD_DELAY': os.environ.get('TWRH_WORKER_DELAY', '1'),
+    }
+    batch = os.environ.get('DETAIL_BATCH_SIZE', '10000')
+    consume_loop(ctx, batch, extra_env={
+        **rate_env, 'TWRH_WORKER_INDEX': '0', 'TWRH_WORKER_COUNT': str(n_workers + 1)})
     wait = run(['poetry', 'run', 'python', 'devop/workers.py',
                 'wait', *arns.split()], check=False)
     if wait.returncode != 0:
         print('NOTE: worker wait timed out — data completeness suspect,'
               ' queuefinalize will tell')
+    if os.environ.get('TWRH_QUEUE_SOURCE', 'db') == 'file':
+        print('=== mop-up: single-worker pass over remaining file claims', flush=True)
+        consume_loop(ctx, batch, extra_env={
+            **rate_env, 'TWRH_WORKER_INDEX': '0', 'TWRH_WORKER_COUNT': '1'}, tag='mopup')
 
 
 def stage_deals(ctx):
@@ -553,6 +562,8 @@ def cmd_run(options):
     os.environ['TWRH_TARGET_DATE'] = ctx.date
     os.environ['TWRH_LOG_STAMP'] = ctx.stamp
     os.environ['TWRH_RUN_ID'] = ctx.run_id
+    # S4a：認領走檔案分片、DB 記帳鏡像（TWRH_QUEUE_DB=1）；回退＝環境設 TWRH_QUEUE_SOURCE=db
+    os.environ.setdefault('TWRH_QUEUE_SOURCE', 'file')
     print('=== flow run {} (vendor: {}, executor: {}, seed mode: {}) ==='.format(
         ctx.date, ctx.vendor.short, ctx.executor, ctx.seed_mode))
     code = run_stages(ctx, RUN_STAGES, options.from_stage)
@@ -566,6 +577,8 @@ def cmd_sweep(options):
     os.environ['TWRH_TARGET_DATE'] = ctx.date
     os.environ['TWRH_LOG_STAMP'] = ctx.stamp
     os.environ['TWRH_RUN_ID'] = ctx.run_id
+    # S4a：認領走檔案分片、DB 記帳鏡像（TWRH_QUEUE_DB=1）；回退＝環境設 TWRH_QUEUE_SOURCE=db
+    os.environ.setdefault('TWRH_QUEUE_SOURCE', 'file')
     print('=== flow sweep {} {} (vendor: {}, frontier pages<={}) ==='.format(
         ctx.date, ctx.run_id, ctx.vendor.short, ctx.vendor.frontier_pages))
     code = run_stages(ctx, SWEEP_STAGES, None)
