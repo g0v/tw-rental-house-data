@@ -3,6 +3,9 @@
     manage.py snapshotfold [--date D] [--vendor] [--no-upload]
     manage.py snapshotfold --bootstrap --date D      # 只從 DB 摺出 D 這天（起點／#11 回填）
     manage.py snapshotfold --reupload --date D       # 只把本地 D 的檔補上 S3
+    manage.py snapshotfold --backfill --from D1 --to D2 [--force]
+        # #11 回填：D1..D2 每天由 HouseTS 摺出（carry 欄只留該日列推得出的，見 snapshot_db）；
+        # 已存在（本地或 S3）的天數跳過，--force 才覆寫（S3 永不覆蓋原則：回填只補缺的天）
 
 flow 的 snapshot stage（parsedcheck 之後）每天做兩件事：
 1. 昨日 final ＝ fold(前日 snapshot, 昨日全部 list／parsed／deals 分區)——昨日的輸入
@@ -33,6 +36,12 @@ class Command(BaseCommand):
         parser.add_argument('--bootstrap', action='store_true',
                             help='只從 DB 摺出 --date 這一天（覆寫既有檔）')
         parser.add_argument('--reupload', action='store_true')
+        parser.add_argument('--backfill', action='store_true',
+                            help='#11：--from..--to 每天由 HouseTS 摺出（過去日、無 House carry）')
+        parser.add_argument('--from', dest='from_date')
+        parser.add_argument('--to', dest='to_date')
+        parser.add_argument('--force', action='store_true',
+                            help='--backfill 時覆寫已存在的天')
 
     def handle(self, *_args, **options):
         if options['date']:
@@ -47,6 +56,10 @@ class Command(BaseCommand):
         short = vendor_dirname(vendor.name)
         bucket = None if options['no_upload'] else os.environ.get('TWRH_RAW_BUCKET')
         read_bucket = os.environ.get('TWRH_RAW_BUCKET')
+
+        if options['backfill']:
+            self.backfill(vendor, short, options, read_bucket, bucket)
+            return
 
         if options['reupload']:
             if not bucket:
@@ -73,6 +86,32 @@ class Command(BaseCommand):
                 short, yesterday, before))
             self.bootstrap(vendor, short, yesterday, bucket)
         self.fold(short, yesterday, day, 'provisional', read_bucket, bucket)
+
+    def backfill(self, vendor, short, options, read_bucket, bucket):
+        try:
+            start = datetime.strptime(options['from_date'] or '', '%Y-%m-%d').date()
+            end = datetime.strptime(options['to_date'] or '', '%Y-%m-%d').date()
+        except ValueError:
+            raise CommandError('--backfill 需要 --from/--to YYYY-MM-DD')
+        if end < start:
+            raise CommandError('--to 早於 --from')
+        day = start
+        while day <= end:
+            date_str = day.isoformat()
+            if not options['force'] and artifacts.snapshot_exists(short, date_str, read_bucket):
+                print('=== snapshot {} {} backfill: exists, skip (--force to overwrite)'.format(
+                    short, date_str))
+            else:
+                rows = snapshot_db.bootstrap_rows(vendor, day, carry='ts')
+                by_source = {}
+                for r in rows:
+                    by_source[r['source']] = by_source.get(r['source'], 0) + 1
+                path, n = artifacts.write_snapshot(rows, short, date_str)
+                del rows
+                print('=== snapshot {} {} backfill (from HouseTS): {} rows {} -> {} ({:.1f} MB)'.format(
+                    short, date_str, n, by_source, path, os.path.getsize(path) / 1e6))
+                self.upload(bucket, short, day, path)
+            day += timedelta(days=1)
 
     def bootstrap(self, vendor, short, day, bucket):
         rows = snapshot_db.bootstrap_rows(vendor, day)

@@ -1936,6 +1936,46 @@ class DealEventAndSnapshotTests(QueueTestMixin, TestCase):
         call_command('snapshotfold', '--bootstrap', '--date', self.yesterday.isoformat(), '--no-upload')
         self.assertEqual(len(artifacts.read_snapshot('591', self.yesterday.isoformat())), 3)
 
+    def test_backfill_past_day_from_ts_without_house_carry(self):
+        '''#11：過去日由 HouseTS 摺出，carry 欄只留該日列推得出的；已存在的天跳過、--force 才覆寫。'''
+        from django.core.management import call_command
+        from rental import artifacts, snapshot_db
+        created = self.seed_yesterday_db()
+        y = self.yesterday
+        by = {r['vendor_house_id']: r for r in snapshot_db.bootstrap_rows(self.vendor, y, carry='ts')}
+        # h1 該日 detail：source 仍判得出（House.detail_crawled_at 落在該日），但 last_detail_at／指紋不填
+        self.assertEqual((by['h1']['source'], by['h1']['last_detail_at'], by['h1']['last_fingerprint'],
+                          by['h1']['fingerprint_at_last_detail'], by['h1']['last_seen_at'],
+                          by['h1']['days_absent'], by['h1']['first_seen_at'], by['h1']['floor_ping']),
+                         ('detail', None, None, None, self.at(y, 2), 0, created, 20.0))
+        self.assertEqual((by['h2']['source'], by['h2']['last_fingerprint'], by['h2']['days_absent']),
+                         ('list', None, 0))
+        # h3 該日不在 list：缺席天數對過去日不可知 → None（bootstrap 模式會由 House 現值算 3）
+        self.assertEqual((by['h3']['source'], by['h3']['deal_source'], by['h3']['days_absent'],
+                          by['h3']['last_seen_at'], by['h3']['n_day_deal']),
+                         ('carry', 'deals', None, None, 4))
+        with self.assertRaises(ValueError):
+            snapshot_db.bootstrap_rows(self.vendor, y, carry='nope')
+
+        y_str = y.isoformat()
+        call_command('snapshotfold', '--backfill', '--from', y_str, '--to', y_str, '--no-upload')
+        rows = artifacts.read_snapshot('591', y_str)
+        self.assertEqual(sorted(r['vendor_house_id'] for r in rows), ['h1', 'h2', 'h3'])
+        # 再跑：已存在 → 跳過（檔案 mtime 不變）；--force 才重寫
+        path = artifacts.snapshot_path('591', y_str)
+        mtime = os.path.getmtime(path)
+        call_command('snapshotfold', '--backfill', '--from', y_str, '--to', y_str, '--no-upload')
+        self.assertEqual(os.path.getmtime(path), mtime)
+        HouseTS.objects.filter(vendor_house_id='h3').delete()
+        call_command('snapshotfold', '--backfill', '--from', y_str, '--to', y_str, '--no-upload', '--force')
+        self.assertEqual(sorted(r['vendor_house_id'] for r in artifacts.read_snapshot('591', y_str)), ['h1', 'h2'])
+        # 沒給日期／--to 早於 --from 都要擋
+        from django.core.management.base import CommandError
+        with self.assertRaises(CommandError):
+            call_command('snapshotfold', '--backfill', '--no-upload')
+        with self.assertRaises(CommandError):
+            call_command('snapshotfold', '--backfill', '--from', TEST_DATE, '--to', y_str, '--no-upload')
+
 
 class SnapshotCheckTests(QueueTestMixin, TestCase):
     '''4c 對帳：snapshot parquet 對 HouseTS（parsed 欄＋狀態欄）與 House（carry 欄）。

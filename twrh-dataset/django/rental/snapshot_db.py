@@ -4,7 +4,11 @@ bootstrap_rows(vendor, day)：把某日的 DB 狀態摺成一份 snapshot 列—
 bucket 的每一列（parsed 全欄）＋ House／HouseEtc 現值推出的 carry 欄。用途：
 - 一階遞迴的起點：flow snapshot stage 發現前日 snapshot 不存在時，昨日由此摺出
   （2026-09-10 拍板「起點由 DB 摺出、往後日更」）
-- #11 回填：更早的天數也能同法摺出（無 deal event 分區，deal_source 只能推）
+- #11 回填：更早的天數也能同法摺出（無 deal event 分區，deal_source 只能推）——
+  但 House 現值對過去日不成立，carry='ts' 模式只填 HouseTS 該日列本身推得出的
+  carry 欄（source、last_seen_at、days_absent=0 只在當日在 list 時、first_seen_at＝
+  House.created、deal_source），其餘 carry 欄留 NULL（2026-09-10 拍板「回填無 carry 欄」；
+  snapshotcheck 對過去日也只比這幾欄）
 
 carry 欄的 DB 來源（與 rental/snapshot.fold 的語意對齊）：
 - last_detail_at ＝ House.detail_crawled_at
@@ -42,7 +46,11 @@ def _plain(name, value):
     return value
 
 
-def bootstrap_rows(vendor, day):
+def bootstrap_rows(vendor, day, carry='house'):
+    '''carry='house'：起點 bootstrap，carry 欄由 House／HouseEtc 現值推（只對「當日」正確）。
+    carry='ts'：#11 回填過去日，carry 欄只取 HouseTS 該日列推得出的部分。'''
+    if carry not in ('house', 'ts'):
+        raise ValueError('carry must be house or ts')
     short = vendor_dirname(vendor.name)
     date_str = day.isoformat()
     day_start = timezone.make_aware(datetime.combine(day, time_cls.min))
@@ -85,6 +93,16 @@ def bootstrap_rows(vendor, day):
         detail_today = detail_at is not None and day_start <= detail_at < day_end \
             and not ts.is_synthesized
         row['source'] = 'detail' if detail_today else 'list' if in_list_today else 'carry'
+        row['first_seen_at'] = house.created if house else None
+        if row['deal_status'] == snapshot.DEAL:
+            row['deal_source'] = 'deals'
+        if carry == 'ts':
+            # 過去日：House 現值的 last_detail_at／指紋／list_crawled_at 都是「現在」的，
+            # 不是那天的；只留該日列自己說得出的
+            row['last_seen_at'] = ts.list_crawled_at
+            row['days_absent'] = 0 if in_list_today else None
+            rows.append(row)
+            continue
         row['last_detail_at'] = detail_at
         row['last_fingerprint'] = fingerprints.get(hid)
         if detail_at is not None and (fp_changed is None or fp_changed <= detail_at):
@@ -96,8 +114,5 @@ def bootstrap_rows(vendor, day):
             row['days_absent'] = max((day - timezone.localtime(list_at).date()).days, 0)
         else:
             row['days_absent'] = None
-        row['first_seen_at'] = house.created if house else None
-        if row['deal_status'] == snapshot.DEAL:
-            row['deal_source'] = 'deals'
         rows.append(row)
     return rows
