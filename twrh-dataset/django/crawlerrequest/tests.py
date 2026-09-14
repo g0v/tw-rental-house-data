@@ -1918,6 +1918,40 @@ class VendorProfileTests(TestCase):
             p.no_such_key
 
 
+class SweepWorkersTests(TestCase):
+    '''S4a：雲上 sweep 的 detail 走多 worker（seed_only → launch → primary 分片 0 →
+    wait → mop-up）；本機或 TWRH_SWEEP_WORKERS=0 維持行程內兩趟。'''
+
+    def _stage(self, env):
+        import io
+        from contextlib import redirect_stdout
+        import flow
+        from unittest.mock import patch
+        class Opts:
+            date = '2026-09-14'; vendor = '591'
+        with patch.dict(os.environ, env, clear=False), patch.object(flow, 'DRY_RUN', True):
+            ctx = flow.Ctx(Opts, 'sweep')
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                flow.stage_newdetail(ctx)
+        return [l for l in buf.getvalue().splitlines() if l.startswith('+ ')]
+
+    def test_cloud_multi_worker_sequence(self):
+        cmds = self._stage({'TWRH_CLUSTER': 'twrh', 'TWRH_SWEEP_WORKERS': '2'})
+        self.assertIn('seed_mode=new -a seed_only=True', cmds[0])
+        self.assertIn('devop/workers.py launch', cmds[1])
+        self.assertIn('consume_only=True', cmds[2])
+        self.assertIn('consume_only=True', cmds[-1])   # mop-up
+        self.assertEqual(len(cmds), 4)
+
+    def test_local_or_zero_workers_keeps_two_passes(self):
+        for env in ({'TWRH_CLUSTER': '', 'TWRH_SWEEP_WORKERS': '2'},
+                    {'TWRH_CLUSTER': 'twrh', 'TWRH_SWEEP_WORKERS': '0'}):
+            cmds = self._stage(env)
+            self.assertEqual(len(cmds), 2, env)
+            self.assertTrue(all('seed_mode=new' in c and 'seed_only' not in c for c in cmds), env)
+
+
 class QueueBusyTests(QueueTestMixin, TestCase):
     '''D6b：flow sweep 的互斥——同 vendor 同日 bucket、近期更新的 in_flight 才算忙。'''
 

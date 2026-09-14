@@ -24,7 +24,11 @@ PROFILES = {
         'frontier_pages': '30',          # env TWRH_SWEEP_PAGES
         'sweep_concurrency': '2',        # env TWRH_SWEEP_CONCURRENCY（白天與使用者共用站方資源）
         'sweep_delay': '0.5',            # env TWRH_SWEEP_DELAY
-        'sweep_detail_passes': 2,        # 第二趟只撿第一趟 failed 的重試
+        'sweep_detail_passes': 2,        # 第二趟只撿第一趟 failed 的重試（單 worker 路徑）
+        # 雲上 sweep 的 detail 也開 N 個 consume-only worker（S4a 檔案分片：primary 0、
+        # worker 1..N、count=N+1，worker 全停後 primary count=1 補掃）；0＝行程內單 worker。
+        # 每個行程仍套上面的 sweep 速率，總量≈(N+1) 倍；本機（無 TWRH_CLUSTER）一律單 worker
+        'sweep_workers': '2',            # env TWRH_SWEEP_WORKERS
         # 互斥：同 queue 同日期 bucket，別人 N 小時內更新過的 in_flight 列即讓路
         'busy_window_hours': '2',
     },
@@ -35,6 +39,7 @@ ENV_OVERRIDES = {
     'frontier_pages': 'TWRH_SWEEP_PAGES',
     'sweep_concurrency': 'TWRH_SWEEP_CONCURRENCY',
     'sweep_delay': 'TWRH_SWEEP_DELAY',
+    'sweep_workers': 'TWRH_SWEEP_WORKERS',
 }
 
 

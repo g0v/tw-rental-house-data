@@ -286,6 +286,10 @@ date-keyed:
   補抓刊登不到一天就成交的短命物件（一天一次 02:10 只看得到一半）。同一日期 bucket、同一張
   queue；被掃到的物件隔天早上因 detail 很新被 diff 判 skip。起跑先 `queuebusy`（同 vendor 同日
   bucket 2h 內有 in_flight 即讓路 exit 0）；收尾 rawpack 把本輪 raw 併進當日日包。
+  雲上（有 `TWRH_CLUSTER`）的 newdetail 與日跑 detail 同一套多 worker 模型：`seed_only` 先產本輪
+  新種子 → 開 `sweep_workers`（profile 預設 2，env `TWRH_SWEEP_WORKERS`，0＝行程內兩趟）個
+  consume-only worker（速率＝sweep 速率）→ primary 吃分片 0 → worker 全停後 primary count=1
+  補掃（兼撿 failed 重試）；本輪沒新種子不開 worker。
 - List pagination（package 端）不信 591 的 `total_page`：宣稱頁範圍當下限，前緣逐頁探測
   直到空結果頁收單；list manifest 的 `capture.ratio`（當日 OPENED 中出現在 list 的比率，
   assertions `list.capture.ratio` min 0.85）監控捕獲率。

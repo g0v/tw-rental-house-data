@@ -13,7 +13,8 @@ stamp 檔（DB 型 stage，Phase 4 檔案化後逐一改 artifact）。
 
 `run`＝日跑（每月 1 日第一個 stage 先出上月 export）；`sweep`＝前緣掃描
 （白天每數小時：list 前緣 → 新物件 detail → 對帳 → 日包聯集），同一天多
-次 run，各自的 stamp 落在 `logs/flow/<date>/sweep-<HHMM>/`。起跑先問
+次 run，各自的 stamp 落在 `logs/flow/<date>/sweep-<HHMM>/`。雲上 sweep 的
+detail 與日跑同一套多 worker 模型（profile `sweep_workers`，0＝行程內兩趟）。起跑先問
 queuebusy：同 vendor 同日 bucket 有人在爬就讓路（exit 0，不告警）。
 
 vendor 維度（multi-vendor-plan〈營運政策層〉）：spider 名、要不要跑
@@ -29,6 +30,7 @@ import argparse
 import glob
 import gzip
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -418,12 +420,64 @@ def stage_frontier(ctx):
 
 def stage_newdetail(ctx):
     os.environ.update(sweep_env(ctx))
+    n_workers = int(ctx.vendor.sweep_workers)
+    if n_workers > 0 and os.environ.get('TWRH_CLUSTER'):
+        sweep_detail_with_workers(ctx, n_workers)
+        return
     # 兩趟：第二趟只撿第一趟 failed 的重試（seed_mode=new 不重排當日已有列的物件）
     for n in range(1, int(ctx.vendor.sweep_detail_passes) + 1):
         run(ctx.crawl(ctx.vendor.detail_spider, '-a', 'seed_mode=new'), check=True)
         log = archive_scrapy_log(ctx, 'sweep-detail.{}'.format(n))
         if breaker_tripped(log):
             raise StageFailed('sweep detail breaker tripped at pass {}'.format(n))
+
+
+def sweep_detail_with_workers(ctx, n_workers):
+    '''sweep 的 detail 走與日跑 stage_detail 同一套多 worker 模型（S4a 檔案分片）：
+    先 seed_only 產本輪新種子（worker 是 consume_only、起跑時種子要在），開 N 個 worker
+    （速率＝sweep 速率，不是日跑的 TWRH_WORKER_*），primary 吃分片 0，worker 全停後
+    primary 以 count=1 補掃（同時撿各分片 failed 的重試，等價於單 worker 路徑的第二趟）。
+    本輪沒有新種子就不開 worker。'''
+    run(ctx.crawl(ctx.vendor.detail_spider, '-a', 'seed_mode=new',
+                  '-a', 'seed_only=True'), check=True)
+    log = archive_scrapy_log(ctx, 'sweep-seed')
+    total = None
+    if not DRY_RUN:
+        with open(log, errors='replace') as f:
+            for line in f:
+                m = re.search(r'seed-only mode: (\d+) requests in queue', line)
+                if m:
+                    total = int(m.group(1))
+        if total is None:
+            raise StageFailed('sweep seed generation failed')
+        print('sweep seeds: {} new houses'.format(total), flush=True)
+    if total == 0:
+        print('no new houses this round — skip workers', flush=True)
+        return
+    worker_env = {
+        **os.environ,
+        'TWRH_DETAIL_WORKERS': str(n_workers),
+        'TWRH_WORKER_CONCURRENCY': str(ctx.vendor.sweep_concurrency),
+        'TWRH_WORKER_DELAY': str(ctx.vendor.sweep_delay),
+    }
+    launch = run(['poetry', 'run', 'python', 'devop/workers.py', 'launch'],
+                 capture_output=True, text=True, check=True, env=worker_env)
+    arns = (launch.stdout or '').strip()
+    if not arns and not DRY_RUN:
+        raise StageFailed('run-task returned no ARNs')
+    print('sweep workers: {}'.format(arns), flush=True)
+    batch = os.environ.get('DETAIL_BATCH_SIZE', '10000')
+    consume_loop(ctx, batch, extra_env={
+        'TWRH_WORKER_INDEX': '0', 'TWRH_WORKER_COUNT': str(n_workers + 1)},
+        tag='sweep-detail')
+    if arns:
+        wait = run(['poetry', 'run', 'python', 'devop/workers.py',
+                    'wait', *arns.split()], check=False, env=worker_env)
+        if wait.returncode != 0:
+            print('NOTE: sweep worker wait timed out — queuefinalize will tell')
+    print('=== sweep mop-up: single-worker pass over remaining file claims', flush=True)
+    consume_loop(ctx, batch, extra_env={
+        'TWRH_WORKER_INDEX': '0', 'TWRH_WORKER_COUNT': '1'}, tag='sweep-mopup')
 
 
 def stage_sweep_finalize(_ctx):
