@@ -3,6 +3,8 @@
 「不同物件共用同一張照片」的群，出統計＋人眼審核頁（無 DB）。
 
     python tools/photo_dup_review.py --etc photo_ids/2026-09-14.parquet --raws photo_ids_raws.parquet --out-dir review/
+    # 全量（850 萬戶）在雲上：TWRH_RUN_CPU=4096 TWRH_RUN_MEMORY=16384 run-cloud … --etc s3 同步下來的 parquet --upload s3://…/
+    # 重活在 Arrow（攤平、去重、每張照片戶數），只有被共用的照片與牽涉的戶進 Python
 
 輸出：
 - review/components.csv     每戶一列：component_id、群大小、戶的描述欄、era、n_photos
@@ -19,6 +21,8 @@ import itertools
 import os
 import random
 
+import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 THUMB = 'https://img1.591.com.tw/house/{y}/{m}/{d}/{pid}.jpg!190x150.water2.jpg'
@@ -91,35 +95,43 @@ def photo_url(pid, tmpl=THUMB):
     return tmpl.format(y=d.year, m='%02d' % d.month, d='%02d' % d.day, pid=pid)
 
 
-def load(etc_paths, raws_paths):
-    houses = {}      # hid -> desc dict
-    photos = collections.defaultdict(set)   # hid -> set(pid)
-    sources = collections.defaultdict(set)
-    for p in etc_paths:
-        t = pq.read_table(p)
-        cols = {c: t[c].to_pylist() for c in t.column_names}
-        for i in range(t.num_rows):
-            hid = cols['vendor_house_id'][i]
-            houses[hid] = {k: cols[k][i] for k in DESC if k in cols}
-            if cols['photo_ids'][i]:
-                photos[hid].update(cols['photo_ids'][i])
-                sources[hid].add('etc:' + (cols['era'][i] or '?'))
-    for p in raws_paths:
-        t = pq.read_table(p, columns=['vendor_house_id', 'pack', 'photo_ids'])
-        for hid, pack, ids in zip(t['vendor_house_id'].to_pylist(), t['pack'].to_pylist(), t['photo_ids'].to_pylist()):
-            if ids:
-                photos[hid].update(ids)
-                sources[hid].add('raw:' + pack)
-                houses.setdefault(hid, {})
-    return houses, photos, sources
+def _pairs(path, id_col, src_prefix, src_col):
+    '''parquet（一戶一列、photo_ids 是 list）→ Arrow (hid, pid, src) 攤平表。'''
+    t = pq.read_table(path, columns=[id_col, 'photo_ids', src_col])
+    ids = t.column('photo_ids')
+    parent = pc.list_parent_indices(ids)
+    src = pc.binary_join_element_wise(
+        pa.scalar(src_prefix), pc.fill_null(t.column(src_col).cast(pa.string()), '?'), '')
+    return pa.table({
+        'hid': t.column(id_col).cast(pa.string()).take(parent),
+        'pid': pc.list_flatten(ids).cast(pa.string()),
+        'src': src.take(parent),
+    })
 
 
-def components(photos):
-    idx = collections.defaultdict(set)
-    for hid, ids in photos.items():
-        for pid in ids:
-            idx[pid].add(hid)
-    shared = {pid: hs for pid, hs in idx.items() if len(hs) >= 2}
+def build(etc_paths, raws_paths):
+    '''全量規模（850 萬戶／3,800 萬張）的作法：攤平成 (hid, pid) 對後全在 Arrow 裡去重、算每張照片的戶數，
+    只把「被 ≥2 戶共用」的照片與牽涉到的戶拿進 Python（union-find、描述欄、每戶照片集合）。
+    回傳 houses／photos／sources 只含群內的戶；counts 給 summary 的全量數字。'''
+    tables = [_pairs(p, 'vendor_house_id', 'etc:', 'era') for p in etc_paths]
+    tables += [_pairs(p, 'vendor_house_id', 'raw:', 'pack') for p in raws_paths]
+    pairs = pa.concat_tables(tables)
+    del tables
+    uniq = pairs.group_by(['hid', 'pid']).aggregate([])                       # 去重後的 (hid, pid)
+    counts = {'pairs': uniq.num_rows,
+              'houses_with_photos': pc.count_distinct(uniq.column('hid')).as_py(),
+              'distinct_photos': pc.count_distinct(uniq.column('pid')).as_py()}
+    per_pid = uniq.group_by('pid').aggregate([('hid', 'count')])
+    shared_pids = per_pid.filter(pc.greater_equal(per_pid.column('hid_count'), 2)).column('pid')
+    del per_pid
+    shared_pairs = uniq.filter(pc.is_in(uniq.column('pid'), value_set=shared_pids))
+    print('pairs {} / shared photos {} / shared pairs {}'.format(
+        counts['pairs'], len(shared_pids), shared_pairs.num_rows), flush=True)
+
+    # union-find：只走共用照片的 (pid → 戶) 邊
+    shared = collections.defaultdict(set)
+    for hid, pid in zip(shared_pairs.column('hid').to_pylist(), shared_pairs.column('pid').to_pylist()):
+        shared[pid].add(hid)
     parent = {}
 
     def find(x):
@@ -135,7 +147,32 @@ def components(photos):
     for hs in shared.values():
         for h in hs:
             comp[find(h)].add(h)
-    return idx, shared, list(comp.values())
+    comps = list(comp.values())
+    in_group = pa.array(list(parent), type=pa.string())
+    print('houses in groups {} / groups {}'.format(len(parent), len(comps)), flush=True)
+
+    # 群內戶的完整照片集合與來源（含它們不共用的照片，算「相異張數」用）
+    photos = collections.defaultdict(set)
+    mine = uniq.filter(pc.is_in(uniq.column('hid'), value_set=in_group))
+    for hid, pid in zip(mine.column('hid').to_pylist(), mine.column('pid').to_pylist()):
+        photos[hid].add(pid)
+    del uniq, mine
+    sources = collections.defaultdict(set)
+    src = pairs.filter(pc.is_in(pairs.column('hid'), value_set=in_group)).group_by(['hid', 'src']).aggregate([])
+    for hid, s in zip(src.column('hid').to_pylist(), src.column('src').to_pylist()):
+        sources[hid].add(s)
+    del pairs, src
+    houses = {}
+    for p in etc_paths:
+        t = pq.read_table(p, columns=['vendor_house_id'] + [c for c in DESC if c not in ('era', 'sample_url')]
+                          + ['era', 'sample_url'])
+        counts['houses_known'] = counts.get('houses_known', 0) + t.num_rows
+        t = t.filter(pc.is_in(t.column('vendor_house_id'), value_set=in_group))
+        for row in t.to_pylist():
+            houses[row['vendor_house_id']] = {k: row.get(k) for k in DESC}
+    for h in parent:
+        houses.setdefault(h, {})
+    return houses, photos, sources, dict(shared), comps, counts
 
 
 def group_photo_stats(comps, photos):
@@ -168,15 +205,15 @@ def main():
     ap.add_argument('--sample', type=int, default=40, help='每層抽幾群進 review.html')
     ap.add_argument('--seed', type=int, default=591)
     ap.add_argument('--top', type=int, default=20000, help='photos.json 收幾張共用最多的照片')
+    ap.add_argument('--upload', help='跑完把 out-dir 四個檔上到這個 S3 前綴（s3://bucket/prefix/）')
     args = ap.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
-    houses, photos, sources = load(args.etc, args.raws)
-    idx, shared, comps = components(photos)
+    houses, photos, sources, shared, comps, counts = build(args.etc, args.raws)
     comps.sort(key=lambda c: (-len(c), min(c)))
     lines = []
-    n_with = len(photos)
+    n_with = counts['houses_with_photos']
     lines.append('houses known {} / with photos {} / photos {} / distinct {} / shared (>=2 houses) {}'.format(
-        len(houses), n_with, sum(len(v) for v in photos.values()), len(idx), len(shared)))
+        counts.get('houses_known', 0), n_with, counts['pairs'], counts['distinct_photos'], len(shared)))
     lines.append('photo share-count dist: ' + str(sorted(collections.Counter(min(len(v), 10) for v in shared.values()).items())))
     touched = set().union(*shared.values()) if shared else set()
     lines.append('houses sharing >=1 photo: {} ({:.1f}% of houses with photos)'.format(len(touched), 100 * len(touched) / max(n_with, 1)))
@@ -259,6 +296,14 @@ def main():
                                comp_of, gstats, house_shared)
     print('-> {}/review.html, components.csv, summary.txt, photos.json ({} photos; open tools/photo_viewer.html and load it)'.format(
         args.out_dir, n_json))
+    if args.upload:
+        import boto3
+        bucket, _, prefix = args.upload[len('s3://'):].partition('/')
+        s3 = boto3.client('s3')
+        for name in ('summary.txt', 'components.csv', 'review.html', 'photos.json'):
+            key = prefix.rstrip('/') + '/' + name
+            s3.upload_file(os.path.join(args.out_dir, name), bucket, key)
+            print('    uploaded s3://{}/{}'.format(bucket, key))
 
 
 if __name__ == '__main__':
