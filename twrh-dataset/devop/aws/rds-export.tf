@@ -60,6 +60,21 @@ resource "aws_iam_role_policy" "rds_export_s3" {
   })
 }
 
+# 匯出物件是這把 key 的 SSE-KMS 加密：crawler task（run-cloud 跑 tools/photo_ids_from_export.py 等
+# 讀 archive/rds/ 的分析工具）要能 Decrypt；只限這一把 key
+resource "aws_iam_role_policy" "crawler_rds_export_read" {
+  name = "rds-export-kms-read"
+  role = aws_iam_role.crawler_task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["kms:Decrypt", "kms:DescribeKey"]
+      Resource = [aws_kms_key.rds_export.arn]
+    }]
+  })
+}
+
 output "rds_export_role_arn" {
   value = aws_iam_role.rds_export.arn
 }
