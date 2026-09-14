@@ -20,6 +20,7 @@ import html
 import itertools
 import os
 import random
+import sys
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -32,6 +33,11 @@ DESC = ['created', 'deal_status', 'monthly_price', 'floor_ping', 'floor', 'total
 
 
 STATUS_NAME = {0: '待出租', 1: '已消失', 2: '已出租'}
+
+
+def log(msg):
+    '''階段進度：帶時間戳＋flush（雲上 stdout 給 awslogs 是 block-buffered，沒 flush 整段跑完前看不到任何字）。'''
+    print('[{}] {}'.format(datetime.datetime.now().strftime('%H:%M:%S'), msg), flush=True)
 
 
 def _enum_name(enum_cls, value):
@@ -51,15 +57,17 @@ def region_names():
         return ident, ident, ident
 
 
-def write_photos_json(path, shared, houses, photos, sources, top, comp_of=None, gstats=None, house_shared=None):
-    '''給 tools/photo_viewer.html 的資料：每張共用照片 → 對到哪些戶（重要欄位），依戶數降冪，取前 top 張。'''
+def write_photos_json(path, shared, houses, photos, sources, top, comp_of=None, gstats=None, house_shared=None,
+                      max_houses=200):
+    '''給 tools/photo_viewer.html 的資料：每張共用照片 → 對到哪些戶（重要欄位），依戶數降冪，取前 top 張；
+    每張最多列 max_houses 戶（n 仍是全數；萬用圖一張連幾萬戶，全列 json 會爆）。'''
     import json
     top_name, sub_name, ptype_name = region_names()
     items = sorted(shared.items(), key=lambda kv: (-len(kv[1]), kv[0]))[:top]
     out = []
     for pid, hs in items:
         rows = []
-        for h in sorted(hs):
+        for h in sorted(hs)[:max_houses]:
             d = houses.get(h, {})
             c = d.get('created')
             rows.append({
@@ -117,6 +125,7 @@ def build(etc_paths, raws_paths):
     tables += [_pairs(p, 'vendor_house_id', 'raw:', 'pack') for p in raws_paths]
     pairs = pa.concat_tables(tables)
     del tables
+    log('flattened pairs {}'.format(pairs.num_rows))
     uniq = pairs.group_by(['hid', 'pid']).aggregate([])                       # 去重後的 (hid, pid)
     counts = {'pairs': uniq.num_rows,
               'houses_with_photos': pc.count_distinct(uniq.column('hid')).as_py(),
@@ -125,8 +134,8 @@ def build(etc_paths, raws_paths):
     shared_pids = per_pid.filter(pc.greater_equal(per_pid.column('hid_count'), 2)).column('pid')
     del per_pid
     shared_pairs = uniq.filter(pc.is_in(uniq.column('pid'), value_set=shared_pids))
-    print('pairs {} / shared photos {} / shared pairs {}'.format(
-        counts['pairs'], len(shared_pids), shared_pairs.num_rows), flush=True)
+    log('pairs {} / shared photos {} / shared pairs {}'.format(
+        counts['pairs'], len(shared_pids), shared_pairs.num_rows))
 
     # union-find：只走共用照片的 (pid → 戶) 邊
     shared = collections.defaultdict(set)
@@ -149,7 +158,8 @@ def build(etc_paths, raws_paths):
             comp[find(h)].add(h)
     comps = list(comp.values())
     in_group = pa.array(list(parent), type=pa.string())
-    print('houses in groups {} / groups {}'.format(len(parent), len(comps)), flush=True)
+    log('houses in groups {} / groups {} / largest {}'.format(
+        len(parent), len(comps), sorted((len(c) for c in comps), reverse=True)[:10]))
 
     # 群內戶的完整照片集合與來源（含它們不共用的照片，算「相異張數」用）
     photos = collections.defaultdict(set)
@@ -157,11 +167,13 @@ def build(etc_paths, raws_paths):
     for hid, pid in zip(mine.column('hid').to_pylist(), mine.column('pid').to_pylist()):
         photos[hid].add(pid)
     del uniq, mine
+    log('per-house photo sets built')
     sources = collections.defaultdict(set)
     src = pairs.filter(pc.is_in(pairs.column('hid'), value_set=in_group)).group_by(['hid', 'src']).aggregate([])
     for hid, s in zip(src.column('hid').to_pylist(), src.column('src').to_pylist()):
         sources[hid].add(s)
     del pairs, src
+    log('per-house sources built')
     houses = {}
     for p in etc_paths:
         t = pq.read_table(p, columns=['vendor_house_id'] + [c for c in DESC if c not in ('era', 'sample_url')]
@@ -172,6 +184,7 @@ def build(etc_paths, raws_paths):
             houses[row['vendor_house_id']] = {k: row.get(k) for k in DESC}
     for h in parent:
         houses.setdefault(h, {})
+    log('house descriptions loaded {}'.format(len(houses)))
     return houses, photos, sources, dict(shared), comps, counts
 
 
@@ -192,6 +205,14 @@ def group_photo_stats(comps, photos):
     return of, stats, house_shared
 
 
+def group_shared_photos(c, photos):
+    '''群內 ≥2 戶都有的照片（依共用戶數降冪）。只看群內各戶的照片集合，不掃全域 7 百萬張 shared。'''
+    cnt = collections.Counter()
+    for h in c:
+        cnt.update(photos[h])
+    return [pid for pid, n in cnt.most_common() if n >= 2]
+
+
 def year_of(desc):
     c = desc.get('created')
     return c.year if hasattr(c, 'year') else None
@@ -205,12 +226,18 @@ def main():
     ap.add_argument('--sample', type=int, default=40, help='每層抽幾群進 review.html')
     ap.add_argument('--seed', type=int, default=591)
     ap.add_argument('--top', type=int, default=20000, help='photos.json 收幾張共用最多的照片')
+    ap.add_argument('--max-pairs', type=int, default=1000,
+                    help='成對語意統計每群最多抽幾對（全配對是 O(n²)，一張萬用圖連出的萬戶大群跑不完）')
+    ap.add_argument('--rows', type=int, default=30, help='review.html 每群最多列幾戶')
+    ap.add_argument('--json-houses', type=int, default=200, help='photos.json 每張照片最多列幾戶（n 仍是全數）')
     ap.add_argument('--upload', help='跑完把 out-dir 四個檔上到這個 S3 前綴（s3://bucket/prefix/）')
     args = ap.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
     houses, photos, sources, shared, comps, counts = build(args.etc, args.raws)
     comps.sort(key=lambda c: (-len(c), min(c)))
+    rnd = random.Random(args.seed)
     lines = []
+    lines.append('largest components (houses): {}'.format([len(c) for c in comps[:10]]))
     n_with = counts['houses_with_photos']
     lines.append('houses known {} / with photos {} / photos {} / distinct {} / shared (>=2 houses) {}'.format(
         counts.get('houses_known', 0), n_with, counts['pairs'], counts['distinct_photos'], len(shared)))
@@ -220,7 +247,9 @@ def main():
     lines.append('components: {} size dist: {}'.format(len(comps), sorted(collections.Counter(min(len(c), 20) for c in comps).items())))
     cross_year = [c for c in comps if len({year_of(houses.get(h, {})) for h in c} - {None}) >= 2]
     lines.append('components spanning >=2 created-years: {}'.format(len(cross_year)))
+    log('summary: distributions done')
     comp_of, gstats, house_shared = group_photo_stats(comps, photos)
+    log('group photo stats done')
     bucket = lambda n: '1' if n == 1 else '2' if n == 2 else '3-5' if n <= 5 else '6-10' if n <= 10 else '11+'
     lines.append('shared photos per group: ' + str(sorted(collections.Counter(bucket(g['shared_photos']) for g in gstats).items(),
                                                           key=lambda kv: ['1', '2', '3-5', '6-10', '11+'].index(kv[0]))))
@@ -233,10 +262,16 @@ def main():
     lines.append('houses in groups: shared/own photos ratio dist: ' + str(sorted(collections.Counter(
         'all' if house_shared[h] == len(photos[h]) else '>=half' if house_shared[h] * 2 >= len(photos[h]) else '<half'
         for h in comp_of).items())))
-    # pair-level semantics where desc available
-    same_author = same_price = same_region = n_pairs = 0
+    # pair-level semantics where desc available；每群最多 max_pairs 對（全配對是 O(n²)）
+    same_author = same_price = same_region = n_pairs = n_capped = 0
     for c in comps:
-        for a, b in itertools.combinations(sorted(c), 2):
+        hs = sorted(c)
+        if len(hs) * (len(hs) - 1) // 2 > args.max_pairs:
+            n_capped += 1
+            pairs_iter = (rnd.sample(hs, 2) for _ in range(args.max_pairs))
+        else:
+            pairs_iter = itertools.combinations(hs, 2)
+        for a, b in pairs_iter:
             da, db = houses.get(a, {}), houses.get(b, {})
             if not da.get('created') or not db.get('created'):
                 continue
@@ -245,11 +280,12 @@ def main():
             same_price += da.get('monthly_price') == db.get('monthly_price')
             same_region += (da.get('top_region'), da.get('sub_region')) == (db.get('top_region'), db.get('sub_region'))
     if n_pairs:
-        lines.append('pairs with desc {}: same author {:.1f}% / same price {:.1f}% / same sub_region {:.1f}%'.format(
-            n_pairs, 100 * same_author / n_pairs, 100 * same_price / n_pairs, 100 * same_region / n_pairs))
+        lines.append('pairs with desc {} ({} groups sampled to {} pairs): same author {:.1f}% / same price {:.1f}% / same sub_region {:.1f}%'.format(
+            n_pairs, n_capped, args.max_pairs, 100 * same_author / n_pairs, 100 * same_price / n_pairs, 100 * same_region / n_pairs))
     with open(os.path.join(args.out_dir, 'summary.txt'), 'w') as f:
         f.write('\n'.join(lines) + '\n')
-    print('\n'.join(lines))
+    print('\n'.join(lines), flush=True)
+    log('summary.txt written')
 
     with open(os.path.join(args.out_dir, 'components.csv'), 'w', newline='') as f:
         w = csv.writer(f)
@@ -261,8 +297,8 @@ def main():
                 d = houses.get(h, {})
                 w.writerow([ci, len(c), g['shared_photos'], g['distinct_photos'], h, len(photos[h]), house_shared[h],
                             '|'.join(sorted(sources[h]))] + [d.get(k) for k in DESC])
+    log('components.csv written')
 
-    rnd = random.Random(args.seed)
     strata = {
         '2 戶': [c for c in comps if len(c) == 2],
         '3–5 戶': [c for c in comps if 3 <= len(c) <= 5],
@@ -278,9 +314,10 @@ def main():
         parts.append('<h2>{}（共 {} 群，抽 {}）</h2>'.format(html.escape(name), len(cs), len(pick)))
         for c in pick:
             hs = sorted(c)
-            shared_here = [pid for pid, v in shared.items() if len(v & c) >= 2]
-            parts.append('<div class="grp"><b>群 {} 戶</b>，共用照片 {} 張／群內相異 {} 張<table><tr><th>物件</th><th>首見</th><th>狀態</th><th>租金</th><th>坪</th><th>樓</th><th>區</th><th>地址</th><th>刊登者</th><th>仲介</th><th>era／來源</th><th>照片數</th></tr>'.format(len(hs), len(shared_here), len(set().union(*(photos[h] for h in hs)))))
-            for h in hs:
+            shared_here = group_shared_photos(c, photos)
+            parts.append('<div class="grp"><b>群 {} 戶</b>{}，共用照片 {} 張／群內相異 {} 張<table><tr><th>物件</th><th>首見</th><th>狀態</th><th>租金</th><th>坪</th><th>樓</th><th>區</th><th>地址</th><th>刊登者</th><th>仲介</th><th>era／來源</th><th>照片數</th></tr>'.format(len(hs), '（只列前 {} 戶）'.format(args.rows) if len(hs) > args.rows else '',
+                          len(shared_here), len(set().union(*(photos[h] for h in hs)))))
+            for h in hs[:args.rows]:
                 d = houses.get(h, {})
                 parts.append('<tr><td><a href="https://rent.591.com.tw/{0}" target="_blank">{0}</a></td><td>{1}</td><td>{2}</td><td>{3}</td><td>{4}</td><td>{5}/{6}</td><td>{7}/{8}</td><td>{9}</td><td>{10}</td><td>{11}</td><td>{12}</td><td>{13}</td></tr>'.format(
                     h, (d.get('created').date() if d.get('created') else ''), d.get('deal_status', ''), d.get('monthly_price', ''),
@@ -292,9 +329,10 @@ def main():
                 for p in shared_here[:12] if photo_url(p)) + '</div></div>')
     with open(os.path.join(args.out_dir, 'review.html'), 'w') as f:
         f.write('\n'.join(parts))
+    log('review.html written')
     n_json = write_photos_json(os.path.join(args.out_dir, 'photos.json'), shared, houses, photos, sources, args.top,
-                               comp_of, gstats, house_shared)
-    print('-> {}/review.html, components.csv, summary.txt, photos.json ({} photos; open tools/photo_viewer.html and load it)'.format(
+                               comp_of, gstats, house_shared, args.json_houses)
+    log('-> {}/review.html, components.csv, summary.txt, photos.json ({} photos; open tools/photo_viewer.html and load it)'.format(
         args.out_dir, n_json))
     if args.upload:
         import boto3
@@ -303,7 +341,7 @@ def main():
         for name in ('summary.txt', 'components.csv', 'review.html', 'photos.json'):
             key = prefix.rstrip('/') + '/' + name
             s3.upload_file(os.path.join(args.out_dir, name), bucket, key)
-            print('    uploaded s3://{}/{}'.format(bucket, key))
+            log('    uploaded s3://{}/{}'.format(bucket, key))
 
 
 if __name__ == '__main__':
