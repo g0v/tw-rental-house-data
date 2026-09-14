@@ -1117,6 +1117,30 @@ class FrontierSweepTests(QueueTestMixin, TestCase):
         with mock.patch.object(spider_full.persist_queue, 'has_run_today', return_value=True):
             self.assertEqual(list(spider_full.start_detail_requests()), [])
 
+    def test_new_seed_mode_reads_today_stubs_instead_of_scanning_house(self):
+        '''有今日 stub 時只查在列的戶（逐批 IN 查唯一索引），不掃整張 House：
+        不在列的 never-detail 戶不排；stub 裡 DB 沒有的戶不排；同日已排過者不重排。'''
+        import json
+        from rental import artifacts
+        for hid, kw in (('new1', {}), ('new2', {}), ('offlist', {}),
+                        ('old', {'detail_crawled_at': timezone.now()}),
+                        ('closed', {'deal_status': enums.DealStatusType.NOT_FOUND})):
+            House.objects.create(vendor=self.vendor, vendor_house_id=hid, **kw)
+        scratch = artifacts.scratch_dir('list', '591', TEST_DATE)
+        os.makedirs(scratch, exist_ok=True)
+        with open(os.path.join(scratch, 'x.jsonl'), 'w') as f:
+            for hid in ('new1', 'new2', 'old', 'closed', 'ghost'):
+                f.write(json.dumps({'vendor_house_id': hid, 'seen_at': '2026-01-15T01:00:00',
+                                    'fingerprint': 'f'}) + '\n')
+        with mock.patch.dict(os.environ, {'TWRH_RAW_BUCKET': ''}):
+            spider = self.detail_cls(seed_mode='new')
+            with mock.patch.object(House.objects, 'filter', wraps=House.objects.filter) as filt:
+                self.assertEqual(spider.gen_new_seeds(), ['new1', 'new2'])
+            for call in filt.call_args_list:                       # 每次查 House 都帶 id 清單
+                self.assertIn('vendor_house_id__in', call.kwargs)
+            spider.persist_queue.gen_persist_request({'id': 'new1'})
+            self.assertEqual(spider.gen_new_seeds(), ['new2'])
+
 
 class ListManifestCaptureTests(QueueTestMixin, TestCase):
     '''list manifest 的完整度哨兵：分母＝detail 確認開放（非合成）。'''
@@ -1916,6 +1940,40 @@ class VendorProfileTests(TestCase):
             vendor_profiles.get('nope')
         with self.assertRaises(AttributeError):
             p.no_such_key
+
+
+class SweepWorkersTests(TestCase):
+    '''S4a：雲上 sweep 的 detail 走多 worker（seed_only → launch → primary 分片 0 →
+    wait → mop-up）；本機或 TWRH_SWEEP_WORKERS=0 維持行程內兩趟。'''
+
+    def _stage(self, env):
+        import io
+        from contextlib import redirect_stdout
+        import flow
+        from unittest.mock import patch
+        class Opts:
+            date = '2026-09-14'; vendor = '591'
+        with patch.dict(os.environ, env, clear=False), patch.object(flow, 'DRY_RUN', True):
+            ctx = flow.Ctx(Opts, 'sweep')
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                flow.stage_newdetail(ctx)
+        return [l for l in buf.getvalue().splitlines() if l.startswith('+ ')]
+
+    def test_cloud_multi_worker_sequence(self):
+        cmds = self._stage({'TWRH_CLUSTER': 'twrh', 'TWRH_SWEEP_WORKERS': '2'})
+        self.assertIn('seed_mode=new -a seed_only=True', cmds[0])
+        self.assertIn('devop/workers.py launch', cmds[1])
+        self.assertIn('consume_only=True', cmds[2])
+        self.assertIn('consume_only=True', cmds[-1])   # mop-up
+        self.assertEqual(len(cmds), 4)
+
+    def test_local_or_zero_workers_keeps_two_passes(self):
+        for env in ({'TWRH_CLUSTER': '', 'TWRH_SWEEP_WORKERS': '2'},
+                    {'TWRH_CLUSTER': 'twrh', 'TWRH_SWEEP_WORKERS': '0'}):
+            cmds = self._stage(env)
+            self.assertEqual(len(cmds), 2, env)
+            self.assertTrue(all('seed_mode=new' in c and 'seed_only' not in c for c in cmds), env)
 
 
 class QueueBusyTests(QueueTestMixin, TestCase):
