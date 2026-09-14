@@ -180,6 +180,9 @@ checks:
     sample_n: fill_rate.n
     min_samples: 5000   # diff 模式的非合成樣本日常約 8–10k
     rolling_median_within_abs: 0.15
+    # 2026-09-14 起 0.997（60890c95：detail 的 None rough_address 不再蓋掉 list 的值；之前 0.35 是被蓋掉的假低）。
+    # 近 14 份中位數要到 2026-09-21 才追上新水位，期間硬斷言天天紅→暫降 advisory；9/21 後拿掉這行。
+    advisory: true
   - id: detail.fill.imgs
     stage: detail
     metric: fill_rate.imgs
