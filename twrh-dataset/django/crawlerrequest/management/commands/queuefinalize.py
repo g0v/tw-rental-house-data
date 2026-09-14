@@ -34,6 +34,11 @@ from rental.models import Vendor
 DEFAULT_RETENTION_DAYS = int(os.environ.get('TWRH_QUEUE_RETENTION_DAYS', 90))
 
 
+def default_source():
+    from rental import filequeue
+    return 'db' if filequeue.db_bookkeeping() else 'file'
+
+
 class Command(BaseCommand):
     help = 'Assert seeds == terminals for today\'s crawl queue; red on residue'
     requires_migrations_checks = True
@@ -48,8 +53,9 @@ class Command(BaseCommand):
             help='skip the rolling cleanup of old terminal rows')
         parser.add_argument(
             '--source', choices=['db', 'file'],
-            default=os.environ.get('TWRH_QUEUE_FINALIZE_SOURCE', 'db'),
-            help='對帳來源：db＝request_ts（S4a 仍用，DB 記帳鏡像）；file＝檔案 queue（S4b 起）')
+            default=os.environ.get('TWRH_QUEUE_FINALIZE_SOURCE') or default_source(),
+            help='對帳來源：db＝request_ts（S4a，DB 記帳鏡像）；file＝檔案 queue。'
+                 '未給時跟 filequeue.db_bookkeeping() 走（S4b 起 flow 預設 file）')
 
     def cleanup(self, days):
         cutoff = timezone.now() - timedelta(days=days)

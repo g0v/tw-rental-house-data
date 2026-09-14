@@ -343,9 +343,14 @@ Set it manually (or use `flow.py run --date`) when re-running part of a pipeline
   `contracts.DEAL_EVENT_ITEM_KEYS` 必須與 spider 實際 yield 的 key 一致（9/12 首夜漏這個 key、整晚事件沒落 shard）。
 - **4e 檔案 queue（雙軌期）**：`django/rental/filequeue.py`（無 Django）＝seeds 檔＋每 worker
   append-only 終結檔（`artifacts/queue/<vendor>/<date>/<type>/{seeds/<run>.jsonl, terminals/<run>/<worker>.jsonl}`），
-  摺疊語意 done＞dead＞failed、attempts 跨檔取最大、位置輪分 `shard()`。PersistQueue 目前
-  **同步記帳**（key＝RequestTS.id，`TWRH_FILEQUEUE=0` 可關），DB 仍是認領來源；`filequeuecheck`
-  逐日對 request_ts；連續 AGREE 後才把認領換成檔案分片（generation／shard 檔）、退役 request_ts。
+  摺疊語意 done＞dead＞failed、attempts 跨檔取最大、位置輪分 `shard()`。切換階梯：4e 雙軌
+  （DB 認領、檔案同步記帳、`filequeuecheck` 逐日對 request_ts）→ **S4a**（`TWRH_QUEUE_SOURCE=file`，
+  認領改讀 `claimable()` 分片：primary 0／worker 1..N、count=N+1，worker 全停後 primary count=1
+  補掃；DB 記帳鏡像 `TWRH_QUEUE_DB=1` 一天）→ **S4b**（`TWRH_QUEUE_DB=0`，flow 預設）：request_ts
+  沒人寫，`filequeue.db_bookkeeping()` 是唯一判準——queuefinalize 預設 `--source file`、seedcheck／
+  rawpack 對帳與 detail `seed_mode=new` 去重改讀檔案 seeds／terminals、filequeuecheck 自印 skip；
+  queuebusy 看 worker 心跳檔。回退＝環境 `TWRH_QUEUE_DB=1` 或 `TWRH_QUEUE_SOURCE=db`。
+  drop request_ts 另一步（S4b 一晚無紅後）。
 
 ### Scrapy settings layering (twrh-dataset)
 - `crawler/general_settings.py` — committed, shared. Calls `django.setup()` (adds `django/` to

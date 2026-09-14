@@ -277,10 +277,15 @@ class Command(BaseCommand):
 
         detail_entries = [e for e in candidates
                           if e['member'].endswith('.detail.html')]
-        n_done = RequestTS.objects.filter(
-            year=day.year, month=day.month, day=day.day,
-            vendor=vendor_obj, request_type=RequestType.DETAIL,
-            status=RequestStatus.DONE).count()
+        from rental import filequeue
+        if filequeue.db_bookkeeping():
+            n_done = RequestTS.objects.filter(
+                year=day.year, month=day.month, day=day.day,
+                vendor=vendor_obj, request_type=RequestType.DETAIL,
+                status=RequestStatus.DONE).count()
+        else:
+            # S4b：request_ts 沒人寫，done 數讀檔案 queue
+            n_done = filequeue.reconcile(vendor, date_str, 'detail')['done']
 
         # D5 後 DB 不存 raw：對帳只剩量的對照（detail members vs queue done）
         print('    reconcile: detail members {} vs queue done {}'
