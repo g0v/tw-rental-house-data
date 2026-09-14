@@ -285,6 +285,14 @@ class PersistQueue(object):
             **seed_filters
         )[:1].count() > 0
 
+    def seed_ids_today(self):
+        '''當日該型所有 seed 的 id（含已終結）：seed_mode=new 不重排同日已有列的物件
+        （同日多輪 sweep 不能把重試計數歸零、也不製造重複列）。'''
+        return set(RequestTS.objects.filter(
+            year=self.ts['y'], month=self.ts['m'], day=self.ts['d'], hour=self.ts['h'],
+            vendor=self.vendor, request_type=self.request_type,
+        ).values_list('seed__id', flat=True))
+
     def release_claims(self):
         """行程收工時，把自己認領但未終結的列標 failed 放回 queue。
 

@@ -1,3 +1,4 @@
+import os
 import traceback
 from datetime import date, timedelta
 from django.db import transaction
@@ -5,12 +6,10 @@ from django.db.models import F, Q
 from django.utils import timezone
 from scrapy import signals
 from rental.models import House, HouseTS
-from crawlerrequest.models import RequestTS
-from crawlerrequest.enums import RequestType
 from rental import enums
 from scrapy_twrh.items import GenericHouseItem
 from scrapy_twrh.spiders.rental591 import Rental591Spider, util
-from rental import seeding
+from rental import artifacts, seeding
 from .persist_queue import PersistQueue
 from .item_hygiene import strip_detail_item
 
@@ -107,21 +106,38 @@ class Detail591Spider(Rental591Spider):
         return list(query.values_list('vendor_house_id', flat=True))
 
     def gen_new_seeds(self):
-        '''前緣掃描用：OPENED 且 detail 從未爬過（detail_crawled_at 為空）。
+        '''前緣掃描用：今日在列（list stub 分區）∧ OPENED ∧ detail 從未爬過（detail_crawled_at 為空），
+        與 seeding.select_new_seeds 同義。
 
-        用 detail_crawled_at 而非 append 模式的 etc.detail_raw——D5 後 DB 不存 raw。
+        以前直接掃整張 House（deal_status／detail_crawled_at 都沒索引、850 萬列；db.t4g.micro 的 EBS
+        頻寬約 8 MB/s——2026-09-14 05:01 一輪兩趟各卡 7／24 分鐘在這個查詢，真正抓 89 戶只要 1 分鐘）。
+        改由今日 stub 的 id 逐批查 House（vendor＋vendor_house_id 唯一索引，讀的頁數與在列戶數成比例）；
+        沒有 stub（本機沒跑 4a）才退回全表掃。用 detail_crawled_at 而非 append 模式的
+        etc.detail_raw——D5 後 DB 不存 raw。
         '''
-        ts = self.persist_queue.ts
-        already = set(RequestTS.objects.filter(
-            year=ts['y'], month=ts['m'], day=ts['d'], hour=ts['h'],
-            vendor=self.persist_queue.vendor, request_type=RequestType.DETAIL,
-        ).values_list('seed__id', flat=True))
+        pq = self.persist_queue
         # 當日已有 detail 列者（含 dead）不重排：同日多輪 sweep 不能把
         # 重試計數歸零、也不製造重複列
-        return [h for h in House.objects.filter(
-            deal_status=enums.DealStatusType.OPENED,
-            detail_crawled_at__isnull=True,
-        ).values_list('vendor_house_id', flat=True) if h not in already]
+        already = pq.seed_ids_today()
+        stubs = list(artifacts.read_list_stubs(
+            pq.short, pq.date_str, os.environ.get('TWRH_RAW_BUCKET') or None))
+        if not stubs:
+            self.logger.warning(
+                'no list stubs for {} — new seeds fall back to a full House scan'.format(pq.date_str))
+            return [h for h in House.objects.filter(
+                deal_status=enums.DealStatusType.OPENED,
+                detail_crawled_at__isnull=True,
+            ).values_list('vendor_house_id', flat=True) if h not in already]
+        hids = sorted(seeding.latest_fingerprints(stubs))
+        state = {}
+        for i in range(0, len(hids), 1000):
+            for hid, status, crawled in House.objects.filter(
+                    vendor=pq.vendor, vendor_house_id__in=hids[i:i + 1000],
+            ).values_list('vendor_house_id', 'deal_status', 'detail_crawled_at'):
+                state[hid] = seeding.HouseState(
+                    open=status == enums.DealStatusType.OPENED, detail_crawled_at=crawled)
+        self.logger.info('new seeds: {} in-list houses from {} stubs'.format(len(hids), len(stubs)))
+        return sorted(h for h in seeding.select_new_seeds(stubs, state) if h not in already)
 
     def gen_diff_seeds(self):
         '''L-C(6)(7)：list diff 驅動的 detail 種子（docs/dx-roadmap.md）。
