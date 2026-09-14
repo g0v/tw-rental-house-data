@@ -1801,6 +1801,81 @@ class FileClaimTests(QueueTestMixin, TestCase):
         self.assertIn('detail: seeds 2 = done 1 + dead 0 + residue 1', out.getvalue())
 
 
+class FileOnlyLedgerTests(QueueTestMixin, TestCase):
+    '''S4b：TWRH_QUEUE_SOURCE=file＋TWRH_QUEUE_DB=0——request_ts 沒人寫；queuefinalize 預設
+    對帳來源自動改 file、filequeuecheck 沒對照物即 skip、seed_mode=new 的同日去重與 rawpack
+    對帳改讀檔案 seeds／terminals。'''
+
+    def setUp(self):
+        super().setUp()
+        self.env2 = mock.patch.dict(os.environ, {
+            'TWRH_QUEUE_SOURCE': 'file', 'TWRH_QUEUE_DB': '0', 'TWRH_RUN_ID': 'run',
+            'TWRH_WORKER_INDEX': '0', 'TWRH_WORKER_COUNT': '1'})
+        self.env2.start()
+        os.environ.pop('TWRH_QUEUE_FINALIZE_SOURCE', None)
+
+    def tearDown(self):
+        self.env2.stop()
+        super().tearDown()
+
+    def test_db_bookkeeping_matrix(self):
+        from rental import filequeue as fq
+        self.assertFalse(fq.db_bookkeeping())
+        with mock.patch.dict(os.environ, {'TWRH_QUEUE_DB': '1'}):
+            self.assertTrue(fq.db_bookkeeping())
+        with mock.patch.dict(os.environ, {'TWRH_QUEUE_SOURCE': 'db', 'TWRH_QUEUE_DB': '0'}):
+            self.assertTrue(fq.db_bookkeeping())       # DB 認領恆記帳
+
+    def test_seed_ids_today_reads_file_seeds_not_db(self):
+        q = make_queue()
+        q.gen_persist_request({'id': 'h1'})
+        q.gen_persist_request({'id': 'h2'})
+        self.assertEqual(q.seed_ids_today(), {'h1', 'h2'})
+        self.assertEqual(RequestTS.objects.count(), 0)
+        # DB 記帳時同一個方法讀 request_ts
+        with mock.patch.dict(os.environ, {'TWRH_QUEUE_DB': '1'}):
+            q2 = make_queue()
+            q2.gen_persist_request({'id': 'h9'})
+            self.assertEqual(q2.seed_ids_today(), {'h9'})
+
+    def test_finalize_defaults_to_file_and_filequeuecheck_skips(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from crawlerrequest.management.commands.queuefinalize import default_source
+        self.assertEqual(default_source(), 'file')
+        for is_list in (False, True):                             # 零種子規則管 list／detail 兩型
+            q = make_queue(is_list=is_list)
+            q.gen_persist_request({'id': 'a'} if not is_list else {'id': 1, 'name': 'A', 'page': 0})
+            r = q.next_request()
+            list(q.parser_wrapper(make_response(r.meta['db_request'])))
+            q.release_claims()
+        self.assertEqual(RequestTS.objects.count(), 0)
+        out = StringIO()
+        with mock.patch('sys.stdout', out), \
+                mock.patch('crawlerrequest.management.commands.queuefinalize.send_slack'):
+            call_command('queuefinalize', '--no-cleanup')          # 未給 --source：跟 db_bookkeeping 走
+        self.assertIn('detail: seeds 1 = done 1 + dead 0 + residue 0', out.getvalue())
+        self.assertIn('list: seeds 1 = done 1 + dead 0 + residue 0', out.getvalue())
+        out = StringIO()
+        with mock.patch('sys.stdout', out):
+            call_command('filequeuecheck')
+        self.assertIn('filequeuecheck: skip', out.getvalue())
+
+    def test_rawpack_reconcile_counts_done_from_file(self):
+        from io import StringIO
+        from rental.management.commands.rawpack import Command
+        q = make_queue()
+        q.gen_persist_request({'id': 'a'})
+        q.gen_persist_request({'id': 'b'})
+        r = q.next_request()
+        list(q.parser_wrapper(make_response(r.meta['db_request'])))
+        q.release_claims()
+        out = StringIO()
+        with mock.patch('sys.stdout', out):
+            Command().reconcile('591', TEST_DATE, None, [{'member': 'x.detail.html'}], False)
+        self.assertIn('detail members 1 vs queue done 1', out.getvalue())
+
+
 class SnapshotFoldTests(TestCase):
     '''4c snapshot 摺疊純函數：detail／list／carry 三種來源、carry 欄遞推、
     DEAL sticky、deals 事件優先、已關閉且無訊號不攜帶。無 DB。'''

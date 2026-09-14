@@ -136,7 +136,7 @@ class PersistQueue(object):
         self.source = os.environ.get('TWRH_QUEUE_SOURCE', 'db')
         if self.source not in ('db', 'file'):
             raise ValueError('TWRH_QUEUE_SOURCE must be db or file, got {!r}'.format(self.source))
-        self.db_enabled = self.source == 'db' or os.environ.get('TWRH_QUEUE_DB', '1') == '1'
+        self.db_enabled = filequeue.db_bookkeeping()
         self.worker_index = int(os.environ.get('TWRH_WORKER_INDEX', '0'))
         self.worker_count = int(os.environ.get('TWRH_WORKER_COUNT', '1'))
         self.heartbeat = filequeue.Heartbeat(
@@ -287,7 +287,10 @@ class PersistQueue(object):
 
     def seed_ids_today(self):
         '''當日該型所有 seed 的 id（含已終結）：seed_mode=new 不重排同日已有列的物件
-        （同日多輪 sweep 不能把重試計數歸零、也不製造重複列）。'''
+        （同日多輪 sweep 不能把重試計數歸零、也不製造重複列）。S4b 後 request_ts 沒人寫，
+        改讀檔案 seeds。'''
+        if not self.db_enabled:
+            return filequeue.seed_ids(self.short, self.date_str, self.type_name)
         return set(RequestTS.objects.filter(
             year=self.ts['y'], month=self.ts['m'], day=self.ts['d'], hour=self.ts['h'],
             vendor=self.vendor, request_type=self.request_type,

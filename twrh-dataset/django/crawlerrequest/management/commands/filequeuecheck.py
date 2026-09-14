@@ -37,6 +37,10 @@ class Command(BaseCommand):
         else:
             env = os.environ.get('TWRH_TARGET_DATE')
             day = datetime.strptime(env, '%Y-%m-%d').date() if env else date_cls.today()
+        if not filequeue.db_bookkeeping():
+            # S4b：request_ts 沒人寫、沒有對照物；檔案側自身一致性由 queuefinalize --source file 管
+            print('filequeuecheck: skip (DB bookkeeping off — file queue is the only ledger since S4b)')
+            return
         max_attempts = int(os.environ.get('TWRH_QUEUE_MAX_ATTEMPTS', 3))
         ts = {'year': day.year, 'month': day.month, 'day': day.day, 'hour': 0}
 

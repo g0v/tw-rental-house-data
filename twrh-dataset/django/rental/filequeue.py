@@ -20,6 +20,11 @@ seeds == terminals。這裡用檔案滿足，不需要 DB server：
   分片由收尾的單 worker 補掃（count=1 拿全部剩餘）。DB 在 S4a 仍照寫一天
   （TWRH_QUEUE_DB=1，key 仍＝RequestTS.id）供 filequeuecheck 對帳；S4b 停寫後
   key 改 make_key(seed) 自派。
+- **S4b（TWRH_QUEUE_SOURCE=file＋TWRH_QUEUE_DB=0，flow 預設）**：request_ts 不再有人寫；
+  `db_bookkeeping()` 是唯一判準——queuefinalize／seedcheck／rawpack 對帳、detail 的
+  seed_mode=new 去重都改讀這裡的 seeds／terminals，filequeuecheck 沒有對照物即 skip。
+  drop request_ts 另一步（一晚無紅後）。回退＝環境 TWRH_QUEUE_DB=1（記帳鏡像回來）或
+  TWRH_QUEUE_SOURCE=db。
 - **心跳**：沒有 in_flight，「有人在爬」改看 active/<run>/<worker>.json 的 mtime
   （queuebusy）；SIGKILL 殘留的心跳過窗即失效。
 
@@ -34,6 +39,20 @@ from datetime import datetime, timezone
 from rental.artifacts import artifact_dir, run_id  # noqa: F401
 
 STATUS_ORDER = {'done': 3, 'dead': 2, 'failed': 1}
+
+
+def db_bookkeeping():
+    '''request_ts 還有沒有人寫（S4a 雙軌＝True；S4b＝False）。DB 認領（TWRH_QUEUE_SOURCE=db）
+    恆 True；檔案認領時看 TWRH_QUEUE_DB（預設 1，flow 自 S4b 起預設 0）。'''
+    if os.environ.get('TWRH_QUEUE_SOURCE', 'db') != 'file':
+        return True
+    return os.environ.get('TWRH_QUEUE_DB', '1') == '1'
+
+
+def seed_ids(vendor_short, date_str, type_name):
+    '''當日該型所有 seed 的 id（含已終結）；detail seed_mode=new 用它不重排同日已有列的物件。'''
+    seeds, _dup = load_seeds(vendor_short, date_str, type_name)
+    return {seed.get('id') for seed in seeds.values() if isinstance(seed, dict)}
 
 
 def queue_dir(vendor_short, date_str, type_name):

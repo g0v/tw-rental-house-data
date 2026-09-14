@@ -616,8 +616,10 @@ def cmd_run(options):
     os.environ['TWRH_TARGET_DATE'] = ctx.date
     os.environ['TWRH_LOG_STAMP'] = ctx.stamp
     os.environ['TWRH_RUN_ID'] = ctx.run_id
-    # S4a：認領走檔案分片、DB 記帳鏡像（TWRH_QUEUE_DB=1）；回退＝環境設 TWRH_QUEUE_SOURCE=db
+    # S4a：認領走檔案分片（回退＝環境設 TWRH_QUEUE_SOURCE=db）；S4b：request_ts 停寫
+    # （回退＝環境設 TWRH_QUEUE_DB=1，記帳鏡像回來、filequeuecheck 重新有對照物）
     os.environ.setdefault('TWRH_QUEUE_SOURCE', 'file')
+    os.environ.setdefault('TWRH_QUEUE_DB', '0')
     print('=== flow run {} (vendor: {}, executor: {}, seed mode: {}) ==='.format(
         ctx.date, ctx.vendor.short, ctx.executor, ctx.seed_mode))
     code = run_stages(ctx, RUN_STAGES, options.from_stage)
@@ -631,8 +633,10 @@ def cmd_sweep(options):
     os.environ['TWRH_TARGET_DATE'] = ctx.date
     os.environ['TWRH_LOG_STAMP'] = ctx.stamp
     os.environ['TWRH_RUN_ID'] = ctx.run_id
-    # S4a：認領走檔案分片、DB 記帳鏡像（TWRH_QUEUE_DB=1）；回退＝環境設 TWRH_QUEUE_SOURCE=db
+    # S4a：認領走檔案分片（回退＝環境設 TWRH_QUEUE_SOURCE=db）；S4b：request_ts 停寫
+    # （回退＝環境設 TWRH_QUEUE_DB=1）
     os.environ.setdefault('TWRH_QUEUE_SOURCE', 'file')
+    os.environ.setdefault('TWRH_QUEUE_DB', '0')
     print('=== flow sweep {} {} (vendor: {}, frontier pages<={}) ==='.format(
         ctx.date, ctx.run_id, ctx.vendor.short, ctx.vendor.frontier_pages))
     code = run_stages(ctx, SWEEP_STAGES, None)

@@ -20,7 +20,7 @@ from django.utils import timezone
 
 from crawlerrequest.enums import RequestType
 from crawlerrequest.models import RequestTS
-from rental import artifacts, enums, seeding
+from rental import artifacts, enums, filequeue, seeding
 from rental.models import House, HouseTS, Vendor
 from rental.raws import vendor_dirname
 
@@ -88,6 +88,8 @@ class Command(BaseCommand):
                 detail_crawled_at=crawled,
                 fingerprint_changed_at=fp_changed)
 
+        # S4b 後 request_ts 沒人寫：queue 側改讀檔案 seeds（db_* 命名保留，語意＝「queue 側」）
+        file_ledger = not filequeue.db_bookkeeping()
         db_rows = RequestTS.objects.filter(
             vendor=vendor, request_type=RequestType.DETAIL,
             year=day.year, month=day.month, day=day.day)
@@ -96,7 +98,7 @@ class Command(BaseCommand):
         # 優先讀 spider 留的 stamp（同一個 now）；沒有才退回第一列 created（仍晚幾分鐘）
         now, stamp = seeding.read_seed_stamp(day)
         now_source = 'seed_stamp'
-        if now is None:
+        if now is None and not file_ledger:
             now = db_rows.order_by('created').values_list('created', flat=True).first()
             now_source = 'seeded_at'
         if now is None:
@@ -106,7 +108,10 @@ class Command(BaseCommand):
             refresh_days=options['refresh_days'],
             refresh_jitter_days=options['refresh_jitter'])
 
-        db_seeds = set(db_rows.values_list('seed__id', flat=True))
+        if file_ledger:
+            db_seeds = filequeue.seed_ids(vendor_dirname(vendor.name), day.isoformat(), 'detail')
+        else:
+            db_seeds = set(db_rows.values_list('seed__id', flat=True))
 
         only_pure = sorted(result.seeds - db_seeds)
         only_db = sorted(db_seeds - result.seeds)
