@@ -147,7 +147,7 @@ def main():
             if options.parquet_dir and generic:
                 parquet_rows.append(contracts.coerce_row(contracts.parsed_row(
                     vendor_dir, house_id, date_str, run_tag, datetime.now().astimezone(),
-                    parser_version, generic), contracts.PARSED_FIELDS))
+                    parser_version, generic, vendor_extra=detail_dict), contracts.PARSED_FIELDS))
             if not options.commit:
                 continue
             with transaction.atomic():

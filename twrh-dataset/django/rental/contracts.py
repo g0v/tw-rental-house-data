@@ -19,7 +19,7 @@ import json
 from datetime import date, datetime
 
 LIST_STUB_VERSION = 1
-PARSED_VERSION = 1
+PARSED_VERSION = 2   # 2：加 vendor_extra（2026-09-14）
 
 # --- 型別代號（與 pyarrow 解耦，pack 時再映射） -------------------------------
 STR, I32, I64, F64, BOOL, TS, JSON = 'str', 'i32', 'i64', 'f64', 'bool', 'ts', 'json'
@@ -111,6 +111,11 @@ PARSED_FIELDS = [
     ('author_key', STR),        # sha1(author 識別字串)[:16]，仲介行為分析用
     ('agent_org', STR),
     ('imgs', JSON),
+    # vendor parse 的整份中間產物（現制 HouseEtc.detail_dict）原樣落地（2026-09-14 拍板，
+    # parsed_version 2）：parser 只維護站方今天的版式、舊版式 parser 只在 git history／
+    # 舊 release，raw 又只留 365 天——沒有這欄，parser 死掉的年代就沒有任何可讀產物。
+    # snapshot 跟著攜帶（最新一次 detail 的 dict）；schema 1.0 的 vendor 獨有欄從這裡升格。
+    ('vendor_extra', JSON),
     ('parsed_version', I32),
 ]
 
@@ -147,7 +152,8 @@ SNAPSHOT_VERSION = 1
 
 _SCALAR_FROM_ITEM = {name for name, _ in PARSED_FIELDS} - {
     'vendor', 'vendor_house_id', 'date', 'run', 'crawled_at',
-    'parser_version', 'rough_lat', 'rough_lng', 'author_key', 'parsed_version'}
+    'parser_version', 'rough_lat', 'rough_lng', 'author_key', 'parsed_version',
+    'vendor_extra'}
 
 
 def short_hash(*parts):
@@ -191,7 +197,9 @@ def list_stub(vendor_short, house_id, date_str, run, seen_at, fingerprint,
 
 
 def parsed_row(vendor_short, house_id, date_str, run, crawled_at,
-               parser_version, generic_fields):
+               parser_version, generic_fields, vendor_extra=None):
+    '''vendor_extra：vendor parse 的整份中間 dict（RawHouseItem['dict']），存 JSON 字串；
+    404／拒解析列沒有，留 NULL。'''
     row = {
         'vendor': vendor_short,
         'vendor_house_id': str(house_id),
@@ -203,6 +211,7 @@ def parsed_row(vendor_short, house_id, date_str, run, crawled_at,
         'rough_lat': None,
         'rough_lng': None,
         'author_key': None,
+        'vendor_extra': coerce_value(vendor_extra, JSON) if vendor_extra else None,
     }
     coord = generic_fields.get('rough_coordinate')
     if coord is not None:

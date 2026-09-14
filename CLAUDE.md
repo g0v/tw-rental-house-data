@@ -324,8 +324,11 @@ Set it manually (or use `flow.py run --date`) when re-running part of a pipeline
   `artifacts/scratch/`（每行程一個 jsonl shard），flow 的 `liststubs`／`parsed` stage 用
   `artifactpack` 打成 `artifacts/list/<vendor>/<date>/<run>.jsonl.zst`（list stub：一戶一輪一觀測，
   `fingerprint`＝sha1(price,title) 雜湊）與 `artifacts/parsed/<vendor>/<date>/<run>.parquet`
-  （GenericHouseItem 全欄＋`parser_version`；座標拆 lat/lng、author 只留雜湊、JSON 欄存字串），
-  上同一 bucket 的 `list/`、`parsed/` 前綴。**一輪一檔（run／sweep-HHMM），永不改寫別輪**，
+  （GenericHouseItem 全欄＋`parser_version`；座標拆 lat/lng、author 只留雜湊、JSON 欄存字串；
+  **`vendor_extra`＝整份 detail_dict 原樣落地**（parsed_version 2，2026-09-14 拍板）：parser 只維護站方
+  今天的版式、raw 只留 365 天，parser 死掉的年代只剩它可讀；snapshot 跟著攜帶最新一次 detail 的；
+  上線前的分區與 snapshot 用 `tools/backfill_vendor_extra.py` 從 raw 日包回補，是「永不改寫別輪」
+  的顯式例外），上同一 bucket 的 `list/`、`parsed/` 前綴。**一輪一檔（run／sweep-HHMM），永不改寫別輪**，
   與 rawpack 的同日聯集刻意不同。schema 單一定義在 `django/rental/contracts.py`（只增不改；
   4f 去 Django 時它接替 models.py）；seed 推導純函數在 `django/rental/seeding.py`，
   `seedcheck`（flow seed 之後、detail 之前）對 queue 比對兩軌一致，切換前只 advisory。
