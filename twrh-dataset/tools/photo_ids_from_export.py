@@ -43,10 +43,11 @@ KINDS = {'string': pa.string(), 'int32': pa.int32(), 'int64': pa.int64(), 'float
 TS_COLS = [name for name, kind in FIELDS if kind == 'ts']
 # 只讀 photo_dup_review 的 DESC 會用到的欄（crawled_at／detail_crawled_at／deal_time 等大字串欄不讀、
 # 輸出留 NULL）：850 萬列 house 整表進 Arrow 約 1 GB，3 GB 的 task 才放得下
+# rough_coordinate 不讀：hex EWKB 逐列解要把 850 萬個字串搬進 Python（9/14 首跑 3 GB task exit 137），
+# 而 photo_dup_review 不用座標——輸出留 NULL（要座標時用 point_xy 對子集另算）
 HOUSE_COLS = ['id', 'vendor_house_id', 'created', 'deal_status',
               'top_region', 'sub_region', 'monthly_price', 'floor_ping', 'floor', 'total_floor',
-              'property_type', 'author_id', 'agent_org', 'contact', 'rough_address',
-              'rough_coordinate']
+              'property_type', 'author_id', 'agent_org', 'contact', 'rough_address']
 COMPUTED = ('era', 'photo_ids', 'n_photos', 'sample_url')
 
 

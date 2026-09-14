@@ -16,7 +16,16 @@ RUNNING=$("${AWS[@]}" ecs list-tasks --cluster "$CLUSTER" --family twrh-crawler 
 NET=$("${AWS[@]}" scheduler get-schedule --name twrh-daily-crawl --query 'Target.EcsParameters.NetworkConfiguration.awsvpcConfiguration' --output json)
 SUBNET=$(echo "$NET" | python3 -c 'import json,sys;print(json.load(sys.stdin)["Subnets"][0])')
 SG=$(echo "$NET" | python3 -c 'import json,sys;print(json.load(sys.stdin)["SecurityGroups"][0])')
-OVERRIDES=$(python3 -c 'import json,sys;print(json.dumps({"containerOverrides":[{"name":"crawler","command":sys.argv[1:]}]}))' "$@")
+# TWRH_RUN_CPU／TWRH_RUN_MEMORY：一次性指令要比 task def（3 GB）更大的機器時覆寫（Fargate 合法組合，
+# 例如 2048/8192；分析類工具如 photo_ids_from_export 整表進 Arrow 需要）
+OVERRIDES=$(python3 -c '
+import json, os, sys
+o = {"containerOverrides": [{"name": "crawler", "command": sys.argv[1:]}]}
+cpu, mem = os.environ.get("TWRH_RUN_CPU"), os.environ.get("TWRH_RUN_MEMORY")
+if cpu and mem:
+    o["cpu"], o["memory"] = cpu, mem
+    o["containerOverrides"][0].update({"cpu": int(cpu), "memory": int(mem)})
+print(json.dumps(o))' "$@")
 
 ARN=$("${AWS[@]}" ecs run-task --cluster "$CLUSTER" --task-definition twrh-crawler --launch-type FARGATE \
   --enable-execute-command \
