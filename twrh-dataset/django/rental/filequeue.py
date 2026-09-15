@@ -204,12 +204,17 @@ def shard(keys, index, count):
     return ordered[index::count]
 
 
-def make_key(seed):
+def make_key(seed, run=None):
     '''檔案自派 key（S4b，DB 不再給 id）：seed 各欄依名稱排序串起，同 seed 同 key，
-    重排同一戶自然去重、attempts 跨輪累計。'''
+    重排同一戶自然去重、attempts 跨輪累計。
+    run 給了就前綴 run：list 種子（縣市, page 0）日跑與每輪前緣掃描內容相同、卻各是一次
+    獨立的翻頁，不能跨 run 去重——2026-09-15 S4b 首日 11:01 起每輪 sweep 都「takes 0」
+    （08:01 的同組 list 種子已 done 被摺掉），三輪空轉。detail／deal 維持跨 run 同 key。'''
     if isinstance(seed, dict):
-        return '|'.join('{}={}'.format(k, seed[k]) for k in sorted(seed))
-    return str(seed)
+        base = '|'.join('{}={}'.format(k, seed[k]) for k in sorted(seed))
+    else:
+        base = str(seed)
+    return '{}#{}'.format(run, base) if run else base
 
 
 def claimable(vendor_short, date_str, type_name, index=0, count=1, max_attempts=3):

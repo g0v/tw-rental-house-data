@@ -348,7 +348,10 @@ class PersistQueue(object):
 
     def gen_persist_request(self, seed):
         if self.source == 'file':
-            key = filequeue.make_key(seed)
+            # list 種子每 run 一組（前緣掃描同日多輪、日跑同組縣市 page 0），key 帶 run 才不會
+            # 被前一輪的 done 摺掉；detail／deal 同一戶跨輪去重照舊
+            key = filequeue.make_key(
+                seed, run=filequeue.run_id() if self.type_name == 'list' else None)
             if self.db_enabled:
                 row = self._db_seed_row(seed)
                 key = str(row.id)

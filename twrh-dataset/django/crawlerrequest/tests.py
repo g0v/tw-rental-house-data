@@ -1746,6 +1746,35 @@ class FileClaimTests(QueueTestMixin, TestCase):
             self.assertEqual((r['seeds'], r['done'], r['residue'], r['duplicate_seed_lines']), (2, 1, 1, 1))
             self.assertEqual(RequestTS.objects.count(), 0)
 
+    def test_list_seeds_are_per_run_but_detail_seeds_dedup_across_runs(self):
+        '''S4b 首日（2026-09-15）：日跑與每輪 sweep 的 list 種子（縣市, page 0）內容相同，
+        純內容 key 讓 08:01 之後每輪都「takes 0」。list key 帶 run；detail 仍跨 run 去重。'''
+        from rental import filequeue as fq
+        seed = {'id': 1, 'name': 'A', 'page': 0}
+        with mock.patch.dict(os.environ, {'TWRH_QUEUE_DB': '0', 'TWRH_RUN_ID': 'run'}):
+            q = self.worker(0, 1, is_list=True)
+            q.gen_persist_request(seed)
+            it = q.next_request().meta['db_request']
+            self.assertEqual(it.key, 'run#id=1|name=A|page=0')
+            list(q.parser_wrapper(make_response(it)))           # 日跑做完
+            q.release_claims()
+            d = self.worker(0, 1)
+            d.gen_persist_request({'id': 'h1'})
+            list(d.parser_wrapper(make_response(d.next_request().meta['db_request'])))
+            d.release_claims()
+        with mock.patch.dict(os.environ, {'TWRH_QUEUE_DB': '0', 'TWRH_RUN_ID': 'sweep-0501'}):
+            q2 = self.worker(0, 1, is_list=True)
+            q2.gen_persist_request(seed)                        # 前緣掃描：同縣市 page 0
+            items = self.drain(q2)
+            self.assertEqual([i.key for i in items], ['sweep-0501#id=1|name=A|page=0'])
+            q2.release_claims()
+            d2 = self.worker(0, 1)
+            d2.gen_persist_request({'id': 'h1'})                # 同一戶 detail：仍去重、不再抓
+            self.assertEqual(self.drain(d2), [])
+            r = fq.reconcile('591', TEST_DATE, 'list')
+            self.assertEqual((r['seeds'], r['done'], r['residue']), (2, 1, 1))
+            self.assertEqual(fq.reconcile('591', TEST_DATE, 'detail')['seeds'], 1)
+
     def test_dynamic_seeds_after_load_and_has_seed(self):
         q = self.worker(0, 1, is_list=True)
         q.gen_persist_request({'id': 1, 'name': 'A', 'page': 0})
