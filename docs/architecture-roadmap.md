@@ -392,10 +392,12 @@ carry 桶先乾淨。S4 只碰 request_ts，與 house 三表無關、可平行�
 | S1 seed 純函數上位 | seedcheck 連續 3 天 AGREE（9/13 起算） | seed stage 改由 `seeding.select_seeds` 產種子（狀態改讀昨日 snapshot carry 欄），DB 判準退役；仍寫 request_ts | 9/16 |
 | S4b queue 出 DB | S4a 一天雙軌一致（9/15 早：02:10 多 worker＋mop-up 綠、filequeuecheck AGREE） | DB 停寫 request_ts（`TWRH_QUEUE_DB=0`）；白天 sweep 先驗、當晚 02:10 上；drop request_ts 另一步（一晚無紅後） | 9/15 夜（原 9/17；9/14 拍板：白天 sweep 當額外驗證時段，程式先落分支） |
 | S2 house_etc 退役 | parsedcheck 連續 3 天 AGREE（已到）＋S1 上線一晚無紅 | 停寫 detail_dict／list_dict；rerun 只出 parquet；drop `house_etc` | 9/17 夜（原 9/18） |
+| **S2b DB 歷史歸檔 S3**（2026-09-15 拍板） | S2a 回補跑完（9/17 早）、S2 drop 之前 | RDS export **整個 DB**（house／house_ts／house_etc／request_ts；9/13 那份只有兩表不算）→ `s3://twrh-w2/archive/rds/<id>/`：S2 後唯一能回頭看 detail_dict／list_dict 的地方、HouseTS 歷史離開 RDS 的第一步（storage 逼近 100 GiB）、也是 S3c 總表的 base。vendor_extra／house_etc 之後**每月一次**手動匯出到 archive、不進總表（研究用） | **9/17 傍晚** |
 | S3a export 切 parquet（讀取端） | #11 回填完（9/13）、export 讀 snapshot 落碼 | 區間 export 兩路 CSV 逐 byte 比對 3 次；manifest／quality 改讀分區。只改讀取端，可與上面重疊 | 9/14 起可寫，9/18–20 |
 | S3b house 三表停寫 | S3a 三次一致 | house／house_ts 停寫；synthts／syncstateful 退役 | 9/19–20（原 9/21） |
 | S5 RDS 收尾 | S1–S4 全完成、house 三表停寫（DB 無任何讀寫點） | 留最後一份 RDS snapshot → **destroy（九月內，維護者明講授權）** | 9/21 前後（原 9/22–24） |
 | S6 4f 去 Django；刪 RDS snapshot | 10/1 parquet 路徑出九月 zip、月報綠；十月確認無異常 | 4f；刪 RDS snapshot | 10 月 |
+| **S3c 全戶最新狀態總表**（2026-09-15 拍板） | S2b base 落地；每日 final snapshot 穩定；S5 之後（9/22 前後）先 dry run 對 DB House 逐戶校驗 | 一檔「每戶最後已知狀態」parquet，遞推 總表(D)＝總表(D−1) 以 final snapshot(D) 逐戶覆蓋（只吃 final、落後一天；掉出 snapshot 的戶由總表接住，fold 的「recovered from earlier snapshots」改查它）。**不含 vendor_extra**（1 GB 級）。每日 append delta 檔（8 萬列、幾 MB、task 一兩分鐘），**每月 1 日壓成新 base 兼檢查點**（月檢查點永久；日檔與 noncurrent version 在 s3.tf 掛只針對此前綴的 7 天 lifecycle——bucket 有 versioning，寫同一 key 會無限累積）。修壞掉的某天＝從上個月檢查點順序重放 ≤31 份 snapshot。Fargate 按秒計，每月 <US$1。S6 去 Django 時 DB House 由它接替、export 改讀它 | **首跑 10/1（隨月度出貨 07:00）**，之後每日 delta、每月壓 base |
 
 程式週（9/11–9/15）：9/11 4d 寫入側＋4c 接線（bootstrap 工具）✅、9/12 首夜兩個小修（deal key 白名單、seed now stamp）＋snapshotcheck＋manifest 並列輸出 ✅、
 9/13 4d 推導側＋#11 回填（上午插入 schema 1.0 RFC 與 0.3 修正，見編修紀錄）、9/14 export 讀 snapshot 首次區間比對、9/15 緩衝／4e 第二步落碼。
@@ -691,6 +693,10 @@ Phase 1＋3 全部程式面完成（分支 `arch-phase1-3`，已併入 master）
 
 ## 編修紀錄
 
+- **2026-09-15** 階梯加兩步：**S2b DB 歷史歸檔 S3**（9/17 傍晚，整個 DB 的 RDS export，S2 drop 前；
+  vendor_extra／house_etc 之後每月手動匯出、不進總表）、**S3c 全戶最新狀態總表**（首跑 10/1 隨月度出貨，
+  之後每日 delta＋每月 1 日壓 base 兼檢查點；不含 vendor_extra；lifecycle 7 天、月檢查點永久；每月 <US$1）。
+  同日：S4b 併入（`d1dc207f`）後首日 sweep 空轉（list 種子純內容 key 跨 run 去重）→ `dbb5fd33` list key 帶 run。
 - **2026-09-12** 切換階梯依依賴關係再排（S4 提前與 S1 平行、S3 拆讀取端／停寫、S2 在 S1 後）；
   **取消 10/1 DB 路徑對照**（停寫後 DB 只剩一段，資訊不比三次區間比對多）：RDS 於 S1–S4 完成、
   house 三表停寫後留 RDS snapshot 即 destroy（九月內），十月出貨確認後刪 RDS snapshot。
