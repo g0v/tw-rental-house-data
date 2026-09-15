@@ -10,7 +10,7 @@ L-C-8，發布語意需操作者拍板後才在 production 啟用 diff 模式）
 
 full 模式（現行預設）下毋需執行；重複執行冪等（只填 NULL 欄位）。
 """
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
@@ -26,6 +26,15 @@ SKIP_FIELDS = {
 }
 
 
+def bucket_window(ts):
+    '''這一列的日期桶 [start, end)（本地時區）。hour 目前恆 0、步長 24
+    （current_stepped_hour），所以桶＝當地一整天。'''
+    start = timezone.make_aware(
+        datetime(ts['year'], ts['month'], ts['day'], ts['hour']),
+        timezone.get_current_timezone())
+    return start, start + timedelta(hours=24)
+
+
 class Command(BaseCommand):
     help = 'Fill skipped OPENED houses\' daily HouseTS from House (diff mode)'
     requires_migrations_checks = True
@@ -36,9 +45,9 @@ class Command(BaseCommand):
             help='只跑關閉／成交列補齊（回補過去日期用：第一段會對 OPENED 戶建當日列，'
                  '對過去日期會生出當時不存在的戶）')
         parser.add_argument(
-            '--fresh-hours', type=int, default=12,
-            help='detail_crawled_at 在 N 小時內視為本輪已爬、不合成（預設 12，'
-                 '與 detail591 diff 種子的同輪窗口一致）')
+            '--no-create', action='store_true',
+            help='只補既有列、不建列（回補過去日期用：當時不在架的戶不該被生出來）。'
+                 '搭配 --date／TWRH_TARGET_DATE 回補歷史的稀疏列')
 
     def handle(self, *_args, **options):
         ts = {
@@ -47,16 +56,24 @@ class Command(BaseCommand):
             'day': models.current_day(),
             'hour': models.current_stepped_hour(),
         }
-        fresh_cutoff = timezone.now() - timedelta(hours=options['fresh_hours'])
+        bucket_start, bucket_end = bucket_window(ts)
 
         if options['closed_only']:
             self.fill_closed(ts)
             return
 
-        # 本輪爬過 detail 的物件快照已完整，不需要合成
+        # 「本輪爬過 detail 的物件快照已完整」＝detail 落在**本列的日期桶內**。
+        # 原本用滾動 12 小時判斷，在一天一跑時等價；前緣掃描（每 3 小時）之後
+        # 就錯了：傍晚 sweep（17:01／20:01／23:01）抓到的戶，detail 寫進的是
+        # 「昨天」那列，隔天 04:2x synthts 跑時它才 8–12 小時大，被當成本輪已爬
+        # 排除掉——今天這列於是永遠停在 list-only 稀疏列（2026-09-16 實測 4,737 列，
+        # 佔當日座標空值的九成；House 現值都在，只是沒填進當日列）。
         targets = House.objects.filter(
             deal_status=DealStatusType.OPENED,
-        ).exclude(detail_crawled_at__gte=fresh_cutoff)
+        ).exclude(
+            detail_crawled_at__gte=bucket_start,
+            detail_crawled_at__lt=bucket_end,
+        )
 
         copy_fields = [
             f.name for f in House._meta.get_fields()
@@ -65,8 +82,17 @@ class Command(BaseCommand):
                     if getattr(tf, 'concrete', False))
         ]
 
-        n_created = n_filled = n_untouched = 0
+        # 回補過去日期：只補當時就有的列，不得為「今天在架、那天不在架」的戶生列
+        existing = None
+        if options['no_create']:
+            existing = set(HouseTS.objects.filter(**ts).values_list(
+                'vendor_house_id', flat=True))
+
+        n_created = n_filled = n_untouched = n_skipped = 0
         for house in targets.iterator(chunk_size=1000):
+            if existing is not None and house.vendor_house_id not in existing:
+                n_skipped += 1
+                continue
             house_ts, created = HouseTS.objects.get_or_create(
                 **ts,
                 vendor=house.vendor,
@@ -87,8 +113,10 @@ class Command(BaseCommand):
             if created:
                 n_created += 1
 
-        print('{}/{}/{}: synthts filled {} (rows created {}, untouched {})'.format(
-            ts['year'], ts['month'], ts['day'], n_filled, n_created, n_untouched))
+        print('{}/{}/{}: synthts filled {} (rows created {}, untouched {}, '
+              'skipped-no-row {})'.format(
+                  ts['year'], ts['month'], ts['day'],
+                  n_filled, n_created, n_untouched, n_skipped))
         self.fill_closed(ts)
 
     def fill_closed(self, ts):

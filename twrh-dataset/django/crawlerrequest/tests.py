@@ -1525,6 +1525,68 @@ class PipelineClosureRowTests(QueueTestMixin, TestCase):
         self.assertFalse(HouseTS.objects.filter(vendor_house_id='z').exists())
 
 
+class SynthTsBucketTests(QueueTestMixin, TestCase):
+    '''synthts 的「本輪已爬」判準＝detail 落在**本列的日期桶內**，不是滾動 N 小時。
+
+    前緣掃描每 3 小時一輪之後，傍晚 sweep（17:01／20:01／23:01）抓到的戶，
+    detail 寫進的是「昨天」那列；隔天清晨 synthts 跑時它才 8–12 小時大，
+    舊的滾動 12 小時窗會把它當「本輪已爬」排除掉，今天這列於是永遠停在
+    list-only 稀疏列（2026-09-16 實測 4,737 列，佔當日座標空值九成）。'''
+
+    def test_evening_sweep_house_is_synthesized_next_day(self):
+        from django.core.management import call_command
+        y, m, d = (int(x) for x in TEST_DATE.split('-'))
+        vendor = Vendor.objects.get(name=VENDOR_NAME)
+
+        def aware(*args):
+            return timezone.make_aware(datetime(*args), timezone.get_current_timezone())
+
+        # e＝昨晚 20:01 前緣掃描抓到的戶；t＝今天 03:00 日跑抓到的戶
+        for hid, crawled in (('e', aware(y, m, d - 1, 20, 1)), ('t', aware(y, m, d, 3, 0))):
+            House.objects.create(
+                vendor=vendor, vendor_house_id=hid, monthly_price=9000, floor_ping=10.0,
+                detail_crawled_at=crawled, deal_status=enums.DealStatusType.OPENED)
+            # 當日 list 只寫得出 list 層欄位，detail 欄留空
+            HouseTS.objects.create(
+                vendor=vendor, vendor_house_id=hid, year=y, month=m, day=d, hour=0,
+                monthly_price=9000, deal_status=enums.DealStatusType.OPENED)
+
+        # synthts 在今天清晨跑（舊制的滾動 12 小時窗從這一刻往回算）
+        with mock.patch('django.utils.timezone.now', return_value=aware(y, m, d, 4, 26)):
+            call_command('synthts')
+
+        e = HouseTS.objects.get(vendor_house_id='e')
+        t = HouseTS.objects.get(vendor_house_id='t')
+        # 昨晚 sweep 的戶：detail 進的是昨天那列，今天這列要補起來
+        self.assertEqual((e.floor_ping, e.is_synthesized), (10.0, True))
+        # 今天已爬的戶：這列就是爬取值，不合成——否則會把 House 舊值灌回
+        # 今天「真的沒有」的欄位
+        self.assertIsNone(t.floor_ping)
+        self.assertFalse(t.is_synthesized)
+
+    def test_no_create_fills_existing_rows_only(self):
+        '''回補過去日期：只補當時就有的列，不得為「今天在架、那天不在架」的戶生列。'''
+        from django.core.management import call_command
+        y, m, d = (int(x) for x in TEST_DATE.split('-'))
+        vendor = Vendor.objects.get(name=VENDOR_NAME)
+        old = timezone.now() - timedelta(days=30)
+        for hid in ('had-row', 'no-row'):
+            House.objects.create(
+                vendor=vendor, vendor_house_id=hid, monthly_price=7000, floor_ping=8.0,
+                detail_crawled_at=old, deal_status=enums.DealStatusType.OPENED)
+        HouseTS.objects.create(
+            vendor=vendor, vendor_house_id='had-row', year=y, month=m, day=d, hour=0,
+            monthly_price=7000, deal_status=enums.DealStatusType.OPENED)
+
+        call_command('synthts', '--no-create')
+        self.assertEqual(HouseTS.objects.get(vendor_house_id='had-row').floor_ping, 8.0)
+        self.assertFalse(HouseTS.objects.filter(vendor_house_id='no-row').exists())
+
+        # 不帶旗標＝日跑語意，缺席一天的戶仍要建列
+        call_command('synthts')
+        self.assertTrue(HouseTS.objects.filter(vendor_house_id='no-row').exists())
+
+
 class FileQueueTests(TestCase):
     '''4e 檔案 queue（純檔案、無 DB）：摺疊語意、attempts 跨檔累計、殘留／孤兒、位置輪分。'''
 
