@@ -38,6 +38,11 @@ class Command(BaseCommand):
         parser.add_argument('--strict', action='store_true')
         parser.add_argument('--sample', type=int, default=5,
                             help='不一致時各印幾個 house_id')
+        parser.add_argument(
+            '--state-source', choices=('db', 'snapshot', 'both'), default='db',
+            help='每戶狀態從哪裡來：db＝House 欄位（過渡期轉接，現況）；'
+                 'snapshot＝昨日 snapshot 的 carry 欄（S1 上線後的來源）；'
+                 'both＝兩邊都算並逐戶比對四類種子（S1 的 dry-run，不碰 queue 比對）')
 
     def handle(self, *_args, **options):
         if options['date']:
@@ -78,15 +83,29 @@ class Command(BaseCommand):
         # 只載 OPENED：select_seeds 四類全部先交集 open_ids，非 OPENED 列載了也用不到；
         # House 是全歷史（2026-09-11 雲上 853 萬列 vs OPENED 7.1 萬），全載＝每戶一個
         # HouseState 撐破 2 GB task memory（9/11 seedcheck 兩次 exit 137 OOM）
-        state = {}
-        for hid, crawled, fp_changed in House.objects.filter(
-                vendor=vendor, deal_status=enums.DealStatusType.OPENED).values_list(
-                'vendor_house_id', 'detail_crawled_at',
-                'list_fingerprint_changed_at').iterator(chunk_size=20000):
-            state[hid] = seeding.HouseState(
-                open=True,
-                detail_crawled_at=crawled,
-                fingerprint_changed_at=fp_changed)
+        source = options['state_source']
+
+        def db_state():
+            out = {}
+            for hid, crawled, fp_changed in House.objects.filter(
+                    vendor=vendor, deal_status=enums.DealStatusType.OPENED).values_list(
+                    'vendor_house_id', 'detail_crawled_at',
+                    'list_fingerprint_changed_at').iterator(chunk_size=20000):
+                out[hid] = seeding.HouseState(
+                    open=True,
+                    detail_crawled_at=crawled,
+                    fingerprint_changed_at=fp_changed)
+            return out
+
+        def snapshot_state():
+            rows = artifacts.read_snapshot(short, yesterday.isoformat(), bucket)
+            if not rows:
+                raise CommandError(
+                    'seedcheck --state-source={}：昨日 snapshot {} 不存在'.format(
+                        source, yesterday))
+            return seeding.state_from_snapshot(rows)
+
+        state = snapshot_state() if source == 'snapshot' else db_state()
 
         # S4b 後 request_ts 沒人寫：queue 側改讀檔案 seeds（db_* 命名保留，語意＝「queue 側」）
         file_ledger = not filequeue.db_bookkeeping()
@@ -103,10 +122,37 @@ class Command(BaseCommand):
             now_source = 'seeded_at'
         if now is None:
             now, now_source = timezone.now(), 'wallclock'
-        result = seeding.select_seeds(
-            today_stubs, yesterday_ids, state, now,
-            refresh_days=options['refresh_days'],
-            refresh_jitter_days=options['refresh_jitter'])
+        def seeds_from(st):
+            return seeding.select_seeds(
+                today_stubs, yesterday_ids, st, now,
+                refresh_days=options['refresh_days'],
+                refresh_jitter_days=options['refresh_jitter'])
+
+        if source == 'both':
+            # S1 dry-run：同一份 stub／昨日在列／now，只換狀態來源，逐類比對。
+            # 不比 queue——今天的 queue 是 DB 軌產的，拿它當裁判會把兩軌的差異
+            # 記在 snapshot 頭上。
+            a, b = seeds_from(db_state()), seeds_from(snapshot_state())
+            report = {'date': day.isoformat(), 'mode': 'state-source dry-run',
+                      'stubs': len(today_stubs), 'now_source': now_source}
+            agree = True
+            for name in ('stale', 'fingerprint', 'absent', 'returned', 'seeds'):
+                sa, sb = getattr(a, name), getattr(b, name)
+                only_db_, only_snap = sorted(sa - sb), sorted(sb - sa)
+                report[name] = {'db': len(sa), 'snapshot': len(sb),
+                                'only_db': len(only_db_), 'only_snapshot': len(only_snap)}
+                if only_db_ or only_snap:
+                    agree = False
+                    report[name]['sample_only_db'] = only_db_[:options['sample']]
+                    report[name]['sample_only_snapshot'] = only_snap[:options['sample']]
+            report['n_open'] = {'db': a.n_open, 'snapshot': b.n_open}
+            print('seedcheck: {} — {}'.format(
+                'AGREE' if agree else 'DIFF', json.dumps(report, ensure_ascii=False)))
+            if options['strict'] and not agree:
+                raise CommandError('state-source dry-run DIFF')
+            return
+
+        result = seeds_from(state)
 
         if file_ledger:
             db_seeds = filequeue.seed_ids(vendor_dirname(vendor.name), day.isoformat(), 'detail')

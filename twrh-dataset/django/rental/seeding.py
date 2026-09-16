@@ -142,3 +142,32 @@ def select_new_seeds(today_stubs, state):
     return {hid for hid in latest_fingerprints(today_stubs)
             if hid in state and state[hid].open
             and state[hid].detail_crawled_at is None}
+
+
+OPENED = 0   # enums.DealStatusType.OPENED；這裡不 import Django
+
+
+def state_from_snapshot(rows):
+    '''S1：{house_id: HouseState}，狀態取自昨日 snapshot 的 carry 欄，不碰 DB。
+
+    對照過渡期的 DB 轉接（seedcheck 從 House 組）：
+      open                        ← deal_status == OPENED
+      detail_crawled_at           ← last_detail_at
+      fingerprint_at_last_detail  ← 同名 carry 欄
+      fingerprint_changed_at      ← 不需要。它是 carry 欄還沒有時的退路
+                                    （House.list_fingerprint_changed_at），
+                                    snapshot 直接給得出指紋本身，走主判準即可。
+
+    只收 OPENED：select_seeds 四類都先交集 open_ids，非 OPENED 載了也用不到，
+    而且 snapshot 一天就是全戶一列（含已關閉），全收會把記憶體吃掉
+    ——同 seedcheck 2026-09-11 那次 OOM 的教訓。'''
+    state = {}
+    for row in rows:
+        if row.get('deal_status') != OPENED:
+            continue
+        state[row['vendor_house_id']] = HouseState(
+            open=True,
+            detail_crawled_at=row.get('last_detail_at'),
+            fingerprint_at_last_detail=row.get('fingerprint_at_last_detail'),
+        )
+    return state

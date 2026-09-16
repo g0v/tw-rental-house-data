@@ -2097,6 +2097,38 @@ class SeedFunctionTests(TestCase):
         return {'vendor_house_id': hid, 'fingerprint': fp,
                 'seen_at': (at or timezone.now()).isoformat()}
 
+    def test_state_from_snapshot_maps_carry_columns(self):
+        '''S1：狀態改讀昨日 snapshot 的 carry 欄，與 DB 轉接等價。
+        只收 OPENED（snapshot 一天是全戶一列，含已關閉）；
+        fingerprint_changed_at 不再需要——carry 欄直接給得出上次 detail 當下的指紋。'''
+        from rental.seeding import state_from_snapshot, select_seeds
+        now = timezone.now()
+        rows = [
+            # 在架、上次 detail 很久以前 → stale
+            {'vendor_house_id': 'old', 'deal_status': 0,
+             'last_detail_at': now - timedelta(days=30),
+             'fingerprint_at_last_detail': 'x'},
+            # 在架、昨天才 detail、指紋自上次 detail 後變了 → fingerprint
+            {'vendor_house_id': 'moved', 'deal_status': 0,
+             'last_detail_at': now - timedelta(days=1),
+             'fingerprint_at_last_detail': 'was'},
+            # 已成交：不該進 state
+            {'vendor_house_id': 'dealt', 'deal_status': 2,
+             'last_detail_at': now - timedelta(days=30),
+             'fingerprint_at_last_detail': 'x'},
+        ]
+        state = state_from_snapshot(rows)
+        self.assertEqual(sorted(state), ['moved', 'old'])
+        self.assertEqual(state['old'].detail_crawled_at, rows[0]['last_detail_at'])
+        self.assertEqual(state['moved'].fingerprint_at_last_detail, 'was')
+        self.assertTrue(state['old'].open)
+
+        stubs = [self.stub('old', 'x'), self.stub('moved', 'now-different')]
+        r = select_seeds(stubs, {'old', 'moved'}, state, now, refresh_days=7)
+        self.assertEqual(r.stale, {'old'})
+        self.assertEqual(r.fingerprint, {'moved'})
+        self.assertEqual(r.seeds, {'old', 'moved'})
+
     def test_four_seed_classes_and_skip(self):
         from rental.seeding import HouseState, select_seeds
         now = timezone.now()
