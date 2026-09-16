@@ -82,17 +82,13 @@ class Command(BaseCommand):
                     if getattr(tf, 'concrete', False))
         ]
 
-        # 回補過去日期：只補當時就有的列，不得為「今天在架、那天不在架」的戶生列
-        existing = None
         if options['no_create']:
-            existing = set(HouseTS.objects.filter(**ts).values_list(
-                'vendor_house_id', flat=True))
+            self.fill_existing_opened(ts, bucket_start, bucket_end, copy_fields)
+            self.fill_closed(ts)
+            return
 
-        n_created = n_filled = n_untouched = n_skipped = 0
+        n_created = n_filled = n_untouched = 0
         for house in targets.iterator(chunk_size=1000):
-            if existing is not None and house.vendor_house_id not in existing:
-                n_skipped += 1
-                continue
             house_ts, created = HouseTS.objects.get_or_create(
                 **ts,
                 vendor=house.vendor,
@@ -113,11 +109,49 @@ class Command(BaseCommand):
             if created:
                 n_created += 1
 
-        print('{}/{}/{}: synthts filled {} (rows created {}, untouched {}, '
-              'skipped-no-row {})'.format(
-                  ts['year'], ts['month'], ts['day'],
-                  n_filled, n_created, n_untouched, n_skipped))
+        print('{}/{}/{}: synthts filled {} (rows created {}, untouched {})'.format(
+            ts['year'], ts['month'], ts['day'], n_filled, n_created, n_untouched))
         self.fill_closed(ts)
+
+    def fill_existing_opened(self, ts, bucket_start, bucket_end, copy_fields):
+        '''回補過去日期用：走「那天存在的 OPENED 列」再回查 House，而不是走
+        「現在 OPENED 的 House」。差別在周轉——9/8 開著、如今已關的戶不在
+        House(OPENED) 裡，而它那天那列又是 OPENED、fill_closed 也不收，
+        兩邊都撈不到。House 現值仍保有最後一次 detail 的值，補得進去。
+        只補既有列、不建列（當時不在架的戶不該被生出來）。'''
+        rows = list(HouseTS.objects.filter(
+            **ts, deal_status=DealStatusType.OPENED))
+        n_filled = n_untouched = n_no_house = n_fresh = 0
+        for i in range(0, len(rows), 1000):
+            chunk = rows[i:i + 1000]
+            houses = {(h.vendor_id, h.vendor_house_id): h for h in House.objects.filter(
+                vendor__in={r.vendor_id for r in chunk},
+                vendor_house_id__in=[r.vendor_house_id for r in chunk])}
+            for house_ts in chunk:
+                house = houses.get((house_ts.vendor_id, house_ts.vendor_house_id))
+                if house is None:
+                    n_no_house += 1
+                    continue
+                # 那天就爬過 detail 的列＝爬取值，不覆蓋（同日跑的判準）
+                if house.detail_crawled_at is not None \
+                        and bucket_start <= house.detail_crawled_at < bucket_end:
+                    n_fresh += 1
+                    continue
+                filled = [name for name in copy_fields
+                          if getattr(house_ts, name) is None
+                          and getattr(house, name) is not None]
+                if not filled:
+                    n_untouched += 1
+                    continue
+                for name in filled:
+                    setattr(house_ts, name, getattr(house, name))
+                house_ts.is_synthesized = True
+                house_ts.save(update_fields=filled + ['is_synthesized', 'updated'])
+                n_filled += 1
+        print('{}/{}/{}: synthts --no-create filled {} of {} opened rows '
+              '(untouched {}, detail-in-bucket {}, no house {})'.format(
+                  ts['year'], ts['month'], ts['day'], n_filled, len(rows),
+                  n_untouched, n_fresh, n_no_house))
 
     def fill_closed(self, ts):
         copy_fields = [

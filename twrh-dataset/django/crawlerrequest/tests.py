@@ -1583,8 +1583,19 @@ class SynthTsBucketTests(QueueTestMixin, TestCase):
             vendor=vendor, vendor_house_id='had-row', year=y, month=m, day=d, hour=0,
             monthly_price=7000, deal_status=enums.DealStatusType.OPENED)
 
+        # 那天開著、如今已關的戶：House(OPENED) 撈不到、fill_closed 也不收
+        # （那天那列是 OPENED），--no-create 必須走「那天的列」才補得到
+        House.objects.create(
+            vendor=vendor, vendor_house_id='since-closed', monthly_price=6000,
+            floor_ping=9.0, detail_crawled_at=old,
+            deal_status=enums.DealStatusType.NOT_FOUND)
+        HouseTS.objects.create(
+            vendor=vendor, vendor_house_id='since-closed', year=y, month=m, day=d,
+            hour=0, monthly_price=6000, deal_status=enums.DealStatusType.OPENED)
+
         call_command('synthts', '--no-create')
         self.assertEqual(HouseTS.objects.get(vendor_house_id='had-row').floor_ping, 8.0)
+        self.assertEqual(HouseTS.objects.get(vendor_house_id='since-closed').floor_ping, 9.0)
         self.assertFalse(HouseTS.objects.filter(vendor_house_id='no-row').exists())
 
         # 不帶旗標＝日跑語意，缺席一天的戶仍要建列
