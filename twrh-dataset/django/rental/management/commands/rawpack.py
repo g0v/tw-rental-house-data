@@ -31,6 +31,7 @@ import io
 import json
 import os
 import random
+import shutil
 import subprocess
 import tarfile
 from datetime import date as date_cls, datetime
@@ -217,12 +218,15 @@ class Command(BaseCommand):
             self.upload(bucket, vendor, pack_path, index_path, options['keep_local'])
 
     def cleanup_scratch(self, src_dirs, options):
+        # 整棵刪，不自己走 listdir——EFS(NFS) 上一個目錄七萬多個檔時 readdir 要分
+        # 多次 RPC，而迴圈同時在刪，同一個名字可能被回傳兩次，第二次 unlink 就
+        # FileNotFoundError（2026-09-17 日跑實例：75,562 個檔、刪到約 17,000 個時炸，
+        # 日包已寫好但卡在上傳前，整個 flow 中止於 rawpack，synthts 以降全沒跑）。
+        # rmtree 由底層處理重試語意；ignore_errors 讓「已經不在了」不算失敗。
         if options['keep_scratch']:
             return
         for src_dir in src_dirs:
-            for name in os.listdir(src_dir):
-                os.unlink(os.path.join(src_dir, name))
-            os.rmdir(src_dir)
+            shutil.rmtree(src_dir, ignore_errors=True)
 
     def verify_pack(self, pack_path, sources, index, fresh):
         '''member 數對 index、抽樣 byte 級比對 scratch 原檔。'''

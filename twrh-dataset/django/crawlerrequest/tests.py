@@ -1213,6 +1213,21 @@ class RawPackTests(QueueTestMixin, TestCase):
         from django.core.management import call_command
         call_command('rawpack', '--date', TEST_DATE, '--keep-local', *args)
 
+    def test_cleanup_scratch_tolerates_vanished_entries(self):
+        '''收尾刪 scratch 不得因「名字在、檔已不在」而炸。EFS(NFS) 上七萬多個檔的
+        目錄 readdir 要分多次 RPC，邊刪邊列會讓同一個名字被回傳兩次——2026-09-17
+        日跑就是這樣掛在 cleanup，日包已寫好卻卡在上傳前，整個 flow 中止於 rawpack、
+        synthts 以降全沒跑。'''
+        from django.core.management import call_command
+        self.scratch('591', TEST_DATE, 'a', '<html>a</html>')
+        day_dir = os.path.join(self.tmp, 'scratch', '591', TEST_DATE)
+        call_command('rawpack', '--date', TEST_DATE)
+        self.assertFalse(os.path.exists(day_dir))      # 整棵刪掉
+        self.assertIn('a.detail.html', self.members(TEST_DATE))
+        # 目錄已經不在了再刪一次：不得拋例外
+        from rental.management.commands.rawpack import Command
+        Command().cleanup_scratch([day_dir], {'keep_scratch': False})
+
     def test_same_day_runs_union_and_orphan_dates(self):
         # 日跑：A、B
         self.scratch('591', TEST_DATE, 'A', '<a1>')
