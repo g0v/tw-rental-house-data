@@ -207,26 +207,43 @@ class Command(BaseCommand):
         if options['reconcile']:
             self.reconcile(vendor, date_str, pack_path, fresh, options['full'])
 
-        self.cleanup_scratch(src_dirs, options)
-
         size = os.path.getsize(pack_path)
         print('    OK — {} members packed ({} fresh, {} carried; {:.1f} MB)'.format(
             len(index), len(fresh), carried, size / 2**20))
 
+        # 先上傳（正事），再刪 scratch（善後）。順序反過來的代價 2026-09-17 付過：
+        # cleanup 拋例外 → 日包已寫好卻沒上傳、flow 中止於 rawpack，
+        # parsed／snapshot／synthts／sync／manifest／quality 整段沒跑。
         bucket = os.environ.get('TWRH_RAW_BUCKET')
         if bucket:
             self.upload(bucket, vendor, pack_path, index_path, options['keep_local'])
 
+        self.cleanup_scratch(src_dirs, options)
+
     def cleanup_scratch(self, src_dirs, options):
-        # 整棵刪，不自己走 listdir——EFS(NFS) 上一個目錄七萬多個檔時 readdir 要分
-        # 多次 RPC，而迴圈同時在刪，同一個名字可能被回傳兩次，第二次 unlink 就
-        # FileNotFoundError（2026-09-17 日跑實例：75,562 個檔、刪到約 17,000 個時炸，
-        # 日包已寫好但卡在上傳前，整個 flow 中止於 rawpack，synthts 以降全沒跑）。
-        # rmtree 由底層處理重試語意；ignore_errors 讓「已經不在了」不算失敗。
+        '''刪當日 scratch。這是善後不是正事——刪不掉頂多佔空間（下次 rawpack
+        會把它當同日 scratch 再併一次，日包語意是聯集、不會壞），所以一律不往上拋。
+
+        2026-09-17 日跑：listdir 拿到 75,562 個名字後逐個 unlink，刪到約 17,000 個時
+        其中一個名字 unlink 出 FileNotFoundError。當時 4 個 worker 早在 03:52 就停了、
+        窗內沒有第二個 task，repo 裡也只有這裡會刪 scratch 的 .html，**沒查出誰刪的**；
+        剩下的假設是 EFS(NFS) 的目錄快取回了已不存在的 entry。改用 rmtree 消掉
+        「先看再刪」的時間窗，但**不用 ignore_errors——那會讓它再發生時我們也看不到**。
+        改以 onerror 記錄並計數，真的再來一次時 log 裡會留下證據。'''
         if options['keep_scratch']:
             return
+        failures = []
+
+        def on_error(func, path, exc_info):
+            failures.append((path, exc_info[1]))
+
         for src_dir in src_dirs:
-            shutil.rmtree(src_dir, ignore_errors=True)
+            shutil.rmtree(src_dir, onerror=on_error)
+        if failures:
+            print('    NOTE cleanup scratch 殘留 {} 項（不影響日包，下次 rawpack 併回）:'
+                  .format(len(failures)))
+            for path, err in failures[:5]:
+                print('      {}: {!r}'.format(path, err))
 
     def verify_pack(self, pack_path, sources, index, fresh):
         '''member 數對 index、抽樣 byte 級比對 scratch 原檔。'''

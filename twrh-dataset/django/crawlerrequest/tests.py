@@ -10,6 +10,7 @@ errback 列無人釋放。這裡把這些語意鎖成測試，作為 1-1 狀態�
 「完成／失敗」的儲存語意集中在 assert_* helper——1-1 把「刪列＝完成」
 換成顯式終結狀態時，矩陣本身不動，只改 helper。
 '''
+import io
 import os
 import sys
 import threading
@@ -1213,20 +1214,39 @@ class RawPackTests(QueueTestMixin, TestCase):
         from django.core.management import call_command
         call_command('rawpack', '--date', TEST_DATE, '--keep-local', *args)
 
-    def test_cleanup_scratch_tolerates_vanished_entries(self):
-        '''收尾刪 scratch 不得因「名字在、檔已不在」而炸。EFS(NFS) 上七萬多個檔的
-        目錄 readdir 要分多次 RPC，邊刪邊列會讓同一個名字被回傳兩次——2026-09-17
-        日跑就是這樣掛在 cleanup，日包已寫好卻卡在上傳前，整個 flow 中止於 rawpack、
-        synthts 以降全沒跑。'''
+    def test_cleanup_scratch_is_after_effect_not_the_job(self):
+        '''刪 scratch 是善後：刪不掉只能留痕、不得拋例外，更不得擋掉上傳。
+        2026-09-17 日跑付過代價——cleanup 拋 FileNotFoundError，日包已寫好卻沒上傳、
+        flow 中止於 rawpack，parsed／snapshot／synthts／sync／manifest／quality 整段沒跑。'''
         from django.core.management import call_command
+        from rental.management.commands.rawpack import Command
         self.scratch('591', TEST_DATE, 'a', '<html>a</html>')
         day_dir = os.path.join(self.tmp, 'scratch', '591', TEST_DATE)
         call_command('rawpack', '--date', TEST_DATE)
         self.assertFalse(os.path.exists(day_dir))      # 整棵刪掉
         self.assertIn('a.detail.html', self.members(TEST_DATE))
-        # 目錄已經不在了再刪一次：不得拋例外
+        # 目錄已經不在了再刪一次：不得拋例外，但要留痕
+        with mock.patch('sys.stdout', new_callable=io.StringIO) as out:
+            Command().cleanup_scratch([day_dir], {'keep_scratch': False})
+        self.assertIn('NOTE cleanup scratch 殘留', out.getvalue())
+
+    def test_cleanup_failure_cannot_block_upload(self):
+        '''正事（上傳日包）排在善後（刪 scratch）之前：就算 cleanup 整個炸掉，
+        日包也已經上傳完了。'''
+        from django.core.management import call_command
         from rental.management.commands.rawpack import Command
-        Command().cleanup_scratch([day_dir], {'keep_scratch': False})
+        self.scratch('591', TEST_DATE, 'a', '<html>a</html>')
+        uploaded = []
+        with mock.patch.dict(os.environ, {'TWRH_RAW_BUCKET': 'dummy'}), \
+                mock.patch.object(Command, 'existing_pack',
+                                  lambda self, v, d: None), \
+                mock.patch.object(Command, 'upload',
+                                  lambda self, b, v, p, i, k: uploaded.append(p)), \
+                mock.patch.object(Command, 'cleanup_scratch',
+                                  side_effect=OSError('boom')):
+            with self.assertRaises(OSError):
+                call_command('rawpack', '--date', TEST_DATE)
+        self.assertEqual(len(uploaded), 1)   # cleanup 炸掉之前就上傳了
 
     def test_same_day_runs_union_and_orphan_dates(self):
         # 日跑：A、B
