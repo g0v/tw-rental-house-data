@@ -392,7 +392,7 @@ carry 桶先乾淨。S4 只碰 request_ts，與 house 三表無關、可平行�
 | S1 seed 純函數上位 | seedcheck 連續 3 天 AGREE（9/13 起算） | seed stage 改由 `seeding.select_seeds` 產種子（狀態改讀昨日 snapshot carry 欄），DB 判準退役；仍寫 request_ts | 9/17 夜（原 9/16；S2a 先上，sweep 驗不到日跑 seed stage） |
 | S4b queue 出 DB | S4a 一天雙軌一致（9/15 早：02:10 多 worker＋mop-up 綠、filequeuecheck AGREE） | DB 停寫 request_ts（`TWRH_QUEUE_DB=0`）；白天 sweep 先驗、當晚 02:10 上；drop request_ts 另一步（一晚無紅後） | 9/15 夜（原 9/17；9/14 拍板：白天 sweep 當額外驗證時段，程式先落分支） |
 | S2a vendor_extra 落地 | S4b 一晚無紅 | parsed 加 `vendor_extra`＝整份 detail_dict（parsed_version 2）、snapshot 攜帶；上線後 `tools/backfill_vendor_extra.py` 回補 9/4 起的 parsed 分區與上線日 snapshot（**9/14 拍板：detail_dict 不是中間值，是 parser 死掉的年代唯一可讀的產物——raw 只留 365 天、舊版式 parser 只在舊 release**） | 9/16 夜 |
-| S2 house_etc 退役 | parsedcheck 連續 3 天 AGREE（已到）＋S2a 上線一晚無紅＋回補完＋S2b 匯出完成＋S1 上線一晚無紅 | 停寫 detail_dict／list_dict；rerun 只出 parquet；drop `house_etc` | 9/17 夜（原 9/18） |
+| S2 house_etc 退役 | parsedcheck 連續 3 天 AGREE（已到）＋S2a 上線一晚無紅＋回補完＋S2b 匯出完成＋S1 上線一晚無紅 | 停寫 detail_dict／list_dict；rerun 只出 parquet；drop `house_etc` | 9/18 夜（9/16 訂正：S2 的條件是「S1 上線一晚無紅」，而 S1 排 9/17 夜，同日矛盾且違反「每晚一個寫入路徑變更」） |
 | **S2b DB 歷史歸檔 S3**（2026-09-15 拍板） | S2a 回補跑完（9/17 早）、S2 drop 之前 | RDS export **整個 DB**（house／house_ts／house_etc／request_ts；9/13 那份只有兩表不算）→ `s3://twrh-w2/archive/rds/<id>/`：S2 後唯一能回頭看 detail_dict／list_dict 的地方、HouseTS 歷史離開 RDS 的第一步（storage 逼近 100 GiB）、也是 S3c 總表的 base。vendor_extra／house_etc 之後**每月一次**手動匯出到 archive、不進總表（研究用） | **9/17 傍晚** |
 | S3a export 切 parquet（讀取端） | #11 回填完（9/13）、export 讀 snapshot 落碼 | 區間 export 兩路 CSV 逐 byte 比對 3 次；manifest／quality 改讀分區。只改讀取端，可與上面重疊 | 9/14 起可寫，9/18–20 |
 | S3b house 三表停寫 | S3a 三次一致 | house／house_ts 停寫；synthts／syncstateful 退役 | 9/19–20（原 9/21） |
