@@ -39,7 +39,7 @@ from rental.raws import vendor_dirname
 
 CARRY_FIELDS = {name for name, _ in contracts.SNAPSHOT_CARRY_FIELDS}
 SKIP_FIELDS = {'vendor', 'vendor_house_id', 'date', 'crawled_at', 'parser_version',
-               'rough_lat', 'rough_lng', 'author_key', 'imgs'} | CARRY_FIELDS
+               'rough_lat', 'rough_lng', 'author_key', 'imgs', 'vendor_extra'} | CARRY_FIELDS
 COMPARE_FIELDS = [name for name, _ in contracts.SNAPSHOT_FIELDS
                   if name not in SKIP_FIELDS and name not in STATE_FIELDS]
 STATUS_NAME = {0: 'opened', 1: 'closed', 2: 'dealt'}

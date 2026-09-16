@@ -34,7 +34,7 @@ _JSON_FIELDS = {name for name, kind in contracts.PARSED_FIELDS if kind == contra
 _TS_COPY = [name for name, _ in contracts.PARSED_FIELDS
             if name not in ('vendor', 'vendor_house_id', 'date', 'run', 'crawled_at',
                             'parser_version', 'parsed_version', 'rough_lat', 'rough_lng',
-                            'author_key')]
+                            'author_key', 'vendor_extra')]
 
 
 def _plain(name, value):
@@ -59,18 +59,22 @@ def bootstrap_rows(vendor, day, carry='house'):
     ts_qs = HouseTS.objects.filter(
         vendor=vendor, year=day.year, month=day.month, day=day.day).select_related('author')
     ids = list(ts_qs.values_list('vendor_house_id', flat=True))
-    houses, fingerprints = {}, {}
+    houses, fingerprints, extras = {}, {}, {}
     for i in range(0, len(ids), 5000):
         chunk = ids[i:i + 5000]
         for h in House.objects.filter(vendor=vendor, vendor_house_id__in=chunk).only(
                 'vendor_house_id', 'detail_crawled_at', 'list_crawled_at',
                 'list_fingerprint_changed_at', 'created', 'deal_status'):
             houses[h.vendor_house_id] = h
-        for hid, list_dict in HouseEtc.objects.filter(
+        for hid, list_dict, detail_dict in HouseEtc.objects.filter(
                 vendor=vendor, vendor_house_id__in=chunk).values_list(
-                'vendor_house_id', 'list_dict'):
+                'vendor_house_id', 'list_dict', 'detail_dict'):
             if list_dict:
                 fingerprints[hid] = contracts.list_fingerprint(list_dict)
+            # vendor_extra＝最新一次 detail 的 dict；detail_dict 是現值，只對「當日」bootstrap
+            # 有意義（carry='ts' 回填過去日留 NULL，該日的 dict 在 parsed 分區／回補工具）
+            if carry == 'house' and detail_dict:
+                extras[hid] = _plain('vendor_extra', detail_dict)
 
     rows = []
     for ts in ts_qs.iterator(chunk_size=5000):
@@ -85,6 +89,7 @@ def bootstrap_rows(vendor, day, carry='house'):
             row['rough_lat'], row['rough_lng'] = float(coord.x), float(coord.y)
         row['author_key'] = contracts.short_hash(str(ts.author.truth)) if ts.author_id else None
         row['crawled_at'] = ts.crawled_at
+        row['vendor_extra'] = extras.get(hid)
 
         detail_at = house.detail_crawled_at if house else None
         list_at = house.list_crawled_at if house else None

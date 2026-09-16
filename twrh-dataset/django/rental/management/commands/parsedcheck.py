@@ -29,7 +29,8 @@ from rental.raws import vendor_dirname
 
 STATE_FIELDS = ('deal_status', 'deal_time', 'n_day_deal')
 SKIP_FIELDS = {'vendor', 'vendor_house_id', 'date', 'run', 'parser_version',
-               'parsed_version', 'crawled_at'}
+               'parsed_version', 'crawled_at',
+               'vendor_extra'}   # HouseTS 沒有對應欄（house_etc.detail_dict 只存最新一次）
 JSON_FIELDS = {name for name, kind in contracts.PARSED_FIELDS if kind == contracts.JSON}
 
 

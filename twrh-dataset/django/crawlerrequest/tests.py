@@ -1285,6 +1285,11 @@ class ContractTests(TestCase):
         coerced = contracts.coerce_row(row, contracts.PARSED_FIELDS)
         self.assertEqual(coerced['imgs'], '["a", "b"]')
         self.assertEqual(coerced['crawled_at'], now)
+        self.assertIsNone(coerced['vendor_extra'])                  # 404／拒解析列：NULL
+        extra = contracts.parsed_row('591', 'h1', TEST_DATE, 'run', now, '2.4.0', {},
+                                     vendor_extra={'b': 1, 'a': '甲'})['vendor_extra']
+        self.assertEqual(extra, '{"a": "甲", "b": 1}')              # 整份 dict、鍵排序、不轉義
+        self.assertEqual(contracts.PARSED_VERSION, 2)
         self.assertEqual(set(coerced), {name for name, _ in contracts.PARSED_FIELDS})
         contracts.arrow_schema(contracts.PARSED_FIELDS)   # pyarrow 可建
 
@@ -1294,7 +1299,7 @@ class ContractTests(TestCase):
         columns = {f.name for f in House._meta.get_fields()}
         extra = {'date', 'run', 'crawled_at', 'parser_version', 'rough_lat',
                  'rough_lng', 'author_key', 'parsed_version', 'seen_at',
-                 'fingerprint', 'stub_version'}
+                 'fingerprint', 'stub_version', 'vendor_extra'}
         for name, _ in contracts.PARSED_FIELDS + contracts.LIST_STUB_FIELDS:
             if name not in extra:
                 self.assertIn(name, columns, name)
@@ -2004,6 +2009,19 @@ class SnapshotFoldTests(TestCase):
                          ('detail', 'T2d', 'f1'))                       # 今日沒在 list：用最後已知指紋
         self.assertEqual((by['a']['last_fingerprint'], by['c']['last_fingerprint']), ('f2', 'f1'))
         self.assertEqual((by['d']['source'], by['d']['first_seen_at'], by['d']['date']), ('list', 'T2', self.D2))
+
+    def test_vendor_extra_rides_with_detail_and_carries(self):
+        '''vendor_extra 隨 detail 列進 snapshot，只在 list／carry／404 的日子沿用最後一次 detail 的。'''
+        from rental.snapshot import fold
+        p = dict(self.parsed('a', 'T1d'), vendor_extra='{"k": 1}')
+        day1 = fold([], [self.stub('a', 'T1')], [p], [], self.D1)
+        self.assertEqual(day1[0]['vendor_extra'], '{"k": 1}')
+        day2 = fold(day1, [self.stub('a', 'T2', price=9000)], [], [], self.D2)          # 只在 list
+        self.assertEqual((day2[0]['source'], day2[0]['vendor_extra']), ('list', '{"k": 1}'))
+        day3 = fold(day2, [], [{'vendor_house_id': 'a', 'crawled_at': 'T3d', 'deal_status': 1}], [], '2026-01-17')
+        self.assertEqual((day3[0]['deal_status'], day3[0]['vendor_extra']), (1, '{"k": 1}'))   # 404 不清值
+        day4 = fold(day2, [], [dict(self.parsed('a', 'T4d'), vendor_extra='{"k": 2}')], [], '2026-01-18')
+        self.assertEqual(day4[0]['vendor_extra'], '{"k": 2}')
 
     def test_deal_sticky_and_vendor_event_wins(self):
         from rental.snapshot import fold, DEAL, NOT_FOUND
@@ -2741,3 +2759,33 @@ class ItemHygieneTests(QueueTestMixin, TestCase):
         out = list(ds.parse_detail_and_done(None))
         self.assertNotIn('rough_address', out[0])
         self.assertEqual(out[0]['facilities'], {'電梯': True})
+
+
+class BackfillVendorExtraTests(TestCase):
+    '''tools/backfill_vendor_extra 的純函數：加欄／只補 NULL／force／404 關閉列不補。無 DB。'''
+
+    def test_fill_vendor_extra(self):
+        import importlib.util
+        import pyarrow as pa
+        spec = importlib.util.spec_from_file_location('backfill_vendor_extra', os.path.join(
+            os.path.dirname(__file__), '..', '..', 'tools', 'backfill_vendor_extra.py'))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        table = pa.table({
+            'vendor_house_id': ['a', 'b', 'c', 'd'],
+            'deal_status': [0, 0, 1, 1],
+            'monthly_price': [10000, 12000, None, 9000],   # c＝404 關閉列（全 NULL）、d＝成交但有值
+            'floor_ping': [10.0, 12.0, None, 9.0],
+            'top_region': [1, 1, None, 1],
+            'imgs': ['[]', '[]', None, '[]'],
+            'parsed_version': [1, 1, 1, 1],
+        })
+        extras = {'a': '{"k": 1}', 'c': '{"k": 3}', 'd': '{"k": 4}'}
+        out, filled = mod.fill_vendor_extra(table, extras)
+        self.assertEqual(filled, 2)                                      # a、d；b 沒 raw、c 關閉列
+        self.assertEqual(out.column_names.index('vendor_extra'), out.column_names.index('parsed_version') - 1)
+        self.assertEqual(out.column('vendor_extra').to_pylist(), ['{"k": 1}', None, None, '{"k": 4}'])
+        again, filled2 = mod.fill_vendor_extra(out, {'a': '{"k": 9}', 'b': '{"k": 2}'})
+        self.assertEqual((filled2, again.column('vendor_extra').to_pylist()[:2]), (1, ['{"k": 1}', '{"k": 2}']))
+        forced, filled3 = mod.fill_vendor_extra(out, {'a': '{"k": 9}'}, force=True)
+        self.assertEqual((filled3, forced.column('vendor_extra').to_pylist()[0]), (1, '{"k": 9}'))

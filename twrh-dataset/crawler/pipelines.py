@@ -37,7 +37,7 @@ class CrawlerPipeline(object):
         # 4d：deal591 的成交事件（vendor 給的 deal_time／n_day_deal）→ deals 分區
         self.deals_writer = artifact_sink.ShardWriter('deals')
         self._pending_stub = {}      # house_id -> fingerprint
-        self._pending_parsed = set()  # house_id（detail dict 已到）
+        self._pending_parsed = {}     # house_id -> detail dict（已到，等同戶的 GenericHouseItem）
         self._parser_version = None
         try:
             from importlib.metadata import version
@@ -80,10 +80,10 @@ class CrawlerPipeline(object):
                 self.stub_writer.append(artifact_sink.list_stub(
                     short, house_id, date_str, run, now, fingerprint, item))
             if house_id in self._pending_parsed:
-                self._pending_parsed.discard(house_id)
+                detail_dict = self._pending_parsed.pop(house_id)
                 self.parsed_writer.append(artifact_sink.parsed_row(
                     short, house_id, date_str, run, now,
-                    self._parser_version, item))
+                    self._parser_version, item, vendor_extra=detail_dict))
         except Exception:
             logging.exception('artifact row write failed for %s', house_id)
 
@@ -116,7 +116,8 @@ class CrawlerPipeline(object):
 
                 if 'dict' in item and not item['is_list']:
                     house_etc.detail_dict = item['dict']
-                    self._pending_parsed.add(item['house_id'])
+                    # 整份 dict 也進 parsed 列的 vendor_extra（S2 後 house_etc 退役，這裡是唯一落地）
+                    self._pending_parsed[item['house_id']] = item['dict']
 
                 # list 層指紋（title/price/update_time…）落地供 L-C 比對；
                 # 空 dict 不覆寫，避免解析失敗清掉上次的指紋
