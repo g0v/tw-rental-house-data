@@ -161,6 +161,21 @@ class Command(BaseCommand):
         }
         if stamp:
             report['db_classes'] = stamp.get('classes')
+        # 對照側整個讀成空＝沒有裁判，不是資料不一致。最常見成因：在 flow 之外
+        # 跑（run-cloud／手動）時沒帶 TWRH_QUEUE_SOURCE=file TWRH_QUEUE_DB=0——
+        # 那兩個是 flow.py 自己 setdefault 的，task def 沒有，於是 db_bookkeeping()
+        # 回 True、queue 側去讀 S4b 之後沒人寫的 request_ts（2026-09-17 實踩：
+        # db_seeds 0、報成 DIFF 13,266，看起來像 snapshot 軌壞掉）。
+        if not db_seeds and result.seeds:
+            print('seedcheck: NO-REFERENCE — queue 側 0 筆而純函數算出 {} 筆；'
+                  '不是 DIFF，是沒有對照物。ledger={}；在 flow 外跑請帶 '
+                  'TWRH_QUEUE_SOURCE=file TWRH_QUEUE_DB=0'.format(
+                      len(result.seeds), 'file' if file_ledger else 'db(request_ts)'))
+            print('seedcheck → NO-REFERENCE')
+            if options['strict']:
+                sys.exit(1)
+            return
+
         agree = not only_pure and not only_db
         print('seedcheck: {} — {}'.format('AGREE' if agree else 'DIFF',
                                           json.dumps(report, ensure_ascii=False)))
