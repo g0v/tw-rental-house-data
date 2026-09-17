@@ -58,8 +58,12 @@ def ts_value_rows(vendor, day, hids, chunk=5000):
     out = {}
     hids = list(hids)
     for i in range(0, len(hids), chunk):
+        # **一定要帶 hour**：唯一索引是 (year, month, day, hour, vendor, vendor_house_id)，
+        # 少了 hour 就只能用 (y,m,d) 前綴＝撈當日 85k 列再過濾（2026-09-18 實測：不帶
+        # hour 的版本在 db.t4g.micro 上跑 17 分鐘還沒完，而讀寫日檔本身只要 8 秒）。
+        # hour 恆為 0（current_stepped_hour 以 24 為步進）
         qs = HouseTS.objects.filter(
-            vendor=vendor, year=day.year, month=day.month, day=day.day,
+            vendor=vendor, year=day.year, month=day.month, day=day.day, hour=0,
             vendor_house_id__in=hids[i:i + chunk]).select_related('author')
         for ts in qs.iterator(chunk_size=chunk):
             row = {name: _plain(name, getattr(ts, name)) for name in _TS_COPY}

@@ -19,6 +19,7 @@
     manage.py snapshotcarryfill [--date D] [--vendor] [--dry-run] [--no-upload]
 '''
 import os
+import sys
 from datetime import date as date_cls, datetime, time as time_cls, timedelta
 
 from django.core.management.base import BaseCommand, CommandError
@@ -44,6 +45,9 @@ class Command(BaseCommand):
                             help='連 parsed 值欄一起補（來源＝該日 HouseTS，見 fill_values）')
 
     def handle(self, *_args, **options):
+        # 雲上 stdout 是 block-buffered：不設行緩衝就完全看不到進度，慢的時候只能瞎等
+        # （2026-09-18 為此瞎等一個 17 分鐘的 task）
+        sys.stdout.reconfigure(line_buffering=True)
         if options['date']:
             try:
                 day = datetime.strptime(options['date'], '%Y-%m-%d').date()
