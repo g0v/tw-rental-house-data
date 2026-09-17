@@ -138,10 +138,12 @@ class Command(BaseCommand):
                         if name not in ('vendor', 'vendor_house_id', 'date', 'run',
                                         'crawled_at', 'parser_version', 'parsed_version',
                                         'vendor_extra')]
-        # 只查「真的有 NULL 值欄」的戶：整日 85k 列全撈在 db.t4g.micro 上要十分鐘以上
-        # （2026-09-18 實測，bootstrap_rows 連 HouseEtc.detail_dict 一起拉）
-        need = [r['vendor_house_id'] for r in rows
-                if any(r.get(f) is None for f in value_fields)]
+        # 目標戶用哨兵挑，不是「任一值欄 NULL」——`has_parking` 之類本來就大多是 NULL
+        # （2026-09-17 那天 71,570 列），那樣選會挑出 73,098 列＝又變全表查。
+        # 哨兵＝`additional_fee`：任何一次成功的 detail 解析一定產出它；本機實測
+        # 2026-09-17 的 snapshot 裡 `n_balcony`／`author_key` 的 NULL 集合與它**完全相同**
+        # （各 2,911 列），那就是稀疏摺入的那一群。
+        need = [r['vendor_house_id'] for r in rows if r.get('additional_fee') is None]
         src = snapshot_db.ts_value_rows(vendor, day, need)
         print('=== --values：{} 戶有 NULL 值欄，HouseTS 找到 {} 戶對照'.format(
             len(need), len(src)))
