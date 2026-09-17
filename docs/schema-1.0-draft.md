@@ -1,8 +1,9 @@
 # Schema 下一版草案：內部契約 v2 與對外資料集 1.0
 
 > **這是草稿，公開徵求意見中（RFC）。** 目標生效日 2026-11-01（202610 月包）。
-> 對欄位、命名、編碼、deprecated 名單、錯誤說明方式有任何意見，請到 GitHub issue 留言：
-> https://github.com/g0v/tw-rental-house-data/issues （標題請以「schema 1.0:」開頭）。
+> 對欄位、命名、編碼、deprecated 名單、錯誤說明方式有任何意見，請到 RFC issue 留言：
+> https://github.com/g0v/tw-rental-house-data/issues/238 （另開 issue 請以「schema 1.0:」開頭）。
+> **預計 10 月中定案**，之後只收「錯誤」不收「改設計」。
 > 2026-09-13 初稿、同日依維護者回覆修訂；§4 是維護者已拍板事項，其餘皆可討論。
 > 未定案前不動 `rental/contracts.py`、不動 export。
 
