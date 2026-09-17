@@ -134,12 +134,17 @@ class Command(BaseCommand):
         昨日重摺成 final、再摺今日）。兩份都填才兩件事都成立。
         '''
         from rental import snapshot_db
-        src = {r['vendor_house_id']: r
-               for r in snapshot_db.bootstrap_rows(vendor, day, carry='ts')}
         value_fields = [name for name, _ in contracts.PARSED_FIELDS
                         if name not in ('vendor', 'vendor_house_id', 'date', 'run',
                                         'crawled_at', 'parser_version', 'parsed_version',
                                         'vendor_extra')]
+        # 只查「真的有 NULL 值欄」的戶：整日 85k 列全撈在 db.t4g.micro 上要十分鐘以上
+        # （2026-09-18 實測，bootstrap_rows 連 HouseEtc.detail_dict 一起拉）
+        need = [r['vendor_house_id'] for r in rows
+                if any(r.get(f) is None for f in value_fields)]
+        src = snapshot_db.ts_value_rows(vendor, day, need)
+        print('=== --values：{} 戶有 NULL 值欄，HouseTS 找到 {} 戶對照'.format(
+            len(need), len(src)))
         filled = {}
         touched = 0
         for row in rows:
@@ -153,7 +158,7 @@ class Command(BaseCommand):
                     filled[name] = filled.get(name, 0) + 1
                     hit = True
             touched += 1 if hit else 0
-        print('=== --values：{} 戶有 HouseTS 對照、{} 戶補到值'.format(len(src), touched))
+        print('    {} 戶補到值'.format(touched))
         for name, n in sorted(filled.items(), key=lambda kv: -kv[1])[:12]:
             print('    {:<28} 補 {}'.format(name, n))
 

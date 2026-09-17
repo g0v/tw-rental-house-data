@@ -46,6 +46,33 @@ def _plain(name, value):
     return value
 
 
+def ts_value_rows(vendor, day, hids, chunk=5000):
+    '''某日 HouseTS 裡指定戶的 **parsed 值欄**（不含 carry 欄、不碰 HouseEtc）。
+
+    `snapshotcarryfill --values` 用：只補少數幾百／千戶的 NULL 值欄，不該像
+    `bootstrap_rows` 那樣把整日 85k 列連 `HouseEtc.detail_dict` 一起撈——2026-09-18
+    實測那樣在 db.t4g.micro 上跑超過十分鐘（整份 detail JSON × 85k 列）。
+
+    值取「那一天的 HouseTS 列」而非 House 現值：HouseTS 按日分桶，本身就是那天的狀態。
+    '''
+    out = {}
+    hids = list(hids)
+    for i in range(0, len(hids), chunk):
+        qs = HouseTS.objects.filter(
+            vendor=vendor, year=day.year, month=day.month, day=day.day,
+            vendor_house_id__in=hids[i:i + chunk]).select_related('author')
+        for ts in qs.iterator(chunk_size=chunk):
+            row = {name: _plain(name, getattr(ts, name)) for name in _TS_COPY}
+            coord = ts.rough_coordinate
+            if coord is not None:
+                # 專案約定 Point(x=lat, y=lng)，見 contracts.parsed_row
+                row['rough_lat'], row['rough_lng'] = float(coord.x), float(coord.y)
+            row['author_key'] = contracts.short_hash(
+                str(ts.author.truth)) if ts.author_id else None
+            out[ts.vendor_house_id] = row
+    return out
+
+
 def bootstrap_rows(vendor, day, carry='house'):
     '''carry='house'：起點 bootstrap，carry 欄由 House／HouseEtc 現值推（只對「當日」正確）。
     carry='ts'：#11 回填過去日，carry 欄只取 HouseTS 該日列推得出的部分。'''
