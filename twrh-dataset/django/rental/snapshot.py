@@ -14,10 +14,14 @@ House（現值＝最新 snapshot）。
   狀態訊號——deal_status 改 NOT_FOUND（DEAL sticky 照舊），租金／座標等沿用最後已知值，
   source／last_detail_at 不動（DB 的 detail_crawled_at 也不因 404 更新）。關閉當天那列
   保留最後已知狀態，與 synthts 補齊關閉／成交列同形（2026-09-12 拍板）
-- 只在 list：list 給的欄位（價格／格局…）覆蓋、其餘沿用昨日，source='list'
+- 只在 list：list 給的欄位（價格／格局…）覆蓋、其餘沿用昨日，source='list'；
+  **昨日是關閉／成交而今日又出現在 list（且無關閉訊號）→ 回 OPENED、清掉
+  deal_time／n_day_deal／deal_source**（2026-09-17 拍板）。重新掛上列表是在架的
+  正面觀測，比昨日的關閉狀態新
 - 都沒有：整列沿用昨日，source='carry'，days_absent+1
 - 在 list：last_seen_at＝最後 seen_at、days_absent=0；first_seen_at 只在首見時設
-- DEAL sticky：昨日 DEAL 不被 NOT_FOUND 覆寫（Issue #9）；deals 事件（vendor 給
+- DEAL sticky 只擋「detail 404 回報 NOT_FOUND」這一條路（Issue #9），**不擋
+  「它又出現在列表上」**——後者是正面觀測，見上一條；deals 事件（vendor 給
   deal_time／n_day_deal）永遠勝，deal_source='deals'；detail 回 NOT_FOUND 且
   昨日非 DEAL → NOT_FOUND（推導型成交留給下游，deal_source 不設）
 - 已關閉（NOT_FOUND／DEAL）且今日無任何訊號的戶：不再攜帶（snapshot 只含
@@ -135,6 +139,20 @@ def fold(prev_rows, stubs, parsed_rows, deal_events, date_str, vendor='591', clo
                 if stub.get(name) is not None:
                     row[name] = stub[name]
             row['source'] = 'list'
+            # 重新出現在 list 且今日無關閉／成交訊號＝在架的正面證據，狀態要回
+            # OPENED（2026-09-17 維護者拍板）。此前沒有任何路徑會把 deal_status
+            # 改回來——LIST_STUB_FIELDS 不含 deal_status，這個分支只複製
+            # _LIST_FIELDS，於是 snapshot 裡一旦標成關閉就回不來，天天出現在
+            # 列表上也一樣（S1 dry-run 挖出來：snapshot deal_status=1 而 House=0、
+            # 且昨日今日都在列）。影響的不只 seed——S3a 之後 export 讀 snapshot，
+            # 公開資料會把還在市場上的物件標成已下架。
+            # DEAL 也不例外：sticky 只擋「detail 404 回報 NOT_FOUND」那條路
+            #（Issue #9），不擋「它又出現在列表上」這種正面觀測。
+            if row['deal_status'] != OPENED:
+                row['deal_status'] = OPENED
+                row['deal_time'] = None
+                row['n_day_deal'] = None
+                row['deal_source'] = None
 
         if stub is not None:
             row['last_seen_at'] = stub.get('seen_at')

@@ -2031,6 +2031,34 @@ class SnapshotFoldTests(TestCase):
         return {'vendor_house_id': hid, 'crawled_at': at, 'deal_status': status,
                 'monthly_price': price, 'floor_ping': 12.5}
 
+    def test_back_in_list_reopens_closed_and_dealt(self):
+        '''重新出現在 list 且今日無關閉訊號＝在架的正面觀測，狀態要回 OPENED。
+        此前沒有任何路徑改得回來（LIST_STUB_FIELDS 不含 deal_status，list 分支
+        只複製 _LIST_FIELDS），於是標成關閉就永遠關閉——2026-09-16 那份 snapshot
+        實測 55 戶標成 NOT_FOUND 卻出現在今日 list。DEAL 也一樣要回：sticky 只擋
+        「detail 404 回報 NOT_FOUND」（Issue #9），不擋這種正面觀測。'''
+        from rental.snapshot import fold, OPENED, NOT_FOUND, DEAL
+        day1 = fold([], [self.stub('gone', 'T1'), self.stub('sold', 'T1')],
+                    [self.parsed('gone', 'T1d'), self.parsed('sold', 'T1d')], [], self.D1)
+        # 隔日：gone 的 detail 404、sold 有成交事件 → 兩者都關閉
+        day2 = fold(day1, [], [{'vendor_house_id': 'gone', 'deal_status': NOT_FOUND}],
+                    [{'vendor_house_id': 'sold', 'deal_status': DEAL,
+                      'deal_time': 'T2', 'n_day_deal': 3}], self.D2)
+        by = {r['vendor_house_id']: r for r in day2}
+        self.assertEqual((by['gone']['deal_status'], by['sold']['deal_status']),
+                         (NOT_FOUND, DEAL))
+
+        # 第三日：兩戶都重新掛上列表、今日沒有任何關閉／成交訊號
+        day3 = fold(day2, [self.stub('gone', 'T3'), self.stub('sold', 'T3')],
+                    [], [], '2026-01-17')
+        by = {r['vendor_house_id']: r for r in day3}
+        for hid in ('gone', 'sold'):
+            self.assertEqual(by[hid]['deal_status'], OPENED, hid)
+            self.assertIsNone(by[hid]['deal_time'], hid)
+            self.assertIsNone(by[hid]['n_day_deal'], hid)
+            self.assertIsNone(by[hid]['deal_source'], hid)
+            self.assertEqual(by[hid]['source'], 'list', hid)
+
     def test_day_one_and_day_two_carry_semantics(self):
         from rental.snapshot import fold
         day1 = fold([], [self.stub('a', 'T1'), self.stub('b', 'T1'), self.stub('c', 'T1')],
