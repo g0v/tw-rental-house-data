@@ -19,7 +19,7 @@
     manage.py snapshotcarryfill [--date D] [--vendor] [--dry-run] [--no-upload]
 '''
 import os
-from datetime import date as date_cls, datetime
+from datetime import date as date_cls, datetime, time as time_cls, timedelta
 
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
@@ -66,6 +66,7 @@ class Command(BaseCommand):
         if not targets:
             return
 
+        day_end = timezone.make_aware(datetime.combine(day + timedelta(days=1), time_cls.min))
         houses, fingerprints = self.load_db(vendor, [r['vendor_house_id'] for r in targets])
         filled = {f: 0 for f in CARRY_FIELDS}
         no_db = 0
@@ -76,7 +77,7 @@ class Command(BaseCommand):
                 no_db += 1
                 continue
             before = {f: row.get(f) for f in CARRY_FIELDS}
-            self.fill_row(row, house, fingerprints.get(row['vendor_house_id']), day)
+            self.fill_row(row, house, fingerprints.get(row['vendor_house_id']), day, day_end)
             changed = [f for f in CARRY_FIELDS if row.get(f) != before[f]]
             for f in changed:
                 filled[f] += 1
@@ -119,19 +120,30 @@ class Command(BaseCommand):
                     fingerprints[hid] = contracts.list_fingerprint(list_dict)
         return houses, fingerprints
 
-    def fill_row(self, row, house, fingerprint, day):
-        '''對映與 snapshot_db.bootstrap_rows(carry='house') 同式——同一套語意只有一份。'''
+    def fill_row(self, row, house, fingerprint, day, day_end):
+        '''對映與 snapshot_db.bootstrap_rows(carry='house') 同式——同一套語意只有一份。
+
+        **日界防呆**：House 的 detail_crawled_at／list_crawled_at／指紋都是「現在」的值，
+        對過去日不成立（snapshot_db 的 carry='ts' 就是為此才留 NULL）。只填早於該日結束
+        的值——不然會把今天的觀測回填到昨天那份 snapshot（2026-09-17 dry-run 實例：
+        16566581 的 last_detail_at 是 9/17 03:51 台北，差點被寫進 9/16 的檔）。'''
+        def before_day_end(value):
+            return value if value is not None and value < day_end else None
+
         seen_was_null = row.get('last_seen_at') is None
         if row.get('first_seen_at') is None:
+            # created 是列插入時間，必然早於該日（戶存在才有那天的列）
             row['first_seen_at'] = house.created
         if row.get('last_detail_at') is None:
-            row['last_detail_at'] = house.detail_crawled_at
+            row['last_detail_at'] = before_day_end(house.detail_crawled_at)
         if row.get('last_seen_at') is None:
-            row['last_seen_at'] = house.list_crawled_at
-        if row.get('last_fingerprint') is None and fingerprint is not None:
+            row['last_seen_at'] = before_day_end(house.list_crawled_at)
+        fp_changed = house.list_fingerprint_changed_at
+        if row.get('last_fingerprint') is None and fingerprint is not None \
+                and (fp_changed is None or fp_changed < day_end):
+            # 指紋是現值：該日之後才變過就不是那天的指紋
             row['last_fingerprint'] = fingerprint
         detail_at = row.get('last_detail_at')
-        fp_changed = house.list_fingerprint_changed_at
         if row.get('fingerprint_at_last_detail') is None and detail_at is not None \
                 and row.get('last_fingerprint') is not None \
                 and (fp_changed is None or fp_changed <= detail_at):
