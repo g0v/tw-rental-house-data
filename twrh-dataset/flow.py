@@ -345,6 +345,13 @@ def stage_snapshotcheck(ctx):
     advisory_check(ctx, 'snapshotcheck')
 
 
+def stage_exportcheck(ctx):
+    # S3a 驗收：同一窗由 DB 路徑與 snapshot 路徑各出 CSV，排序正規化後逐 byte；advisory。
+    # 排在 sync／snapshotcheck 之後＝今日 provisional 已摺、DB 當日列已齊、當日 sweep 還沒
+    # 再動 DB，這是兩軌唯一對齊的空檔（窗尾＝今天，見 exportcheck 的說明）
+    advisory_check(ctx, 'exportcheck')
+
+
 def stage_synthts(ctx):
     if ctx.seed_mode == 'diff':
         manage('synthts')
@@ -525,6 +532,7 @@ RUN_STAGES = [
     ('synthts', stage_synthts, None),
     ('sync', stage_sync, None),
     ('snapshotcheck', stage_snapshotcheck, None),
+    ('exportcheck', stage_exportcheck, None),
     ('manifest', stage_manifest, manifest_artifacts),
     ('quality', stage_quality, None),
     ('logs', stage_logs, None),

@@ -20,6 +20,9 @@ class Export(ABC):
     vendors = vendors
 
     def __init__(self):
+        # headers 是 class attr，append 會累積到類別上——同一個行程裡實例化兩次
+        # （S3a 的 exportcheck 兩路各一個）家具欄就會出現兩遍。每個實例自己一份。
+        self.headers = list(self.headers)
         self.facilities = [
             '床', '桌子', '椅子', '電視', '熱水器', '冷氣',
             '沙發', '洗衣機', '衣櫃', '冰箱', '網路', '第四台', '天然瓦斯'
