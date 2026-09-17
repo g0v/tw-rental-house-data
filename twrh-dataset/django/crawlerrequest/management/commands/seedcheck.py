@@ -111,7 +111,10 @@ class Command(BaseCommand):
                 raise CommandError(
                     'seedcheck --state-source={}：昨日 snapshot {} 不存在'.format(
                         source, yesterday))
-            return seeding.state_from_snapshot(rows)
+            # 今日在 list、昨日 snapshot 沒有的戶（關閉後掉出、又重新上架）
+            # 一律當「在架、從未 detail」——見 state_from_snapshot 的說明
+            return seeding.state_from_snapshot(
+                rows, seen_today=seeding.latest_fingerprints(today_stubs))
 
         state = snapshot_state() if source == 'snapshot' else db_state()
 

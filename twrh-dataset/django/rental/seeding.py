@@ -147,7 +147,7 @@ def select_new_seeds(today_stubs, state):
 OPENED = 0   # enums.DealStatusType.OPENED；這裡不 import Django
 
 
-def state_from_snapshot(rows):
+def state_from_snapshot(rows, seen_today=()):
     '''S1：{house_id: HouseState}，狀態取自昨日 snapshot 的 carry 欄，不碰 DB。
 
     對照過渡期的 DB 轉接（seedcheck 從 House 組）：
@@ -160,7 +160,20 @@ def state_from_snapshot(rows):
 
     只收 OPENED：select_seeds 四類都先交集 open_ids，非 OPENED 載了也用不到，
     而且 snapshot 一天就是全戶一列（含已關閉），全收會把記憶體吃掉
-    ——同 seedcheck 2026-09-11 那次 OOM 的教訓。'''
+    ——同 seedcheck 2026-09-11 那次 OOM 的教訓。
+
+    seen_today：今日在 list 的 house_id。fold 對「已關閉且今日無訊號」的戶
+    不再攜帶（snapshot.py 刻意的設計，否則檔案無限長大），所以關閉後掉出、
+    之後又重新上架的戶，昨日 snapshot 裡沒有它——而 DB 軌的 House 永遠在，
+    照樣排種子。2026-09-17 dry-run 實測：785 戶只有 DB 軌排、全是這個形狀
+    （in_list_today=True、昨日 snapshot 查無此戶）。
+
+    這裡的規則：**今天出現在 list、而我們手上沒有它的狀態 → 當「在架、從未
+    detail」**，於是判 stale、排一次。語意上嚴格正確，且只可能多排不可能少排；
+    多排也是一次性的（今天抓到就有 parsed 列，明天就回到 snapshot 裡）。
+
+    這不取代 S3c 總表——export 完整性與「每戶最後已知狀態」仍然要它，
+    只是 S1 不必等它。'''
     state = {}
     for row in rows:
         if row.get('deal_status') != OPENED:
@@ -170,4 +183,7 @@ def state_from_snapshot(rows):
             detail_crawled_at=row.get('last_detail_at'),
             fingerprint_at_last_detail=row.get('fingerprint_at_last_detail'),
         )
+    for hid in seen_today:
+        if hid not in state:
+            state[hid] = HouseState(open=True)
     return state

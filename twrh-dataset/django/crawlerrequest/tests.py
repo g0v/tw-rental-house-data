@@ -2129,6 +2129,30 @@ class SeedFunctionTests(TestCase):
         self.assertEqual(r.fingerprint, {'moved'})
         self.assertEqual(r.seeds, {'old', 'moved'})
 
+    def test_house_back_after_dropping_out_of_snapshot_is_seeded(self):
+        '''fold 對「已關閉且今日無訊號」的戶不再攜帶，所以關閉後掉出、之後重新
+        上架的戶昨日 snapshot 裡沒有它（2026-09-17 dry-run：785 戶只有 DB 軌排）。
+        今日在 list 而手上沒狀態的戶，一律當「在架、從未 detail」排一次。'''
+        from rental.seeding import state_from_snapshot, select_seeds
+        now = timezone.now()
+        rows = [{'vendor_house_id': 'known', 'deal_status': 0,
+                 'last_detail_at': now - timedelta(days=1),
+                 'fingerprint_at_last_detail': 'same'}]
+        stubs = [self.stub('known', 'same'), self.stub('came-back', 'whatever')]
+
+        bare = state_from_snapshot(rows)
+        self.assertNotIn('came-back', bare)   # 只讀 snapshot＝看不到它
+        self.assertEqual(
+            select_seeds(stubs, {'known', 'came-back'}, bare, now).seeds, set())
+
+        state = state_from_snapshot(
+            rows, seen_today={s['vendor_house_id'] for s in stubs})
+        self.assertTrue(state['came-back'].open)
+        self.assertIsNone(state['came-back'].detail_crawled_at)
+        r = select_seeds(stubs, {'known', 'came-back'}, state, now)
+        self.assertEqual(r.stale, {'came-back'})     # 從未 detail＝stale
+        self.assertEqual(r.seeds, {'came-back'})     # 不會少排，也沒多排 known
+
     def test_four_seed_classes_and_skip(self):
         from rental.seeding import HouseState, select_seeds
         now = timezone.now()
