@@ -11,10 +11,12 @@ S3a 的驗收門檻（2026-09-17 維護者拍板）：同一區間由 DB 路徑�
   poetry run python tools/compare_export.py A.zip B.zip        # 直接吃 export 的 zip
 zip 會取其中第一個 *.csv（月包形狀：tw-rental-data/<prefix>-raw.csv）。
 
-已知且刻意的差異（三欄，2026-09-17 拍板；用 --expect-mapped 一併略過）：
+已知且刻意的差異（`--expect-mapped` 一併略過）：
   物件首次發現時間（DB=House.created／snapshot=first_seen_at）
-  物件最後更新時間（DB=House.updated／snapshot=max(last_seen_at, last_detail_at)）
+  物件最後更新時間（DB=House.updated／snapshot=max(last_seen_at, last_detail_at, crawled_at)）
   刊登者編碼（DB=Author.uuid／snapshot=author_key）
+  提供家具_*（DB 被 list 的 tag 版蓋掉＝失真，snapshot 是最後一次 detail 的值＝正確；
+    2026-09-18 拍板列為預期差異，但每次印「幾戶兩軌不同」當度量——歸零才奇怪）
 '''
 import argparse
 import csv
@@ -25,6 +27,13 @@ import sys
 import zipfile
 
 MAPPED_COLUMNS = ['物件首次發現時間', '物件最後更新時間', '刊登者編碼']
+
+# 家具欄：兩軌本來就不該一致，**snapshot 才是對的**（2026-09-18 維護者拍板列為預期差異）。
+# DB 的 House.facilities 被 list 日的 tag 版蓋掉（「屋主直租」「近商圈」那種），沒有
+# 床／電視／冷氣 的 key，KeyTextTransform 取出來是 NULL → 公開 CSV 整欄失真；
+# snapshot 帶的是最後一次 detail 的家具 dict。2026-09-18 首次 exportcheck：3,739 筆
+# DB '-' 對 snapshot 有值。schema 1.0 §3.5 與 issue #238 已記這個修復。
+IMPROVED_COLUMNS = ['提供家具_']
 
 
 def read_csv(path):
@@ -57,7 +66,7 @@ def main():
     ap.add_argument('--key', default='物件編號')
     ap.add_argument('--sample', type=int, default=5)
     ap.add_argument('--expect-mapped', action='store_true',
-                    help='略過三個已知改對映的欄（S3a 過渡期）')
+                    help='略過三個已知改對映的欄＋家具欄（S3a 過渡期的預期差異）')
     args = ap.parse_args()
 
     left, right = read_csv(args.left), read_csv(args.right)
@@ -68,17 +77,33 @@ def main():
         sys.exit('!!! 欄位不同：只在左 {} ／只在右 {}'.format(only_l, only_r))
 
     key_idx = lh.index(args.key)
-    drop_idx = {lh.index(c) for c in MAPPED_COLUMNS if args.expect_mapped and c in lh}
+    drop_idx = set()
+    if args.expect_mapped:
+        drop_idx = {lh.index(c) for c in MAPPED_COLUMNS if c in lh}
+        drop_idx |= {i for i, c in enumerate(lh)
+                     if any(c.startswith(p) for p in IMPROVED_COLUMNS)}
 
     # 被略過的欄不能完全不看：兩軌對映不同但「值在不在」要對得上——2026-09-17 實測
     # 若「物件最後更新時間」只取 max(last_seen_at, last_detail_at)，九月窗有 31.5% 的
     # 列會變 '-'（#11 回填的 9/1–9/10 沒有這兩欄），而逐 byte 比對正好略過它、看不見
+    mapped_idx = sorted(i for i in drop_idx if lh[i] in MAPPED_COLUMNS)
     for name, rows in (('left', left[1:]), ('right', right[1:])):
-        if not drop_idx or not rows:
+        if not mapped_idx or not rows:
             break
         stats = ['{}={:.2%}'.format(lh[i], sum(1 for r in rows if r[i] == '-') / len(rows))
-                 for i in sorted(drop_idx)]
+                 for i in mapped_idx]
         print('{} 略過欄的 "-" 比率: {}'.format(name, '、'.join(stats)))
+    # 家具欄不比 byte，但筆數要印出來——它是「snapshot 修好了 DB 的失真」的度量，
+    # 歸零才奇怪（代表 clobber 沒發生或 snapshot 也被蓋到）
+    improved = [i for i in drop_idx if lh[i] not in MAPPED_COLUMNS]
+    if improved:
+        lmap0 = {r[key_idx]: r for r in left[1:]}
+        n_diff = 0
+        for hid, rrow in ((r[key_idx], r) for r in right[1:]):
+            lrow = lmap0.get(hid)
+            if lrow and any(lrow[i] != rrow[i] for i in improved):
+                n_diff += 1
+        print('家具欄（預期差異，snapshot 為準）: {} 戶兩軌不同'.format(n_diff))
 
     lb = normalized_bytes(lh, left[1:], key_idx, drop_idx)
     rb = normalized_bytes(rh, right[1:], key_idx, drop_idx)

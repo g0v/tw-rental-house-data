@@ -40,6 +40,8 @@ class Command(BaseCommand):
         parser.add_argument('--vendor', default='591 租屋網')
         parser.add_argument('--dry-run', action='store_true')
         parser.add_argument('--no-upload', action='store_true')
+        parser.add_argument('--values', action='store_true',
+                            help='連 parsed 值欄一起補（來源＝該日 HouseTS，見 fill_values）')
 
     def handle(self, *_args, **options):
         if options['date']:
@@ -59,11 +61,16 @@ class Command(BaseCommand):
         if rows is None:
             raise CommandError('snapshot {} {} 不存在（本地與 S3 都沒有）'.format(short, date_str))
 
+        if options['values']:
+            self.fill_values(vendor, short, day, rows)
+
         targets = [r for r in rows
                    if any(r.get(f) is None for f in CARRY_FIELDS if f != 'days_absent')]
         print('=== snapshotcarryfill {} {}: {} 列，其中 {} 列有 NULL carry 欄'.format(
             short, date_str, len(rows), len(targets)))
         if not targets:
+            if options['values'] and not options['dry_run']:
+                self.write(rows, short, date_str, read_bucket, options)
             return
 
         day_end = timezone.make_aware(datetime.combine(day + timedelta(days=1), time_cls.min))
@@ -95,6 +102,9 @@ class Command(BaseCommand):
         if options['dry_run']:
             print('dry-run：不寫檔')
             return
+        self.write(rows, short, date_str, read_bucket, options)
+
+    def write(self, rows, short, date_str, read_bucket, options):
         path, n = artifacts.write_snapshot(rows, short, date_str)
         print('    寫回 {} （{} 列）'.format(path, n))
         bucket = None if options['no_upload'] else read_bucket
@@ -104,6 +114,48 @@ class Command(BaseCommand):
                 print('    uploaded snapshot/{}/{}.parquet'.format(short, date_str))
             except Exception as err:  # noqa: BLE001
                 print('!!! upload failed（本地檔已寫，可用 snapshotfold --reupload）: {}'.format(err))
+
+    def fill_values(self, vendor, short, day, rows):
+        '''--values：補 parsed 值欄的 NULL，來源＝**該日的 HouseTS**。
+
+        為什麼需要（2026-09-18 首次 exportcheck 挖出來的）：9/16 synthts 回補之前，
+        當日被 diff 模式 skip 的戶在 HouseTS 只有稀疏列，那些列摺進 snapshot 後
+        fold 一路 carry，於是約 1,300 戶的座標／additional_fee／管理費／停車欄在
+        snapshot 是 NULL 而 House 有值（snapshotcheck 的 `snapshot_null_db_set` 桶
+        一直在報這件事；export 切 snapshot 後會變成公開資料的缺值）。
+
+        來源選 HouseTS 而不是 House 現值：**HouseTS 按日分桶，本身就是「那一天」的
+        狀態**，不必像 carry 欄那樣做日界防呆（House 現值對過去日不成立——9/17 的
+        教訓）。`snapshot_db.bootstrap_rows(carry='ts')` 正是「該日 HouseTS ＋ 該日列
+        推得出的 carry」，這裡只拿它的 parsed 值欄、只填 NULL 格。
+
+        **持久性**：填在「昨日 final」才會被今晚的 fold 當 prev 讀下去；填今日
+        provisional 只是讓當天的對帳看得到，今晚重摺就沒了（snapshotfold 每晚會把
+        昨日重摺成 final、再摺今日）。兩份都填才兩件事都成立。
+        '''
+        from rental import snapshot_db
+        src = {r['vendor_house_id']: r
+               for r in snapshot_db.bootstrap_rows(vendor, day, carry='ts')}
+        value_fields = [name for name, _ in contracts.PARSED_FIELDS
+                        if name not in ('vendor', 'vendor_house_id', 'date', 'run',
+                                        'crawled_at', 'parser_version', 'parsed_version',
+                                        'vendor_extra')]
+        filled = {}
+        touched = 0
+        for row in rows:
+            ref = src.get(row['vendor_house_id'])
+            if ref is None:
+                continue
+            hit = False
+            for name in value_fields:
+                if row.get(name) is None and ref.get(name) is not None:
+                    row[name] = ref[name]
+                    filled[name] = filled.get(name, 0) + 1
+                    hit = True
+            touched += 1 if hit else 0
+        print('=== --values：{} 戶有 HouseTS 對照、{} 戶補到值'.format(len(src), touched))
+        for name, n in sorted(filled.items(), key=lambda kv: -kv[1])[:12]:
+            print('    {:<28} 補 {}'.format(name, n))
 
     def load_db(self, vendor, ids):
         houses, fingerprints = {}, {}
