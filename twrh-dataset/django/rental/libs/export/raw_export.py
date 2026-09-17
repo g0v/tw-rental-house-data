@@ -2,8 +2,9 @@ from django.core.paginator import Paginator
 from django.db.models import Case, CharField, F, Value, When
 from django.db.models.functions import Concat
 from rental.libs import filters
-from rental.models import House
+from rental.models import House, Vendor
 from rental import enums
+from . import snapshot_source
 from .export import Export
 from .field import Field
 
@@ -93,7 +94,50 @@ class RawExport(Export):
         Field('agent_org', '仲介資訊'),
     ]
 
+    # S3a：snapshot 讀取端要的 parquet 欄（**不含 vendor_extra／imgs**——月窗
+    # 十幾萬列帶著整份 detail_dict 會吃掉 publisher 的 4 GB）
+    snapshot_columns = [
+        'vendor_house_id', 'top_region', 'sub_region', 'deal_status', 'deal_time',
+        'n_day_deal', 'monthly_price', 'deposit_type', 'n_month_deposit', 'deposit',
+        'is_require_management_fee', 'monthly_management_fee', 'has_parking',
+        'is_require_parking_fee', 'monthly_parking_fee', 'per_ping_price',
+        'building_type', 'property_type', 'is_rooftop', 'floor', 'total_floor',
+        'dist_to_highest_floor', 'floor_ping', 'n_balcony', 'n_bath_room',
+        'n_bed_room', 'n_living_room', 'apt_feature_code', 'has_tenant_restriction',
+        'has_gender_restriction', 'gender_restriction', 'can_cook', 'allow_pet',
+        'has_perperty_registration', 'contact', 'agent_org', 'author_key',
+        'rough_lat', 'rough_lng', 'additional_fee', 'living_functions',
+        'transportation', 'facilities',
+        'first_seen_at', 'last_seen_at', 'last_detail_at',
+    ]
+
+    def __init__(self, source='db'):
+        super().__init__()
+        self.source = source
+
+    def decorate_body(self, houses, print_enum, use_tf, list_writer):
+        # snapshot 的 JSON 欄是整包字串，展平成 DB 路徑 KeyTextTransform 的同名 key
+        if self.source != 'snapshot':
+            return houses
+        return [snapshot_source.decorate_json_keys(row, self.headers)
+                for row in houses]
+
+    def prepare_snapshot_houses(self, from_date, to_date, only_big6):
+        # S3a：改讀 4c 的 snapshot 分區，不碰 House
+        if only_big6:
+            raise NotImplementedError('snapshot 路徑尚未支援 -b6（月包不用它）')
+        vendor = Vendor.objects.filter(name='591 租屋網').first()
+        window = snapshot_source.SnapshotWindow(
+            from_date, to_date, vendor='591',
+            vendor_id=vendor.id if vendor else None,
+            columns=self.snapshot_columns)
+        print('---- snapshot 路徑：{} 天分區、{} 戶（列序＝物件編號遞減）----'.format(
+            len(window.days), len(window)))
+        return Paginator(window, self.page_size)
+
     def prepare_houses(self, from_date, to_date, only_big6):
+        if self.source == 'snapshot':
+            return self.prepare_snapshot_houses(from_date, to_date, only_big6)
 
         optional_filter = filters.big6 if only_big6 else {}
 

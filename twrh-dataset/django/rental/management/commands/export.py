@@ -103,6 +103,13 @@ class Command(BaseCommand):
         )
 
         parser.add_argument(
+            '--source',
+            default='db',
+            choices=['db', 'snapshot'],
+            help='S3a：db＝讀 House（現行）；snapshot＝讀 4c 的 snapshot 分區'
+        )
+
+        parser.add_argument(
             '-01',
             '--01-instead-of-truefalse',
             dest='use_01',
@@ -145,13 +152,17 @@ class Command(BaseCommand):
 
         to_date += timedelta(days=1)
 
+        source = options['source']
+
         if all_in_one:
-          self.export_everything(from_date, to_date, options['outfile'])
+          self.export_everything(from_date, to_date, options['outfile'], source=source)
         else:
           if need_uniq:
+              if source != 'db':
+                  raise CommandError('-u（Deduplicated）目前只有 DB 路徑')
               tool = UniqExport()
           else:
-              tool = RawExport()
+              tool = RawExport(source=source)
 
           tool.print(
               from_date,
@@ -202,7 +213,7 @@ class Command(BaseCommand):
             for f in listdir(tmp_dir):
                 zip.write(path.join(tmp_dir, f), arcname=path.join(self.default_export_dir, f))
 
-    def export_everything(self, from_date, to_date, prefix):
+    def export_everything(self, from_date, to_date, prefix, source='db'):
 
         to_date += timedelta(days=1)
         tmp_dir = mkdtemp()
@@ -210,7 +221,7 @@ class Command(BaseCommand):
 
         print('#### Export everything in {} ####'.format(prefix))
         # uniq = UniqExport()
-        raw = RawExport()
+        raw = RawExport(source=source)
 
         # export tf raw + json
         raw.print(
@@ -239,7 +250,7 @@ class Command(BaseCommand):
         # self.zip_everything(tmp_dir, prefix, 'deduplicated')
         # shutil.rmtree(tmp_dir)
 
-    def handle_periodic(self):
+    def handle_periodic(self, source='db'):
         today = self.target_now()
 
         # 2026-09-07 改：每月 1 日出「上個月」，且 flow 把 export 排在 list 之前
@@ -256,7 +267,7 @@ class Command(BaseCommand):
         self.export_everything(
             timezone.make_aware(datetime.combine(last_month_start, datetime.min.time())),
             timezone.make_aware(datetime.combine(last_month_end, datetime.min.time())),
-            month_prefix)
+            month_prefix, source=source)
 
         # don't do quarterly & annual export during periodic task,
         # as this task has to be run in a more powerful instance
@@ -277,6 +288,6 @@ class Command(BaseCommand):
         is_periodic = options['is_periodic'] is not False
 
         if is_periodic:
-            self.handle_periodic()
+            self.handle_periodic(source=options['source'])
         else:
             self.handle_manual(**options)
