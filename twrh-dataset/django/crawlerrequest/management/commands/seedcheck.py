@@ -38,6 +38,10 @@ class Command(BaseCommand):
         parser.add_argument('--strict', action='store_true')
         parser.add_argument('--sample', type=int, default=5,
                             help='不一致時各印幾個 house_id')
+        parser.add_argument('--explain', type=int, default=0, metavar='N',
+                            help='不一致時，對各 N 戶逐欄印出兩個狀態來源的值'
+                                 '（snapshot carry 欄 vs House 欄位）與在列情形，'
+                                 '用來歸因差異落在哪一欄')
         parser.add_argument(
             '--state-source', choices=('db', 'snapshot'), default='db',
             help='每戶狀態從哪裡來：db＝House 欄位（過渡期轉接，現況）；'
@@ -184,5 +188,48 @@ class Command(BaseCommand):
             print('seedcheck: only in pure function (sample): {}'.format(only_pure[:n]))
         if only_db:
             print('seedcheck: only in DB queue (sample): {}'.format(only_db[:n]))
+        if options['explain'] and not agree:
+            self.explain(only_pure, only_db, options['explain'], vendor,
+                         short, yesterday, bucket, today_stubs, yesterday_ids, now)
         if not agree and options['strict']:
             sys.exit(1)
+
+    def explain(self, only_pure, only_db, limit, vendor, short, yesterday,
+                bucket, today_stubs, yesterday_ids, now):
+        '''逐戶並排兩個狀態來源，看差異落在哪一欄。純診斷、不改任何東西。'''
+        ids = list(only_db[:limit]) + list(only_pure[:limit])
+        if not ids:
+            return
+        snap = {r['vendor_house_id']: r for r in artifacts.read_snapshot(
+            short, yesterday.isoformat(), bucket)
+            if r['vendor_house_id'] in set(ids)}
+        houses = {h.vendor_house_id: h for h in House.objects.filter(
+            vendor=vendor, vendor_house_id__in=ids)}
+        today_fp = seeding.latest_fingerprints(today_stubs)
+
+        def fmt(v):
+            return v.isoformat(timespec='seconds') if hasattr(v, 'isoformat') else v
+
+        print('seedcheck: --- explain（左＝昨日 snapshot carry，右＝House 現值）---')
+        for hid in ids:
+            side = 'only_db  ' if hid in set(only_db[:limit]) else 'only_pure'
+            s, h = snap.get(hid), houses.get(hid)
+            print('  [{}] {}  in_list_today={} in_list_yesterday={}'.format(
+                side, hid, hid in today_fp, hid in yesterday_ids))
+            if s is None:
+                print('        snapshot: (昨日 snapshot 沒有這一戶)')
+            else:
+                print('        snapshot: deal_status={} last_detail_at={} fp_at_last_detail={} '
+                      'last_fingerprint={} source={}'.format(
+                          s.get('deal_status'), fmt(s.get('last_detail_at')),
+                          s.get('fingerprint_at_last_detail'),
+                          s.get('last_fingerprint'), s.get('source')))
+            if h is None:
+                print('        house   : (House 沒有這一戶)')
+            else:
+                print('        house   : deal_status={} detail_crawled_at={} '
+                      'fp_changed_at={}'.format(
+                          int(h.deal_status) if h.deal_status is not None else None,
+                          fmt(h.detail_crawled_at), fmt(h.list_fingerprint_changed_at)))
+            if hid in today_fp:
+                print('        today_fingerprint={}'.format(today_fp[hid]))
