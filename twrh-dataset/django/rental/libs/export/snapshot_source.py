@@ -4,13 +4,15 @@
 區間 export 取窗內每日檔，逐戶取「最後一天出現的那一列」——carry 列帶的就是該戶
 最後已知值，與 DB 路徑讀 `House` 現況同義（export 排在當日爬取之前跑）。
 
-DB 路徑的兩道篩照搬（`RawExport.prepare_houses`）：
-  - `additional_fee` 非 NULL：從未成功 detail 過的戶不出（DB 是 additional_fee__isnull=False）
-  - 首次發現 <= 窗尾、最後爬取 >= 窗首（DB 是 created__lte／crawled_at__gte）
+DB 路徑的篩選對映（2026-09-18 首次 exportcheck 校準；細節見 `_in_window`）：
+  - 曾經 detail 成功過＝窗內任一列有 `additional_fee`（DB 是 House 現值 isnull=False）
+  - 首次發現 <= 窗尾（DB 是 created__lte）
+  - **窗內有列**即可，不另外要求 last_seen/last_detail >= 窗首（DB 的 crawled_at 幾乎
+    天天被 list／synthts／deals 刷新，照字面比會少 15,110 戶）
 
 **三欄對映**（2026-09-17 維護者拍板，差異寫進 schema 1.0 §3.5 與 issue #238）：
   物件首次發現時間 ← `first_seen_at`（DB 是 House.created＝列插入時間）
-  物件最後更新時間 ← max(`last_seen_at`, `last_detail_at`)（DB 是 House.updated＝最後一次 save）
+  物件最後更新時間 ← max(`last_seen_at`, `last_detail_at`, `crawled_at`)（DB 是 House.updated）
   刊登者編碼       ← `author_key`＝sha1(Author.truth)[:16]（DB 是 Author.uuid；
                      UUID↔author_key 的世代對照由 S2b 的 rental_author 保存）
 
@@ -25,7 +27,6 @@ import json
 import os
 from datetime import datetime, timedelta
 
-import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 # JSON 欄在 parquet 裡是字串（contracts 約定）；DB 路徑用 KeyTextTransform 取出來是
@@ -89,12 +90,18 @@ class SnapshotWindow:
                     snapshot_dir(self.vendor), self.from_date, self.to_date))
         self.days = [d for d, _ in days]
 
-        # pass 1：只讀 id 欄，後面的日子蓋掉前面的（逐戶取最後一天那列）
+        # pass 1：逐戶取最後一天那列；同時記「窗內任一列有 additional_fee」＝曾經
+        # detail 成功過（DB 的 House.additional_fee 是最後已知非空值，見 _in_window）
         latest = {}
+        self._ever_fee = set()
         for date_str, path in days:
-            ids = pq.read_table(path, columns=['vendor_house_id']).column(0).to_pylist()
+            t = pq.read_table(path, columns=['vendor_house_id', 'additional_fee'])
+            ids = t.column('vendor_house_id').to_pylist()
+            fees = t.column('additional_fee').to_pylist()
             for i, hid in enumerate(ids):
                 latest[hid] = (date_str, i)
+                if fees[i] is not None:
+                    self._ever_fee.add(hid)
 
         # pass 2：逐日 take 需要的列，篩掉不該出的戶
         by_day = {}
@@ -110,26 +117,35 @@ class SnapshotWindow:
             table = table.take(idx)
             keep_local = []
             for local, (hid, _i) in enumerate(rows):
-                if self._in_window(table, local):
+                if self._in_window(table, local, hid):
                     keep_local.append(local)
                     kept.append((hid, date_str, len(keep_local) - 1))
             self._tables[date_str] = table.take(keep_local)
         self._index = sorted(kept, key=lambda r: r[0], reverse=sort_desc)
 
-    def _in_window(self, table, local):
+    def _in_window(self, table, local, hid):
+        '''DB 路徑的三道篩對映（2026-09-18 首次 exportcheck 校準過）：
+
+        - `additional_fee__isnull=False`：DB 看的是 House 現值＝**曾經 detail 成功過**，
+          不是「最後一列有值」。窗內任一列有就算（`self._ever_fee`）——snapshot 有
+          ~1,300 列的值比 DB 稀薄（2026-09-16 synthts 回補之前摺進去的稀疏列），
+          只看最後一列會把這些戶整戶漏掉。
+        - `created__lte=to_date`：first_seen_at <= 窗尾。
+        - ~~`crawled_at__gte=from_date`~~ **不再對映成 max(last_seen_at, last_detail_at)**：
+          DB 的 `crawled_at` 是「最後一次有任何 item 寫進來」，而 list／synthts／deals
+          幾乎天天碰到每一戶，所以那道篩在 DB 端幾乎不篩掉東西；snapshot 端照字面
+          比對會少 15,110 戶（首次 exportcheck 實測）。**窗內有列＝我們那幾天手上有它**
+          就是等價條件——fold 只在「已關閉且當日無訊號」時才不再攜帶。
+        '''
         def val(name):
             col = table.column(name)
             return col[local].as_py() if name in table.column_names else None
 
-        if val('additional_fee') is None:
-            return False           # DB: additional_fee__isnull=False
+        if hid not in self._ever_fee:
+            return False
         first_seen = val('first_seen_at')
         if first_seen is not None and first_seen > self.to_date:
-            return False           # DB: created__lte=to_date
-        last_crawl = max([v for v in (val('last_seen_at'), val('last_detail_at'))
-                          if v is not None], default=None)
-        if last_crawl is not None and last_crawl < self.from_date:
-            return False           # DB: crawled_at__gte=from_date
+            return False
         return True
 
     # ---- 取列 ------------------------------------------------------------
