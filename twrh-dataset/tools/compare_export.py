@@ -70,6 +70,16 @@ def main():
     key_idx = lh.index(args.key)
     drop_idx = {lh.index(c) for c in MAPPED_COLUMNS if args.expect_mapped and c in lh}
 
+    # 被略過的欄不能完全不看：兩軌對映不同但「值在不在」要對得上——2026-09-17 實測
+    # 若「物件最後更新時間」只取 max(last_seen_at, last_detail_at)，九月窗有 31.5% 的
+    # 列會變 '-'（#11 回填的 9/1–9/10 沒有這兩欄），而逐 byte 比對正好略過它、看不見
+    for name, rows in (('left', left[1:]), ('right', right[1:])):
+        if not drop_idx or not rows:
+            break
+        stats = ['{}={:.2%}'.format(lh[i], sum(1 for r in rows if r[i] == '-') / len(rows))
+                 for i in sorted(drop_idx)]
+        print('{} 略過欄的 "-" 比率: {}'.format(name, '、'.join(stats)))
+
     lb = normalized_bytes(lh, left[1:], key_idx, drop_idx)
     rb = normalized_bytes(rh, right[1:], key_idx, drop_idx)
     print('left  {} 列 sha1 {}'.format(len(left) - 1, hashlib.sha1(lb).hexdigest()))
