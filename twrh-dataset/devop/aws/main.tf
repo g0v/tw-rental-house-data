@@ -155,6 +155,12 @@ locals {
     { name = "TWRH_WORKER_MEMORY", value = tostring(var.worker_memory) },
     { name = "TWRH_WORKER_CONCURRENCY", value = var.worker_concurrency },
     { name = "TWRH_WORKER_DELAY", value = var.worker_download_delay },
+    # 4e／S4b queue 判準：flow.py 自己 setdefault 同一組值，但 flow 外的管理指令
+    # （run-cloud 的 seedcheck／queuefinalize／rawpack --reconcile／filequeuecheck、
+    # detail seed_mode=new）沒有它就會去讀 S4b 已停寫的 request_ts＝0 筆（9/17 seedcheck 實踩）。
+    # 回退＝改這兩個值（TWRH_QUEUE_DB=1 記帳鏡像回來、TWRH_QUEUE_SOURCE=db 認領回 DB）。
+    { name = "TWRH_QUEUE_SOURCE", value = var.queue_source },
+    { name = "TWRH_QUEUE_DB", value = var.queue_db_bookkeeping },
   ]
   crawler_secrets = [
     { name = "TWRH_DB_PASSWORD", valueFrom = aws_ssm_parameter.secrets["db-password"].arn },
