@@ -105,7 +105,7 @@ class RawExport(Export):
         'dist_to_highest_floor', 'floor_ping', 'n_balcony', 'n_bath_room',
         'n_bed_room', 'n_living_room', 'apt_feature_code', 'has_tenant_restriction',
         'has_gender_restriction', 'gender_restriction', 'can_cook', 'allow_pet',
-        'has_perperty_registration', 'contact', 'agent_org', 'author_key',
+        'has_perperty_registration', 'contact', 'agent_org', 'author_key', 'crawled_at',
         'rough_lat', 'rough_lng', 'additional_fee', 'living_functions',
         'transportation', 'facilities',
         'first_seen_at', 'last_seen_at', 'last_detail_at',

@@ -155,9 +155,14 @@ class SnapshotWindow:
         row['vendor'] = self.vendor_id
         row['house_url'] = 'https://rent.591.com.tw/{}'.format(raw['vendor_house_id'])
         row['created'] = raw.get('first_seen_at')
+        # crawled_at fallback（2026-09-17 維護者拍板）：#11 回填的 9/1–9/10 沒有
+        # last_seen_at／last_detail_at，而那些戶的「窗內最後一列」就落在那幾天——
+        # 只取前兩者，九月窗有 31.5%（47,698／151,423）會變 '-'。crawled_at＝該列那天
+        # 實際爬到的時間，語意上正是「我們最後一次更新這戶」，而 DB 的 House.updated
+        # 對已關閉的戶也就是最後一次寫入。實測這 47,698 列 100% 都有它。
         row['updated'] = max(
-            [v for v in (raw.get('last_seen_at'), raw.get('last_detail_at'))
-             if v is not None], default=None)
+            [v for v in (raw.get('last_seen_at'), raw.get('last_detail_at'),
+                         raw.get('crawled_at')) if v is not None], default=None)
         row['author'] = raw.get('author_key')
         lat, lng = raw.get('rough_lat'), raw.get('rough_lng')
         point = _Point(lat, lng) if lat is not None else None
