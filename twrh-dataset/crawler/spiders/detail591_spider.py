@@ -105,6 +105,39 @@ class Detail591Spider(Rental591Spider):
 
         return list(query.values_list('vendor_house_id', flat=True))
 
+    def gen_snapshot_seeds(self):
+        '''S1：判準改讀檔案（今日 list stub＋昨日 snapshot 的 carry 欄），完全不碰
+        House／HouseTS，與 `gen_diff_seeds` 語意逐條對齊（同一支純函數
+        `seeding.select_seeds`，seedcheck 用的也是它）。
+
+        材料不齊回 None → 呼叫端退回 DB 判準。S3b（house 三表停寫）之後 DB 判準用的
+        欄位就不存在了，這條路屆時是唯一的；在那之前它是可回退的上位者。
+        '''
+        ts = self.persist_queue.ts
+        today = date(ts['y'], ts['m'], ts['d'])
+        now = timezone.now()
+        result, meta = seeding.seeds_from_files(
+            self.persist_queue.short, today, now,
+            refresh_days=self.refresh_days,
+            refresh_jitter_days=self.refresh_jitter,
+            bucket=os.environ.get('TWRH_RAW_BUCKET'))
+        if result is None:
+            self.logger.warning(
+                'snapshot seeds unavailable (%s) — 退回 DB 判準 gen_diff_seeds',
+                meta.get('reason'))
+            return None
+        self.logger.info(
+            'snapshot seeds: stale/new %d, fingerprint %d, absent>=2d %d, '
+            'returned %d -> union %d (open %d, in-list %d, skipped %d; %s)',
+            len(result.stale), len(result.fingerprint), len(result.absent),
+            len(result.returned), len(result.seeds), result.n_open,
+            result.n_in_list, result.skipped, meta)
+        seeding.write_seed_stamp(today, now, {
+            'stale': len(result.stale), 'fingerprint': len(result.fingerprint),
+            'absent': len(result.absent), 'returned': len(result.returned)},
+            len(result.seeds))
+        return sorted(result.seeds)
+
     def gen_new_seeds(self):
         '''前緣掃描用：今日在列（list stub 分區）∧ OPENED ∧ detail 從未爬過（detail_crawled_at 為空），
         與 seeding.select_new_seeds 同義。
@@ -230,7 +263,13 @@ class Detail591Spider(Rental591Spider):
                 'queue empty and progress file exists — resume with nothing to do')
         elif not self.persist_queue.has_request():
             if self.seed_mode == 'diff':
-                house_ids = self.gen_diff_seeds()
+                # S1：TWRH_SEED_SOURCE=snapshot 時判準改走檔案（純函數）；材料不齊
+                # 或未啟用就退回 DB 判準。回退鈕＝把這個環境變數拿掉／設 db
+                house_ids = None
+                if os.environ.get('TWRH_SEED_SOURCE', 'db') == 'snapshot':
+                    house_ids = self.gen_snapshot_seeds()
+                if house_ids is None:
+                    house_ids = self.gen_diff_seeds()
             elif self.seed_mode == 'new':
                 house_ids = self.gen_new_seeds()
             else:

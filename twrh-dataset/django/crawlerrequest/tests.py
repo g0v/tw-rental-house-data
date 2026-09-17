@@ -2919,3 +2919,101 @@ class BackfillVendorExtraTests(TestCase):
         self.assertEqual((filled2, again.column('vendor_extra').to_pylist()[:2]), (1, ['{"k": 1}', '{"k": 2}']))
         forced, filled3 = mod.fill_vendor_extra(out, {'a': '{"k": 9}'}, force=True)
         self.assertEqual((filled3, forced.column('vendor_extra').to_pylist()[0]), (1, '{"k": 9}'))
+
+
+class SeedsFromFilesTests(QueueTestMixin, TestCase):
+    '''S1：整套判準走檔案（今日 list stub＋昨日 snapshot 的 carry 欄），不碰 DB。
+
+    重點不只是「算得對」——材料不齊時必須明確回 None＋reason 讓呼叫端退回 DB 判準，
+    不自己找替代來源：種子算錯的代價是整天漏抓（少排）或整天重抓（多排）。
+    '''
+
+    def setUp(self):
+        super().setUp()
+        self.env = mock.patch.dict(os.environ, {'TWRH_RAW_BUCKET': ''})
+        self.env.start()
+        y, m, d = (int(x) for x in TEST_DATE.split('-'))
+        self.day = date(y, m, d)
+        self.yesterday = self.day - timedelta(days=1)
+        self.now = timezone.now()
+
+    def tearDown(self):
+        self.env.stop()
+        super().tearDown()
+
+    def stubs(self, date_str, rows, run='run'):
+        from django.core.management import call_command
+        from rental import artifacts
+        with mock.patch.dict(os.environ, {'TWRH_RUN_ID': run}):
+            writer = artifacts.ShardWriter('list')
+            for hid, fp in rows:
+                writer.append({'vendor': '591', 'date': date_str, 'run': run,
+                               'vendor_house_id': hid, 'fingerprint': fp,
+                               'seen_at': self.now.isoformat()})
+            writer.close()
+        call_command('artifactpack', '--tree', 'list', '--date', date_str, '--no-upload')
+
+    def snapshot_rows(self, rows):
+        from rental import artifacts, snapshot
+        out = []
+        for hid, detail_at, fp_at_detail, status in rows:
+            row = snapshot._blank('591', hid, self.yesterday.isoformat())
+            row.update({'deal_status': status, 'last_detail_at': detail_at,
+                        'fingerprint_at_last_detail': fp_at_detail})
+            out.append(row)
+        artifacts.write_snapshot(out, '591', self.yesterday.isoformat())
+
+    def call(self):
+        from rental import seeding
+        return seeding.seeds_from_files('591', self.day, self.now, refresh_days=7)
+
+    def test_missing_materials_return_none_with_reason(self):
+        result, meta = self.call()
+        self.assertIsNone(result)
+        self.assertIn('no list stubs', meta['reason'])
+
+        self.stubs(TEST_DATE, [('a', 'fp')])
+        result, meta = self.call()
+        self.assertIsNone(result)                       # 昨日沒有全量 run 分區
+        self.assertIn('no full-run', meta['reason'])
+
+        # 昨日只有 sweep 分區也不算：拿前緣子集當「昨日在列」會把幾乎全部判成回列
+        self.stubs(self.yesterday.isoformat(), [('a', 'fp')], run='sweep-0501')
+        result, meta = self.call()
+        self.assertIsNone(result)
+        self.assertIn('no full-run', meta['reason'])
+
+        self.stubs(self.yesterday.isoformat(), [('a', 'fp')])
+        result, meta = self.call()
+        self.assertIsNone(result)                       # 昨日 snapshot 還沒有
+        self.assertIn('no snapshot', meta['reason'])
+
+    def test_four_classes_from_files(self):
+        old = self.now - timedelta(days=30)
+        recent = self.now - timedelta(days=1)
+        # 昨日在列集合刻意不含 gone-2d：absent 的判準是「今日與昨日都不在列」
+        self.stubs(self.yesterday.isoformat(), [
+            ('stale', 'fp'), ('moved', 'was'), ('quiet', 'fp')])
+        # 今日在列：stale／moved／quiet／back；gone-2d 兩天都不在列
+        self.stubs(TEST_DATE, [
+            ('stale', 'fp'), ('moved', 'now-different'), ('quiet', 'fp'), ('back', 'fp')])
+        self.snapshot_rows([
+            ('stale', old, 'fp', 0),        # 太久沒 detail
+            ('moved', recent, 'was', 0),    # 指紋自上次 detail 後變了
+            ('quiet', recent, 'fp', 0),     # 在列、指紋沒變、剛 detail → skip
+            ('gone-2d', recent, 'fp', 0),   # 連續兩天不在列
+            ('dealt', old, 'fp', 2),        # 已成交：不進 state
+        ])
+        result, meta = self.call()
+        self.assertIsNotNone(result)
+        # back：今日在列、昨日 snapshot 沒有它（關閉後掉出又上架）→ 當「在架、從未
+        # detail」，於是同時落在 stale（從未 detail）與 returned（今日在列、昨日不在、
+        # 本輪未 detail）。四類本來就可以重疊，seeds 是聯集
+        self.assertEqual(result.stale, {'stale', 'back'})
+        self.assertEqual(result.fingerprint, {'moved'})
+        self.assertEqual(result.absent, {'gone-2d'})
+        self.assertEqual(result.returned, {'back'})
+        self.assertEqual(result.seeds, {'stale', 'moved', 'gone-2d', 'back'})
+        self.assertNotIn('quiet', result.seeds)
+        self.assertNotIn('dealt', result.seeds)
+        self.assertEqual(meta['yesterday_ids'], 3)

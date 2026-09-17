@@ -389,7 +389,7 @@ carry 桶先乾淨。S4 只碰 request_ts，與 house 三表無關、可平行�
 | 步 | 條件 | 動作 | 估 |
 |---|---|---|---|
 | S4a queue 雲上雙軌 | filequeuecheck 連續 3 天 AGREE（9/13 到）＋4e 第二步本機驗過（9/15） | 檔案認領、DB 記帳一天；queuebusy／manifest queue 統計改讀檔案 | 9/15 |
-| S1 seed 純函數上位 | seedcheck 連續 3 天 AGREE（9/13 起算） | seed stage 改由 `seeding.select_seeds` 產種子（狀態改讀昨日 snapshot carry 欄），DB 判準退役；仍寫 request_ts | **9/18 夜**（原 9/16→9/17；9/17 夜已排滿四項寫入路徑變更，且 dry-run 當天才過門檻） |
+| S1 seed 純函數上位 | seedcheck 連續 3 天 AGREE（9/13 起算） | seed stage 改由 `seeding.select_seeds` 產種子（狀態改讀昨日 snapshot carry 欄），DB 判準退役 | **9/18 夜**（原 9/16→9/17）。**9/17 訂正兩件**：(1) 先前記「只差改 `flow.py` 一行」是錯的——`select_seeds` 當時只有 seedcheck 與測試在用，生產端判準活在 `detail591_spider.gen_diff_seeds()`（直接查 House／HouseTS），寫入者要自己寫；(2) 形狀走**選項 C**（維護者 9/17 拍板）：先在 spider 內加 `gen_snapshot_seeds()` 分支、env `TWRH_SEED_SOURCE=snapshot` 切換、材料不齊自動退回 DB 判準；拆成「獨立指令寫 seeds 檔、spider 純消費」排到 S6 去 Django 時一起做（判準是純函數，屆時搬的只是呼叫點）。共用載入器＝`seeding.seeds_from_files()`（Django-free，S6 的獨立指令直接用它）。程式 9/17 夜已上 master 但**休眠**（預設 db），啟用＝task def 加一個環境變數 |
 | S4b queue 出 DB | S4a 一天雙軌一致（9/15 早：02:10 多 worker＋mop-up 綠、filequeuecheck AGREE） | DB 停寫 request_ts（`TWRH_QUEUE_DB=0`）；白天 sweep 先驗、當晚 02:10 上；drop request_ts 另一步（一晚無紅後） | 9/15 夜（原 9/17；9/14 拍板：白天 sweep 當額外驗證時段，程式先落分支） |
 | S2a vendor_extra 落地 | S4b 一晚無紅 | parsed 加 `vendor_extra`＝整份 detail_dict（parsed_version 2）、snapshot 攜帶；上線後 `tools/backfill_vendor_extra.py` 回補 9/4 起的 parsed 分區與上線日 snapshot（**9/14 拍板：detail_dict 不是中間值，是 parser 死掉的年代唯一可讀的產物——raw 只留 365 天、舊版式 parser 只在舊 release**） | 9/16 夜 |
 | S2 house_etc 退役 | parsedcheck 連續 3 天 AGREE（已到）＋S2a 上線一晚無紅＋回補完＋S2b 匯出完成＋S1 上線一晚無紅 | 停寫 detail_dict／list_dict；rerun 只出 parquet；drop `house_etc` | **9/19 夜**（維護者 9/17 同意順延：條件是「S1 上線一晚無紅」，S1 落在 9/18 夜） |

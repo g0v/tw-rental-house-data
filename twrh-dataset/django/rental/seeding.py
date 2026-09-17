@@ -137,6 +137,51 @@ def select_seeds(today_stubs, yesterday_ids, state, now,
                       len(open_ids), len(in_list_today), skipped)
 
 
+def seeds_from_files(short, day, now, refresh_days=7, refresh_jitter_days=0, bucket=None):
+    '''S1：整套判準走檔案——今日 list stub 分區＋昨日 snapshot 的 carry 欄，不碰 DB。
+
+    回傳 `(SeedResult, meta)`；**材料不齊時回 `(None, meta)`**（meta['reason'] 說明），
+    由呼叫端決定退路（spider 退回 DB 判準）。刻意不自己找替代來源：種子算錯的代價是
+    整天漏抓或整天重抓，寧可退回已知可用的那條路。
+
+    兩個材料的要求：
+    - 今日 stub 必須存在（4a 的 liststubs stage 在 seed 之前）
+    - **昨日必須有「全量 run」的 stub 分區**才拿它當「昨日在列」：sweep 只掃前緣，
+      拿子集當昨日在列會把幾乎全部判成回列／缺席（2026-09-10 4a 首日實踩：
+      only_pure 26,161 全是這兩類）
+    - 昨日 snapshot 必須存在（狀態來源）
+
+    `now` 由呼叫端給並寫進 seed stamp，seedcheck 釘同一刻（見 seed_stamp_path）。
+    '''
+    from rental import artifacts   # 延後 import：本模組要能離線測、不拖 pyarrow／boto3
+    day_str = day.isoformat()
+    yesterday = day - timedelta(days=1)
+    y_str = yesterday.isoformat()
+
+    today_stubs = list(artifacts.read_list_stubs(short, day_str, bucket))
+    if not today_stubs:
+        return None, {'reason': 'no list stubs for {}'.format(day_str)}
+
+    y_files = artifacts.list_partition_files(short, y_str, bucket)
+    if not any(os.path.basename(f).startswith('run.') for f in y_files):
+        return None, {'reason': 'no full-run list partition for {}'.format(y_str)}
+    y_stubs = list(artifacts.read_list_stubs(short, y_str, bucket))
+    if not y_stubs:
+        return None, {'reason': 'yesterday stubs empty for {}'.format(y_str)}
+    yesterday_ids = set(latest_fingerprints(y_stubs))
+
+    rows = artifacts.read_snapshot(short, y_str, bucket)
+    if not rows:
+        return None, {'reason': 'no snapshot for {}'.format(y_str)}
+    state = state_from_snapshot(rows, seen_today=latest_fingerprints(today_stubs))
+
+    result = select_seeds(today_stubs, yesterday_ids, state, now,
+                          refresh_days=refresh_days,
+                          refresh_jitter_days=refresh_jitter_days)
+    return result, {'stubs': len(today_stubs), 'yesterday_ids': len(yesterday_ids),
+                    'snapshot_rows': len(rows), 'state': len(state)}
+
+
 def select_new_seeds(today_stubs, state):
     '''前緣掃描的 seed_mode=new：今日在列 ∧ 從未 detail。'''
     return {hid for hid in latest_fingerprints(today_stubs)
