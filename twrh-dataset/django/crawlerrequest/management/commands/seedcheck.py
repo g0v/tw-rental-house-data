@@ -39,10 +39,14 @@ class Command(BaseCommand):
         parser.add_argument('--sample', type=int, default=5,
                             help='不一致時各印幾個 house_id')
         parser.add_argument(
-            '--state-source', choices=('db', 'snapshot', 'both'), default='db',
+            '--state-source', choices=('db', 'snapshot'), default='db',
             help='每戶狀態從哪裡來：db＝House 欄位（過渡期轉接，現況）；'
-                 'snapshot＝昨日 snapshot 的 carry 欄（S1 上線後的來源）；'
-                 'both＝兩邊都算並逐戶比對四類種子（S1 的 dry-run，不碰 queue 比對）')
+                 'snapshot＝昨日 snapshot 的 carry 欄（S1 上線後的來源）。'
+                 '兩軌都是拿算出的種子對當日 queue 比——queue 是 seed 當下的產物，'
+                 '時間基準才對得上。**不要**改成兩軌互比：DB 的狀態是「此刻」，'
+                 'flow 跑完後 detail_crawled_at 已更新（stale 全消失），而 snapshot 是'
+                 '昨日收盤，兩邊基準不同，事後互比必然大幅 DIFF 且無意義'
+                 '（2026-09-17 實踩：DB 側只算得出 12 筆種子，當日實際排了 13,900 筆）')
 
     def handle(self, *_args, **options):
         if options['date']:
@@ -128,30 +132,6 @@ class Command(BaseCommand):
                 refresh_days=options['refresh_days'],
                 refresh_jitter_days=options['refresh_jitter'])
 
-        if source == 'both':
-            # S1 dry-run：同一份 stub／昨日在列／now，只換狀態來源，逐類比對。
-            # 不比 queue——今天的 queue 是 DB 軌產的，拿它當裁判會把兩軌的差異
-            # 記在 snapshot 頭上。
-            a, b = seeds_from(db_state()), seeds_from(snapshot_state())
-            report = {'date': day.isoformat(), 'mode': 'state-source dry-run',
-                      'stubs': len(today_stubs), 'now_source': now_source}
-            agree = True
-            for name in ('stale', 'fingerprint', 'absent', 'returned', 'seeds'):
-                sa, sb = getattr(a, name), getattr(b, name)
-                only_db_, only_snap = sorted(sa - sb), sorted(sb - sa)
-                report[name] = {'db': len(sa), 'snapshot': len(sb),
-                                'only_db': len(only_db_), 'only_snapshot': len(only_snap)}
-                if only_db_ or only_snap:
-                    agree = False
-                    report[name]['sample_only_db'] = only_db_[:options['sample']]
-                    report[name]['sample_only_snapshot'] = only_snap[:options['sample']]
-            report['n_open'] = {'db': a.n_open, 'snapshot': b.n_open}
-            print('seedcheck: {} — {}'.format(
-                'AGREE' if agree else 'DIFF', json.dumps(report, ensure_ascii=False)))
-            if options['strict'] and not agree:
-                raise CommandError('state-source dry-run DIFF')
-            return
-
         result = seeds_from(state)
 
         if file_ledger:
@@ -177,6 +157,7 @@ class Command(BaseCommand):
             'yesterday_source': yesterday_source,
             'now': now.isoformat(timespec='seconds'),
             'now_source': now_source,
+            'state_source': source,
         }
         if stamp:
             report['db_classes'] = stamp.get('classes')
