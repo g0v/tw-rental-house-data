@@ -166,6 +166,10 @@ locals {
     # 判準。回退＝把這個值改回 db。只影響 seed_mode=diff（日跑）；sweep 的
     # seed_mode=new 走另一條路，不受影響
     { name = "TWRH_SEED_SOURCE", value = var.seed_source },
+    # 雲上 stdout 預設 block-buffered：慢的指令在結束前一個字都看不到，只能瞎等或
+    # 停掉重跑（2026-09-18 為此瞎等兩次）。設了它每支指令都即時吐字，代價是
+    # 每行一次 write syscall——爬蟲的輸出量級無感
+    { name = "PYTHONUNBUFFERED", value = "1" },
   ]
   crawler_secrets = [
     { name = "TWRH_DB_PASSWORD", valueFrom = aws_ssm_parameter.secrets["db-password"].arn },
