@@ -1,18 +1,24 @@
 '''snapshotfold：4c snapshot 分區（雙寫期，DB 仍是真相）。
 
-    manage.py snapshotfold [--date D] [--vendor] [--no-upload]
+    manage.py snapshotfold [--date D] [--vendor] [--no-upload] [--only final|provisional]
     manage.py snapshotfold --bootstrap --date D      # 只從 DB 摺出 D 這天（起點／#11 回填）
     manage.py snapshotfold --reupload --date D       # 只把本地 D 的檔補上 S3
     manage.py snapshotfold --backfill --from D1 --to D2 [--force]
         # #11 回填：D1..D2 每天由 HouseTS 摺出（carry 欄只留該日列推得出的，見 snapshot_db）；
         # 已存在（本地或 S3）的天數跳過，--force 才覆寫（S3 永不覆蓋原則：回填只補缺的天）
 
-flow 的 snapshot stage（parsedcheck 之後）每天做兩件事：
+flow 每天做兩件事，**拆在兩個 stage**（`--only` 選一件；不給＝兩件都做，本機手跑用）：
 1. 昨日 final ＝ fold(前日 snapshot, 昨日全部 list／parsed／deals 分區)——昨日的輸入
    此刻已齊（各輪 sweep 到 23:02 收工）。前日 snapshot 不存在（一階遞迴的起點）
    → 昨日改由 DB 摺出（rental/snapshot_db.bootstrap_rows），不再往前追。
+   flow 的 `snapshotfinal` stage，**排在 seed 之前**（2026-09-19）：S1 的種子判準讀昨日
+   snapshot 的 carry 欄，若 final 留到 seed 之後才摺，seed 讀到的永遠是昨日 04:1x 的
+   provisional——昨日七輪 sweep 抓過 detail 的戶整列不在裡面、被當「從未 detail」重播
+   （S1 首夜 9/19 實測多播 3,625 戶；provisional 與 final 差 3,929 戶、3,883 戶有昨日白天
+   的 last_detail_at）。它只依賴昨日分區，搬到 seed 前沒有新的順序依賴。
 2. 今日 provisional ＝ fold(昨日 final, 今日到目前的分區)——明天這一步會把它重摺
    成 final。同 key 覆寫是 snapshot 樹刻意的設計（bucket 有 versioning）。
+   flow 的 `snapshot` stage（parsedcheck 之後）。
 
 上傳失敗只印 `!!!`、本地檔保留（與 artifactpack 同：雙寫期 advisory）。
 '''
@@ -36,6 +42,9 @@ class Command(BaseCommand):
         parser.add_argument('--bootstrap', action='store_true',
                             help='只從 DB 摺出 --date 這一天（覆寫既有檔）')
         parser.add_argument('--reupload', action='store_true')
+        parser.add_argument('--only', choices=('final', 'provisional'),
+                            help='只做其中一件：final＝昨日重摺（flow snapshotfinal stage，'
+                                 'seed 之前）；provisional＝今日（flow snapshot stage）')
         parser.add_argument('--backfill', action='store_true',
                             help='#11：--from..--to 每天由 HouseTS 摺出（過去日、無 House carry）')
         parser.add_argument('--from', dest='from_date')
@@ -76,16 +85,23 @@ class Command(BaseCommand):
 
         yesterday = day - timedelta(days=1)
         before = yesterday - timedelta(days=1)
-        if artifacts.snapshot_exists(short, before.isoformat(), read_bucket):
-            self.fold(short, before, yesterday, 'final', read_bucket, bucket)
-        elif artifacts.snapshot_exists(short, yesterday.isoformat(), read_bucket):
-            print('=== snapshot {} {}: keep as is (no {} snapshot to refold from)'.format(
-                short, yesterday, before))
-        else:
-            print('=== snapshot {} {}: no {} snapshot — bootstrap from DB'.format(
-                short, yesterday, before))
-            self.bootstrap(vendor, short, yesterday, bucket)
-        self.fold(short, yesterday, day, 'provisional', read_bucket, bucket)
+        only = options['only']
+        if only != 'provisional':
+            if artifacts.snapshot_exists(short, before.isoformat(), read_bucket):
+                self.fold(short, before, yesterday, 'final', read_bucket, bucket)
+            elif artifacts.snapshot_exists(short, yesterday.isoformat(), read_bucket):
+                print('=== snapshot {} {}: keep as is (no {} snapshot to refold from)'.format(
+                    short, yesterday, before))
+            else:
+                print('=== snapshot {} {}: no {} snapshot — bootstrap from DB'.format(
+                    short, yesterday, before))
+                self.bootstrap(vendor, short, yesterday, bucket)
+        if only != 'final':
+            if not artifacts.snapshot_exists(short, yesterday.isoformat(), read_bucket):
+                raise CommandError(
+                    'snapshot {} missing — snapshotfinal stage 沒跑？'
+                    '（--only provisional 需要昨日 final）'.format(yesterday))
+            self.fold(short, yesterday, day, 'provisional', read_bucket, bucket)
 
     def backfill(self, vendor, short, options, read_bucket, bucket):
         try:

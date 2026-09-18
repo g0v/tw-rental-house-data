@@ -2289,6 +2289,31 @@ class SweepWorkersTests(TestCase):
             self.assertEqual(len(cmds), 2, env)
             self.assertTrue(all('seed_mode=new' in c and 'seed_only' not in c for c in cmds), env)
 
+    def test_run_stages_fold_yesterday_final_before_seed(self):
+        # S1 首夜（2026-09-19）：seed 讀昨日 snapshot 的 carry 欄，而昨日 final 原本在 seed
+        # 之後 75 分鐘的 snapshot stage 才摺 → seed 永遠讀到昨日 provisional、昨日 sweep
+        # 抓過的 3,883 戶整列不在、被當從未 detail 重播 3,625 戶。順序是這個缺陷的全部。
+        import io
+        from contextlib import redirect_stdout
+        import flow
+        from unittest.mock import patch
+        names = flow.RUN_STAGE_NAMES
+        self.assertLess(names.index('snapshotfinal'), names.index('seed'))
+        self.assertLess(names.index('liststubs'), names.index('snapshotfinal'))
+        self.assertLess(names.index('parsedcheck'), names.index('snapshot'))
+        with patch.object(flow, 'DRY_RUN', True):
+            out = {}
+            for name, body in (('snapshotfinal', flow.stage_snapshotfinal),
+                               ('snapshot', flow.stage_snapshot)):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    body(None)
+                out[name] = [l for l in buf.getvalue().splitlines() if l.startswith('+ ')]
+        self.assertEqual(len(out['snapshotfinal']), 1)
+        self.assertIn('snapshotfold --only final', out['snapshotfinal'][0])
+        self.assertEqual(len(out['snapshot']), 1)
+        self.assertIn('snapshotfold --only provisional', out['snapshot'][0])
+
 
 class QueueBusyTests(QueueTestMixin, TestCase):
     '''D6b：flow sweep 的互斥——同 vendor 同日 bucket、近期更新的 in_flight 才算忙。'''
@@ -2482,6 +2507,38 @@ class DealEventAndSnapshotTests(QueueTestMixin, TestCase):
         # --bootstrap 明確重摺某日
         call_command('snapshotfold', '--bootstrap', '--date', self.yesterday.isoformat(), '--no-upload')
         self.assertEqual(len(artifacts.read_snapshot('591', self.yesterday.isoformat())), 3)
+
+    def test_snapshotfold_only_splits_final_and_provisional(self):
+        # S1（2026-09-19）：昨日 final 要在 seed 之前摺好，所以 flow 把兩件事拆成
+        # snapshotfinal（--only final）與 snapshot（--only provisional）兩個 stage
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        from rental import artifacts
+        self.seed_yesterday_db()
+        self.write_rows('parsed', 'run', [
+            {'vendor_house_id': 'h2', 'crawled_at': self.at(self.day, 3).isoformat(),
+             'deal_status': 0, 'monthly_price': 8000, 'floor_ping': 9.5}], TEST_DATE)
+        call_command('artifactpack', '--tree', 'parsed', '--date', TEST_DATE, '--no-upload')
+        y_str = self.yesterday.isoformat()
+
+        # 昨日還沒摺就只摺今日＝順序錯（snapshotfinal 沒跑）：大聲失敗，不能悄悄用不存在的昨日
+        with self.assertRaises(CommandError):
+            call_command('snapshotfold', '--date', TEST_DATE, '--only', 'provisional', '--no-upload')
+        self.assertFalse(artifacts.snapshot_exists('591', y_str, None))
+        self.assertFalse(artifacts.snapshot_exists('591', TEST_DATE, None))
+
+        # --only final：只動昨日（前日缺＝由 DB bootstrap），今日不碰
+        call_command('snapshotfold', '--date', TEST_DATE, '--only', 'final', '--no-upload')
+        self.assertEqual(len(artifacts.read_snapshot('591', y_str)), 3)
+        self.assertFalse(artifacts.snapshot_exists('591', TEST_DATE, None))
+
+        # --only provisional：只摺今日，昨日原樣
+        before = artifacts.read_snapshot('591', y_str)
+        call_command('snapshotfold', '--date', TEST_DATE, '--only', 'provisional', '--no-upload')
+        today = {r['vendor_house_id']: r for r in artifacts.read_snapshot('591', TEST_DATE)}
+        self.assertEqual(sorted(today), ['h1', 'h2'])
+        self.assertEqual(today['h2']['monthly_price'], 8000)
+        self.assertEqual(artifacts.read_snapshot('591', y_str), before)
 
     def test_snapshotfold_recovers_late_deal_from_earlier_snapshot(self):
         '''4d：今日 deals 事件的戶不在昨日 snapshot、但在前幾天的 snapshot 有 → 補值。'''

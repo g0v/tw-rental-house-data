@@ -318,12 +318,23 @@ def stage_dealevents(_ctx):
     _artifactpack('deals')
 
 
-def stage_snapshot(_ctx):
-    # 4c：昨日 final＋今日 provisional snapshot（前日缺＝昨日由 DB bootstrap）；
-    # 雙寫期 advisory：失敗大聲講、不擋 pipeline
-    result = manage('snapshotfold', check=False)
+def stage_snapshotfinal(_ctx):
+    # 4c／S1：昨日 final ＝ fold(前日 snapshot, 昨日全部分區)，**排在 seed 之前**——
+    # S1 的種子判準讀昨日 snapshot 的 carry 欄；留在 snapshot stage（seed 之後 75 分鐘）
+    # 才摺，seed 讀到的永遠是昨日的 provisional，昨日 sweep 抓過的戶整列不在、被當
+    # 「從未 detail」重播（2026-09-19 首夜多播 3,625 戶）。只依賴昨日分區，此刻已齊。
+    # 前日缺＝昨日由 DB bootstrap。advisory：失敗大聲講、不擋 pipeline（seed 會退回 DB 判準）
+    result = manage('snapshotfold', '--only', 'final', check=False)
     if result.returncode != 0:
-        print('!!! snapshotfold failed (advisory during dual-write)')
+        print('!!! snapshotfold --only final failed (seed 將退回 DB 判準或讀到 provisional)')
+
+
+def stage_snapshot(_ctx):
+    # 4c：今日 provisional ＝ fold(昨日 final, 今日分區)；昨日 final 已在 snapshotfinal
+    # stage 摺好。雙寫期 advisory：失敗大聲講、不擋 pipeline
+    result = manage('snapshotfold', '--only', 'provisional', check=False)
+    if result.returncode != 0:
+        print('!!! snapshotfold --only provisional failed (advisory during dual-write)')
 
 
 def stage_parsed(_ctx):
@@ -518,6 +529,8 @@ RUN_STAGES = [
     ('export', stage_export, None),
     ('list', stage_list, None),
     ('liststubs', stage_liststubs, None),
+    # 昨日 final snapshot 要在 seed 之前摺好（S1 種子判準讀它；2026-09-19）
+    ('snapshotfinal', stage_snapshotfinal, None),
     ('seed', stage_seed, None),
     ('seedcheck', stage_seedcheck, None),
     ('detail', stage_detail, None),
