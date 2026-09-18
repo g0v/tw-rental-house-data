@@ -34,6 +34,7 @@ from django.utils import timezone
 
 from rental import artifacts, contracts
 from rental.management.commands.parsedcheck import STATE_FIELDS, equal, norm_db
+from rental import snapshot_db
 from rental.models import House, HouseEtc, HouseTS, Vendor
 from rental.raws import vendor_dirname
 
@@ -99,7 +100,9 @@ class Command(BaseCommand):
                         vendor=vendor, vendor_house_id__in=chunk).values_list(
                         'vendor_house_id', 'detail_crawled_at', 'list_crawled_at', 'created'):
                     houses[hid] = (detail_at, list_at, created)
-                for hid, list_dict in HouseEtc.objects.filter(
+                # S2：house_etc 停寫／drop 後沒有指紋來源，last_fingerprint 桶自動跳過
+                # （snapshot 那欄仍由 list stub 維護，只是 DB 側沒有對照物）
+                for hid, list_dict in [] if not snapshot_db.etc_available() else HouseEtc.objects.filter(
                         vendor=vendor, vendor_house_id__in=chunk).values_list(
                         'vendor_house_id', 'list_dict'):
                     if list_dict:
