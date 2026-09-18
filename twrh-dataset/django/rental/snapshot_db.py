@@ -37,6 +37,20 @@ _TS_COPY = [name for name, _ in contracts.PARSED_FIELDS
                             'author_key', 'vendor_extra')]
 
 
+def etc_available():
+    '''house_etc 還在不在（S2 起預設不在：停寫＋drop）。
+
+    bootstrap_rows 只有兩件事要它——`last_fingerprint`（list_dict 的指紋）與
+    `vendor_extra`（detail_dict）。S2 之後：指紋的來源是 list stub 分區的
+    `fingerprint`（seed 判準已於 S1 改讀 snapshot carry 欄），vendor_extra 的來源是
+    parsed 分區；bootstrap 只在「前日 snapshot 不存在」時才跑，那兩欄留 NULL 可接受
+    （snapshotcheck 對過去日本來也只比 TS 推得出的欄）。
+    回退＝環境 `TWRH_ETC_DB_WRITE=1`，與 pipeline 的開關同一個。
+    '''
+    import os
+    return os.environ.get('TWRH_ETC_DB_WRITE', '0') == '1'
+
+
 def _plain(name, value):
     if value is None:
         return None
@@ -97,6 +111,8 @@ def bootstrap_rows(vendor, day, carry='house'):
                 'vendor_house_id', 'detail_crawled_at', 'list_crawled_at',
                 'list_fingerprint_changed_at', 'created', 'deal_status'):
             houses[h.vendor_house_id] = h
+        if not etc_available():
+            continue
         for hid, list_dict, detail_dict in HouseEtc.objects.filter(
                 vendor=vendor, vendor_house_id__in=chunk).values_list(
                 'vendor_house_id', 'list_dict', 'detail_dict'):

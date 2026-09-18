@@ -6,6 +6,7 @@
 # See: https://doc.scrapy.org/en/latest/topics/item-pipeline.html
 
 import logging
+import os
 import traceback
 from django.utils import timezone
 from rental.models import HouseTS, House, HouseEtc, Vendor, Author
@@ -16,6 +17,17 @@ from crawler.utils import now_tuple
 from crawler import signals as twrh_signals
 from crawler import raw_sink
 from crawler import artifact_sink
+
+
+def etc_db_write():
+    '''house_etc 還要不要寫（S2：預設不寫）。
+
+    整份 detail_dict 自 S2a 起落在 parsed 分區的 `vendor_extra`、snapshot 也攜帶最新
+    一次，所以 DB 這份是重複的；`list_dict` 只服務已退役的 DB 種子判準（S1 起判準
+    改讀 snapshot 的 carry 欄）。歷史那份由 S2b 的 RDS export 永久保存。
+    回退＝環境 `TWRH_ETC_DB_WRITE=1`（house_etc 若已 drop 就回退不了，見 migration）。
+    '''
+    return os.environ.get('TWRH_ETC_DB_WRITE', '0') == '1'
 
 
 class CrawlerPipeline(object):
@@ -98,11 +110,14 @@ class CrawlerPipeline(object):
                     vendor=self.item_vendor(item)
                 )
 
-                house_etc, created = HouseEtc.objects.get_or_create(
-                    house=house,
-                    vendor_house_id=item['house_id'],
-                    vendor=self.item_vendor(item)
-                )
+                # S2：停寫之後連 get_or_create 都不做（table 會被 drop）
+                house_etc = None
+                if etc_db_write():
+                    house_etc, created = HouseEtc.objects.get_or_create(
+                        house=house,
+                        vendor_house_id=item['house_id'],
+                        vendor=self.item_vendor(item)
+                    )
 
                 if 'raw' in item:
                     # 3-1／D5：raw 只進 scratch，收尾 rawpack 打日包上 S3
@@ -115,25 +130,34 @@ class CrawlerPipeline(object):
                             item['raw'])
 
                 if 'dict' in item and not item['is_list']:
-                    house_etc.detail_dict = item['dict']
-                    # 整份 dict 也進 parsed 列的 vendor_extra（S2 後 house_etc 退役，這裡是唯一落地）
+                    # S2：house_etc 退役，整份 dict 只進 parsed 列的 vendor_extra
+                    # （回退＝TWRH_ETC_DB_WRITE=1，見 etc_db_write）
+                    if house_etc is not None:
+                        house_etc.detail_dict = item['dict']
                     self._pending_parsed[item['house_id']] = item['dict']
 
                 # list 層指紋（title/price/update_time…）落地供 L-C 比對；
                 # 空 dict 不覆寫，避免解析失敗清掉上次的指紋
                 fingerprint_changed = False
                 if item['is_list'] and item.get('dict'):
-                    old_dict = house_etc.list_dict or {}
-                    # 指紋只比 price/title：update_time 是「N小時內更新」
-                    # 相對字串，隨時間自然流動，直接 diff 會天天誤報
-                    fingerprint_changed = bool(old_dict) and any(
-                        old_dict.get(key) != item['dict'].get(key)
-                        for key in ('price', 'title'))
-                    house_etc.list_dict = item['dict']
+                    # S2：list_dict 停寫。指紋比對（供 House.list_fingerprint_changed_at）
+                    # 本來拿舊 list_dict 比新的，停寫後沒有比對基礎——那個欄位只服務
+                    # 已退役的 DB 種子判準（S1 起判準改讀 snapshot 的
+                    # fingerprint_at_last_detail 對今日 stub 指紋），所以一起停止維護。
+                    # DB 判準當回退時 fingerprint 類會少排，stale／absent／returned 仍在。
+                    if house_etc is not None:
+                        old_dict = house_etc.list_dict or {}
+                        # 指紋只比 price/title：update_time 是「N小時內更新」
+                        # 相對字串，隨時間自然流動，直接 diff 會天天誤報
+                        fingerprint_changed = bool(old_dict) and any(
+                            old_dict.get(key) != item['dict'].get(key)
+                            for key in ('price', 'title'))
+                        house_etc.list_dict = item['dict']
                     self._pending_stub[item['house_id']] = \
                         artifact_sink.list_fingerprint(item['dict'])
 
-                house_etc.save()
+                if house_etc is not None:
+                    house_etc.save()
 
                 # 出現在 list 就蓋時間戳——L-B 完整度哨兵（statscheck 算
                 # open 中多少在今日 list）與 L-C「在今日 list」謂詞的落地。

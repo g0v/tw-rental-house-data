@@ -3,7 +3,8 @@
 3-1 後 raw 的家在日包（raws/<vendor>/<date>.tar.zst＋index.jsonl，
 production 在 S3 raw/ 樹；先 `aws s3 cp` 拉回本地目錄再跑——拍板：
 debug／重算＝整包拉回，不做 S3 內部尋址）。修完 parser bug 後對歷史
-日期重放，更新 HouseEtc.detail_dict 與 House 欄位，**不需重爬**。
+日期重放，更新 House 欄位與（--parquet-dir）parsed 分區，**不需重爬**。
+S2 起不再寫 HouseEtc.detail_dict——整份 dict 的家是 parsed 分區的 vendor_extra。
 
 本工具只讀日包，是 D5 cutover（DB 不存 raw）後的唯一重放路徑；
 dry-run 完全不連 DB（沒有 PostGIS 的環境也能跑）。
@@ -38,6 +39,7 @@ from scrapy_twrh.items import RawHouseItem, GenericHouseItem
 from scrapy_twrh.spiders.rental591 import util
 
 from scrapy_twrh.spiders.rental591 import Rental591Spider
+from rental import snapshot_db
 from rental.models import Author, House, HouseEtc, Vendor
 from rental import contracts
 
@@ -156,7 +158,9 @@ def main():
                 if house is None:
                     print('{}: not in DB, skip write'.format(house_id))
                     continue
-                if detail_dict is not None:
+                # S2：house_etc 停寫／drop——重放的整份 dict 只走 --parquet-dir 的
+                # vendor_extra（parsed 分區才是它的家）。回退＝TWRH_ETC_DB_WRITE=1
+                if detail_dict is not None and snapshot_db.etc_available():
                     HouseEtc.objects.filter(house=house).update(
                         detail_dict=detail_dict)
                 if 'author' in house_fields:

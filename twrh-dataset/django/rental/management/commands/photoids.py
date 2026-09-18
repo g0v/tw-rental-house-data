@@ -1,5 +1,9 @@
 '''photoids：從 house_etc.detail_dict 抽每戶的 591 圖檔 id（分析用，不進 pipeline）。
 
+**S2 之後 house_etc 停寫並將 drop**：這支指令屆時要改對 S2b 的 RDS export
+（`s3://twrh-w2/archive/rds/<id>/twrh/public.house_etc/`，parquet）跑，或改讀 parsed
+分區的 `vendor_extra`（2026-09-14 起每輪都有，比 detail_dict 更完整——它是每輪一列）。
+
     manage.py photoids [--out PATH] [--limit N] [--upload] [--vendor NAME]
 
 用途：重複／重刊研究（schema 1.0 草案 §2.7）的歷年照片資料。591 圖檔 URL 各年代長相不同，

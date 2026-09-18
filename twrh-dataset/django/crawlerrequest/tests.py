@@ -2449,9 +2449,13 @@ class DealEventAndSnapshotTests(QueueTestMixin, TestCase):
         return old
 
     def test_bootstrap_rows_carry_fields(self):
+        '''S2 之後 `last_fingerprint`／`vendor_extra` 的來源（house_etc）沒了，所以這組
+        斷言跑在回退開關下；預設行為另見 test_bootstrap_without_house_etc。'''
         from rental import contracts, snapshot_db
         created = self.seed_yesterday_db()
-        by = {r['vendor_house_id']: r for r in snapshot_db.bootstrap_rows(self.vendor, self.yesterday)}
+        with mock.patch.dict(os.environ, {'TWRH_ETC_DB_WRITE': '1'}):
+            by = {r['vendor_house_id']: r
+                  for r in snapshot_db.bootstrap_rows(self.vendor, self.yesterday)}
         self.assertEqual(sorted(by), ['h1', 'h2', 'h3'])
         fp1 = contracts.list_fingerprint({'price': '10000', 'title': 't1'})
         self.assertEqual((by['h1']['source'], by['h1']['last_detail_at'], by['h1']['last_fingerprint'],
@@ -2539,6 +2543,22 @@ class DealEventAndSnapshotTests(QueueTestMixin, TestCase):
         self.assertEqual(sorted(today), ['h1', 'h2'])
         self.assertEqual(today['h2']['monthly_price'], 8000)
         self.assertEqual(artifacts.read_snapshot('591', y_str), before)
+
+    def test_bootstrap_without_house_etc(self):
+        '''S2 預設：house_etc 停寫／drop 後 bootstrap 仍可用，只是指紋與 vendor_extra
+        留 NULL——它只在「前日 snapshot 不存在」時才跑，那兩欄的家已經是 list stub
+        分區與 parsed 分區（seed 判準自 S1 起也不看 DB 指紋了）。'''
+        from rental import snapshot_db
+        self.seed_yesterday_db()
+        by = {r['vendor_house_id']: r
+              for r in snapshot_db.bootstrap_rows(self.vendor, self.yesterday)}
+        self.assertEqual(sorted(by), ['h1', 'h2', 'h3'])
+        self.assertIsNone(by['h1']['last_fingerprint'])
+        self.assertIsNone(by['h1']['fingerprint_at_last_detail'])
+        self.assertIsNone(by['h1']['vendor_extra'])
+        # 其餘 carry 欄與值欄不受影響
+        self.assertEqual((by['h1']['source'], by['h1']['days_absent'], by['h1']['floor_ping']),
+                         ('detail', 0, 20.0))
 
     def test_snapshotfold_recovers_late_deal_from_earlier_snapshot(self):
         '''4d：今日 deals 事件的戶不在昨日 snapshot、但在前幾天的 snapshot 有 → 補值。'''
@@ -3074,3 +3094,60 @@ class SeedsFromFilesTests(QueueTestMixin, TestCase):
         self.assertNotIn('quiet', result.seeds)
         self.assertNotIn('dealt', result.seeds)
         self.assertEqual(meta['yesterday_ids'], 3)
+
+
+class EtcRetirementTests(QueueTestMixin, TestCase):
+    '''S2：house_etc 停寫。整份 detail_dict 自 S2a 起落在 parsed 分區的 vendor_extra、
+    snapshot 也攜帶最新一次；list_dict 只服務已退役的 DB 種子判準（S1 起改讀 snapshot
+    的 carry 欄）。歷史那份由 S2b 的 RDS export 永久保存。回退＝TWRH_ETC_DB_WRITE=1。'''
+
+    def raw_item(self, is_list, dict_value):
+        from scrapy_twrh.items import RawHouseItem
+        return RawHouseItem(
+            vendor=VENDOR_NAME, house_id='h', is_list=is_list,
+            **{'dict': dict_value})
+
+    def run_pipeline(self, env):
+        '''RawHouseItem 帶 dict、GenericHouseItem 才觸發分區列的寫出（stub／parsed
+        都掛在同戶的 Generic 上，見 pipelines 的 _pending_*），所以兩種都要餵。'''
+        from crawler.pipelines import CrawlerPipeline
+        from scrapy_twrh.items import GenericHouseItem
+        base = {'TWRH_RAW_BUCKET': '', 'TWRH_RUN_ID': 'run', 'TWRH_RAW_SINK': '0'}
+        with mock.patch.dict(os.environ, {**base, **env}):
+            pipeline = CrawlerPipeline()
+            pipeline.process_item(self.raw_item(True, {'price': '1萬', 'title': 'x'}), None)
+            pipeline.process_item(GenericHouseItem(
+                vendor=VENDOR_NAME, vendor_house_id='h', monthly_price=10000), None)
+            pipeline.process_item(self.raw_item(False, {'side_metas': {'型態': '公寓'}}), None)
+            pipeline.process_item(GenericHouseItem(
+                vendor=VENDOR_NAME, vendor_house_id='h', monthly_price=10000,
+                building_type=1), None)
+            pipeline.close_spider()
+
+    def test_house_etc_not_written_by_default(self):
+        from rental.models import HouseEtc
+        self.run_pipeline({})
+        self.assertFalse(HouseEtc.objects.filter(vendor_house_id='h').exists())
+        # 但 stub 指紋與 parsed 的 vendor_extra 照舊產出（分區才是它們的家）
+        self.assertEqual([r['vendor_house_id'] for r in self.shards('list')], ['h'])
+        parsed = self.shards('parsed')
+        self.assertEqual(len(parsed), 1)
+        self.assertIn('型態', parsed[0]['vendor_extra'])
+
+    def shards(self, tree):
+        import glob
+        import json as jsonlib
+        from rental import artifacts
+        out = []
+        for path in sorted(glob.glob(os.path.join(
+                artifacts.scratch_dir(tree, '591', TEST_DATE), '*.jsonl'))):
+            with open(path) as fh:
+                out += [jsonlib.loads(line) for line in fh if line.strip()]
+        return out
+
+    def test_rollback_switch_writes_it_again(self):
+        from rental.models import HouseEtc
+        self.run_pipeline({'TWRH_ETC_DB_WRITE': '1'})
+        etc = HouseEtc.objects.get(vendor_house_id='h')
+        self.assertEqual(etc.list_dict, {'price': '1萬', 'title': 'x'})
+        self.assertEqual(etc.detail_dict, {'side_metas': {'型態': '公寓'}})
