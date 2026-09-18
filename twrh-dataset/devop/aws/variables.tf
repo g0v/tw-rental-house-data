@@ -211,3 +211,9 @@ variable "queue_db_bookkeeping" {
   type        = string
   default     = "0"
 }
+
+variable "seed_source" {
+  description = "TWRH_SEED_SOURCE：snapshot＝種子判準走檔案（S1 起）；db＝回退到 House／HouseTS 判準"
+  type        = string
+  default     = "snapshot"
+}

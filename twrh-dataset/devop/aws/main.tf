@@ -161,6 +161,11 @@ locals {
     # 回退＝改這兩個值（TWRH_QUEUE_DB=1 記帳鏡像回來、TWRH_QUEUE_SOURCE=db 認領回 DB）。
     { name = "TWRH_QUEUE_SOURCE", value = var.queue_source },
     { name = "TWRH_QUEUE_DB", value = var.queue_db_bookkeeping },
+    # S1：detail 種子判準的來源。snapshot＝純函數走檔案（今日 list stub＋昨日 snapshot
+    # 的 carry 欄，見 rental/seeding.seeds_from_files）；材料不齊時 spider 自己退回 DB
+    # 判準。回退＝把這個值改回 db。只影響 seed_mode=diff（日跑）；sweep 的
+    # seed_mode=new 走另一條路，不受影響
+    { name = "TWRH_SEED_SOURCE", value = var.seed_source },
   ]
   crawler_secrets = [
     { name = "TWRH_DB_PASSWORD", valueFrom = aws_ssm_parameter.secrets["db-password"].arn },
