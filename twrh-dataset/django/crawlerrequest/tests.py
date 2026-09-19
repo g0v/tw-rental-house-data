@@ -3074,3 +3074,39 @@ class SeedsFromFilesTests(QueueTestMixin, TestCase):
         self.assertNotIn('quiet', result.seeds)
         self.assertNotIn('dealt', result.seeds)
         self.assertEqual(meta['yesterday_ids'], 3)
+
+
+class LatestTableTests(TestCase):
+    '''S3c 全戶最新狀態總表：latest(D) = fold(latest(D−1), final snapshot(D))，純函數。'''
+
+    def _row(self, hid, date, **kw):
+        from rental import contracts
+        row = {name: None for name, _ in contracts.SNAPSHOT_FIELDS}
+        row.update({'vendor': '591', 'vendor_house_id': hid, 'date': date, 'deal_status': 0,
+                    'vendor_extra': '{"big": true}'})
+        row.update(kw)
+        return row
+
+    def test_fold_overlays_present_houses_and_keeps_dropped_ones(self):
+        from rental import latest
+        d1 = latest.fold([], [self._row('a', '2026-09-10', monthly_price=10000),
+                              self._row('b', '2026-09-10', monthly_price=20000)])
+        self.assertEqual([r['vendor_house_id'] for r in d1], ['a', 'b'])
+        self.assertNotIn('vendor_extra', d1[0])              # 不含 vendor_extra
+        self.assertEqual(set(d1[0]), {n for n, _ in latest.LATEST_FIELDS})
+        # 9/11：a 更新、b 掉出 snapshot（關閉不再攜帶）、c 新戶
+        d2 = latest.fold(d1, [self._row('a', '2026-09-11', monthly_price=11000, days_absent=0),
+                              self._row('c', '2026-09-11', monthly_price=30000)])
+        by = {r['vendor_house_id']: r for r in d2}
+        self.assertEqual(sorted(by), ['a', 'b', 'c'])
+        self.assertEqual((by['a']['monthly_price'], by['a']['date']), (11000, '2026-09-11'))
+        self.assertEqual((by['b']['monthly_price'], by['b']['date']), (20000, '2026-09-10'))  # 總表接住
+        self.assertEqual(by['c']['date'], '2026-09-11')
+        # 輸入不被改動
+        self.assertEqual(d1[1]['date'], '2026-09-10')
+
+    def test_delta_is_snapshot_without_vendor_extra(self):
+        from rental import latest
+        rows = latest.delta([self._row('b', '2026-09-12'), self._row('a', '2026-09-12')])
+        self.assertEqual([r['vendor_house_id'] for r in rows], ['a', 'b'])
+        self.assertTrue(all('vendor_extra' not in r for r in rows))
