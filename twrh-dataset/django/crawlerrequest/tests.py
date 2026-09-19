@@ -3397,3 +3397,21 @@ class EtcRetirementTests(QueueTestMixin, TestCase):
         etc = HouseEtc.objects.get(vendor_house_id='h')
         self.assertEqual(etc.list_dict, {'price': '1萬', 'title': 'x'})
         self.assertEqual(etc.detail_dict, {'side_metas': {'型態': '公寓'}})
+
+
+class SeedcheckS2FingerprintTests(TestCase):
+    '''S2：house_etc 停寫後 DB 軌無 fingerprint 類，seedcheck 改由 snapshot 軌補上這一類。'''
+
+    def test_merge_fingerprint_keeps_db_classes_and_fixes_skipped(self):
+        from crawlerrequest.management.commands.seedcheck import merge_fingerprint
+        from rental import seeding
+        db = seeding.SeedResult(stale={'a', 'b'}, fingerprint=set(), absent={'c'}, returned={'d'},
+                                seeds={'a', 'b', 'c', 'd'}, n_open=10, n_in_list=8, skipped=5)
+        merged = merge_fingerprint(db, {'b', 'e', 'f'})   # b 已是 stale；e、f 新增
+        self.assertEqual(merged.fingerprint, {'b', 'e', 'f'})
+        self.assertEqual(merged.seeds, {'a', 'b', 'c', 'd', 'e', 'f'})
+        self.assertEqual((merged.stale, merged.absent, merged.returned), (db.stale, db.absent, db.returned))
+        self.assertEqual(merged.skipped, 3)              # 5 − |{e, f}|
+        self.assertEqual((merged.n_open, merged.n_in_list), (10, 8))
+        # 空集合＝原樣
+        self.assertEqual(merge_fingerprint(db, set()), db)
