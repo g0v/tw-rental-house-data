@@ -9,7 +9,14 @@ House（現值＝最新 snapshot）。
 規則（與現制 pipeline／synthts／syncstateful 語意逐條對齊）：
 - 在 list：last_fingerprint＝最後一次 stub 指紋
 - 今日有 detail（parsed）：整列覆蓋，source='detail'，last_detail_at＝crawled_at，
-  fingerprint_at_last_detail＝last_fingerprint（今日在 list 就是今日的，否則是最後已知的）
+  fingerprint_at_last_detail＝last_fingerprint（今日在 list 就是今日的，否則是最後已知的）。
+  **parsed 列的 None 不蓋既有值**（2026-09-19 拍板）：detail 從不帶 rough_address／
+  vendor_house_url（list 給的），parser 這次沒抽到的 has_parking／管理費／房廳數也一樣——
+  S3c dry-run 對 archive House 量到 rough_address 12,787 戶、vendor_house_url 4,533 戶被蓋成
+  NULL，DB pipeline 十年來是留舊值。狀態欄（deal_status／deal_time／n_day_deal）與 crawled_at
+  ／parser_version 例外，照舊由 detail 決定
+- list 改價：per_ping_price 跟著重算（2026-09-19 拍板），公式同 detail parser＝
+  (月租＋管理費＋停車費)／坪數；坪數缺就留 list 給的值
 - 今日 detail 是 404／拒解析（parsed 列只帶 deal_status=NOT_FOUND、其餘 NULL）：只當
   狀態訊號——deal_status 改 NOT_FOUND（DEAL sticky 照舊），租金／座標等沿用最後已知值，
   source／last_detail_at 不動（DB 的 detail_crawled_at 也不因 404 更新）。關閉當天那列
@@ -26,10 +33,12 @@ House（現值＝最新 snapshot）。
   昨日非 DEAL → NOT_FOUND（推導型成交留給下游，deal_source 不設）
 - 已關閉（NOT_FOUND／DEAL）且今日無任何訊號的戶：不再攜帶（snapshot 只含
   當日仍有意義的列＝OPENED 或今日有事件），與現制 HouseTS「open 每日一列」一致
-- 關閉多日後才進 591 成交列表的戶（591 成交後數日仍補列）：昨日 snapshot 已無此戶，
-  呼叫端可把「近幾天 snapshot 裡最後一列」用 closed_rows 傳進來當昨日列，成交列才帶得出
-  租金／座標等最後已知值（4d 推導側；沒給就退回只帶成交欄的空白列＝snapshotcheck 的
-  deal_only_rows）。days_absent 依兩列日期差遞推。
+- 昨日 snapshot 沒有、今日又有訊號的戶（關閉多日後才進 591 成交列表；關閉後掉出、
+  多日後又回列）：呼叫端可把「這戶最後已知的一列」用 closed_rows 傳進來當昨日列——
+  來源是 S3c 總表 latest(昨日)（2026-09-19 起），沒有總表時退回掃近幾天 snapshot——
+  成交列／回列才帶得出租金／座標等最後已知值（沒給就是只帶今日訊號的空白列＝
+  snapshotcheck 的 deal_only_rows；回列戶整列空白是 S3c dry-run 挖出的第二個缺陷）。
+  days_absent 依兩列日期差遞推。
 - 成交段語意（deals 事件勝、inferred、n_day_deal 推導）在 rental/deals.py
 
 不 import Django。
@@ -47,6 +56,18 @@ _PARSED_COPY = [name for name, _ in contracts.PARSED_FIELDS
                 if name not in ('vendor', 'vendor_house_id', 'date', 'run', 'parsed_version')]
 _CLOSURE_BLANK = [name for name in _PARSED_COPY
                   if name not in ('deal_status', 'crawled_at', 'parser_version')]
+# detail 列即使是 None 也照寫的欄：狀態與時間戳由 detail 決定；其餘 None＝「這次沒看到」不蓋舊值
+_DETAIL_ALWAYS = ('deal_status', 'deal_time', 'n_day_deal', 'crawled_at', 'parser_version')
+
+
+def _recompute_per_ping(row):
+    '''list 改價後每坪租金跟著動（2026-09-19 拍板）；公式同 detail parser：
+    (月租＋管理費＋停車費)／坪數。坪數缺就不動（留 list 自己算的或既有值）。'''
+    price, ping = row.get('monthly_price'), row.get('floor_ping')
+    if price is None or not ping:
+        return
+    row['per_ping_price'] = (price + (row.get('monthly_management_fee') or 0)
+                             + (row.get('monthly_parking_fee') or 0)) / ping
 
 
 def is_closure_row(parsed):
@@ -83,8 +104,8 @@ def _day_gap(date_str, prev_date):
 
 def fold(prev_rows, stubs, parsed_rows, deal_events, date_str, vendor='591', closed_rows=None):
     '''回傳今日 snapshot 列（list of dict，依 vendor_house_id 排序）。
-    closed_rows：{hid: 近幾天 snapshot 的最後一列}，只對「今日有 deals 事件但昨日不在 snapshot」
-    的戶生效（見模組說明）。'''
+    closed_rows：{hid: 這戶最後已知的一列}（S3c 總表或近幾天 snapshot），對「今日有任何訊號
+    （stub／parsed／deals）但昨日不在 snapshot」的戶當昨日列用（見模組說明）。'''
     prev = {r['vendor_house_id']: r for r in prev_rows}
     stub_by = _latest(stubs, 'seen_at')
     parsed_by = _latest(parsed_rows, 'crawled_at')
@@ -95,13 +116,13 @@ def fold(prev_rows, stubs, parsed_rows, deal_events, date_str, vendor='591', clo
     for hid in sorted(set(prev) | set(stub_by) | set(parsed_by) | set(deal_by)):
         yesterday = prev.pop(hid, None)   # 每戶只看一次：處理完即釋放昨日列（記憶體）
         gap = 1
-        if yesterday is None and hid in deal_by and hid in closed_rows:
-            yesterday = closed_rows[hid]
-            gap = _day_gap(date_str, yesterday.get('date'))
         stub = stub_by.get(hid)
         parsed = parsed_by.get(hid)
         deal = deal_by.get(hid)
         touched = stub is not None or parsed is not None or deal is not None
+        if yesterday is None and touched and hid in closed_rows:
+            yesterday = closed_rows[hid]
+            gap = _day_gap(date_str, yesterday.get('date'))
         if yesterday is not None and yesterday['deal_status'] != OPENED and not touched:
             continue   # 已關閉且無新訊號：不再攜帶
 
@@ -118,14 +139,25 @@ def fold(prev_rows, stubs, parsed_rows, deal_events, date_str, vendor='591', clo
             if not (yesterday is not None and yesterday['deal_status'] == DEAL):
                 row['deal_status'] = NOT_FOUND
             if stub is not None:
+                # 404 勝、但 list 的其他資料照帶（2026-09-19 維護者確認）
                 for name in _LIST_FIELDS:
                     if stub.get(name) is not None:
                         row[name] = stub[name]
+                if stub.get('monthly_price') is not None:
+                    _recompute_per_ping(row)
                 row['source'] = 'list'
         elif parsed is not None:
+            if stub is not None:
+                # 同日在 list：list 給的欄（rough_address 等 detail 從不帶的）先落，detail 再覆蓋
+                for name in _LIST_FIELDS:
+                    if stub.get(name) is not None:
+                        row[name] = stub[name]
             for name in _PARSED_COPY:
-                if name in parsed:
-                    row[name] = parsed[name]
+                if name not in parsed:
+                    continue
+                if parsed[name] is None and name not in _DETAIL_ALWAYS:
+                    continue   # None＝這次沒看到，不蓋既有值（2026-09-19）
+                row[name] = parsed[name]
             row['source'] = 'detail'
             row['last_detail_at'] = parsed.get('crawled_at')
             row['fingerprint_at_last_detail'] = row.get('last_fingerprint')
@@ -138,6 +170,8 @@ def fold(prev_rows, stubs, parsed_rows, deal_events, date_str, vendor='591', clo
             for name in _LIST_FIELDS:
                 if stub.get(name) is not None:
                     row[name] = stub[name]
+            if stub.get('monthly_price') is not None:
+                _recompute_per_ping(row)
             row['source'] = 'list'
             # 重新出現在 list 且今日無關閉／成交訊號＝在架的正面證據，狀態要回
             # OPENED（2026-09-17 維護者拍板）。此前沒有任何路徑會把 deal_status

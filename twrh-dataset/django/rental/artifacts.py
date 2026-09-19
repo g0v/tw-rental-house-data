@@ -38,6 +38,10 @@ TREES = {
 # 日跑先把昨日重摺成 final（輸入齊全）、再摺今日 provisional；final 覆寫 provisional
 # 是這棵樹裡唯一刻意的同 key 覆寫（bucket 有 versioning）
 SNAPSHOT_TREE = 'snapshot'
+# S3c：全戶最新狀態總表 latest/<vendor>/daily/<date>.parquet（整張表、一天一檔、15 MB 級；
+# lifecycle 14 天）＋ 每月 1 日另存 latest/<vendor>/monthly/<YYYY-MM>.parquet（永久檢查點）。
+# 每日 delta 不另存：它就是當日 final snapshot 去掉 vendor_extra，已在 snapshot 樹裡
+LATEST_TREE = 'latest'
 
 
 def artifact_dir():
@@ -188,13 +192,111 @@ def _fetch_snapshot(vendor_short, date_str, bucket=None):
     return path
 
 
-def read_snapshot(vendor_short, date_str, bucket=None):
-    '''某日 snapshot 列（list of dict）；不存在回 None（與空列表區分）。'''
+def read_snapshot(vendor_short, date_str, bucket=None, columns=None):
+    '''某日 snapshot 列（list of dict）；不存在回 None（與空列表區分）。
+    columns：只讀這些欄（與檔內實有欄取交集；舊檔可能缺新欄）——總表 fold 不讀 vendor_extra。'''
     path = _fetch_snapshot(vendor_short, date_str, bucket)
     if path is None:
         return None
     import pyarrow.parquet as pq
+    if columns is not None:
+        have = set(pq.read_schema(path).names)
+        columns = [c for c in columns if c in have]
+    return pq.read_table(path, columns=columns).to_pylist()
+
+
+# ---- S3c 總表 ------------------------------------------------------------------
+
+def latest_path(vendor_short, date_str):
+    return os.path.join(artifact_dir(), LATEST_TREE, vendor_short, 'daily', date_str + '.parquet')
+
+
+def latest_s3_key(vendor_short, date_str):
+    return '{}/{}/daily/{}.parquet'.format(LATEST_TREE, vendor_short, date_str)
+
+
+def latest_monthly_s3_key(vendor_short, date_str):
+    return '{}/{}/monthly/{}.parquet'.format(LATEST_TREE, vendor_short, date_str[:7])
+
+
+def _fetch_latest(vendor_short, date_str, bucket=None):
+    path = latest_path(vendor_short, date_str)
+    if os.path.exists(path):
+        return path
+    if not bucket:
+        return None
+    import boto3
+    from botocore.exceptions import ClientError
+    s3 = boto3.client('s3')
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        s3.download_file(bucket, latest_s3_key(vendor_short, date_str), path)
+    except ClientError as err:
+        if err.response.get('Error', {}).get('Code') in ('404', 'NoSuchKey', 'NotFound'):
+            return None
+        raise
+    return path
+
+
+def latest_exists(vendor_short, date_str, bucket=None):
+    return _fetch_latest(vendor_short, date_str, bucket) is not None
+
+
+def read_latest(vendor_short, date_str, bucket=None):
+    '''某日總表列（list of dict）；不存在回 None。'''
+    path = _fetch_latest(vendor_short, date_str, bucket)
+    if path is None:
+        return None
+    import pyarrow.parquet as pq
     return pq.read_table(path).to_pylist()
+
+
+def read_latest_rows_for(vendor_short, date_str, hids, bucket=None):
+    '''總表裡這些戶的列 {hid: row}；總表不存在回 None（呼叫端退回掃 snapshot）。'''
+    path = _fetch_latest(vendor_short, date_str, bucket)
+    if path is None:
+        return None
+    if not hids:
+        return {}
+    import pyarrow as pa
+    import pyarrow.compute as pc
+    import pyarrow.parquet as pq
+    table = pq.read_table(path)
+    mask = pc.is_in(table.column('vendor_house_id'), value_set=pa.array(sorted(hids)))
+    return {r['vendor_house_id']: r for r in table.filter(mask).to_pylist()}
+
+
+def write_latest(rows, vendor_short, date_str):
+    '''總表 → latest/<vendor>/daily/<date>.parquet（tmp＋rename）。回傳 (path, n_rows)。'''
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from rental import latest
+    fields = latest.LATEST_FIELDS
+    rows = sorted(rows, key=lambda r: r['vendor_house_id'])
+    schema = contracts.arrow_schema(fields)
+    columns = [pa.array([contracts.coerce_value(r.get(name), kind) for r in rows], type=f.type)
+               for (name, kind), f in zip(fields, schema)]
+    n = len(rows)
+    del rows
+    path = latest_path(vendor_short, date_str)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.tmp'
+    pq.write_table(pa.Table.from_arrays(columns, schema=schema), tmp, compression='zstd')
+    os.replace(tmp, path)
+    return path, n
+
+
+def upload_latest(bucket, vendor_short, date_str, path, monthly=False):
+    '''總表上 S3：daily/ 同 key 覆寫是設計內的（重跑同一天）；monthly/ 是每月 1 日的檢查點。'''
+    import boto3
+    s3 = boto3.client('s3')
+    keys = [latest_s3_key(vendor_short, date_str)]
+    if monthly:
+        keys.append(latest_monthly_s3_key(vendor_short, date_str))
+    for key in keys:
+        s3.upload_file(path, bucket, key)
+        print('    uploaded s3://{}/{}'.format(bucket, key))
+    return keys
 
 
 def read_snapshot_rows_for(vendor_short, date_str, hids, bucket=None):

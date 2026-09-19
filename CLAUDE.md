@@ -48,7 +48,7 @@ poetry run python django/manage.py loaddata vendors   # required: pipeline looks
 ```bash
 # Full crawl pipeline（D6b 起唯一編排：flow.py；go.sh／gobg.sh／orchestrate.sh／sweep.sh 已退役 2026-09-07）
 poetry run python flow.py run [--date YYYY-MM-DD] [--from STAGE] [--executor local|ecs] [--append] [--vendor 591] [--dry-run]
-#   run stages：export→list→liststubs→snapshotfinal→seed→seedcheck→detail→deals→queuefinalize→filequeuecheck→rawpack→parsed→dealevents→parsedcheck→snapshot→synthts→sync→snapshotcheck→exportcheck→manifest→quality→logs
+#   run stages：export→list→liststubs→snapshotfinal→latest→seed→seedcheck→detail→deals→queuefinalize→filequeuecheck→rawpack→parsed→dealevents→parsedcheck→snapshot→synthts→sync→snapshotcheck→exportcheck→manifest→quality→logs
 #   （snapshotfinal＝昨日 final snapshot 重摺，必須在 seed 之前：S1 種子判準讀它；2026-09-19 首夜讀到 provisional 多播 3,625 戶）
 poetry run python flow.py sweep [--date YYYY-MM-DD] [--vendor 591] [--dry-run]   # 前緣掃描：busy→frontier→liststubs→newdetail→queuefinalize→filequeuecheck→rawpack→parsed→logs
 poetry run python flow.py status [--date YYYY-MM-DD]                             # 日跑 stage 與各輪 sweep 的完成狀態
@@ -75,6 +75,7 @@ poetry run python django/manage.py rawpack --reconcile # 3-1：當日 raw scratc
 poetry run python django/manage.py artifactpack --tree list    # 4a：list stub shards → artifacts/list/<vendor>/<date>/<run>.jsonl.zst（＋S3 list/）
 poetry run python django/manage.py artifactpack --tree parsed  # 4b：parsed shards → artifacts/parsed/<vendor>/<date>/<run>.parquet（＋S3 parsed/）；一輪一檔、永不改寫別輪
 poetry run python django/manage.py artifactpack --tree deals   # 4d：deal591 成交事件 shards → artifacts/deals/<vendor>/<date>/<run>.parquet（＋S3 deals/）；事件全留
+poetry run python django/manage.py latestfold [--date] [--bootstrap --from D1 --to D2]  # S3c：總表(昨日)＝fold(總表(前日), 昨日 final) → latest/<vendor>/daily/<date>.parquet（整張表 15 MB 級；每月 1 日另存 monthly/；前日缺＝由 2026-09-10 起重放 snapshot）；fold 對回列戶查它
 poetry run python django/manage.py snapshotfold [--date] [--only final|provisional]  # 4c：昨日 final＝fold(前日 snapshot, 昨日分區)（flow snapshotfinal stage，seed 前）、今日 provisional＝fold(昨日 final, 今日分區)（flow snapshot stage）→ snapshot/<vendor>/<date>.parquet（一天一檔，final 覆寫 provisional）；前日缺＝昨日由 DB 摺出；--bootstrap --date D 只摺 D；--reupload
 poetry run python django/manage.py seedcheck [--date] [--strict]   # 4a 驗收：純函數（rental/seeding.py）從 stub 重算四類 seeds 對 queue；advisory。只在 flow seed→detail 之間有效（事後跑 detail_crawled_at 已更新必 DIFF）；只載 OPENED（House 全歷史 850 萬列全載會 OOM）
 poetry run python django/manage.py parsedcheck [--date] [--strict] # 4b 驗收：當日 parsed parquet 逐欄對 HouseTS（DB Point 約定 x=lat／y=lng；parquet NULL 而 DB 有值另計，不算錯）

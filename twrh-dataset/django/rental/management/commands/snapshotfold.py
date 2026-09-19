@@ -145,11 +145,19 @@ class Command(BaseCommand):
         parsed = artifacts.read_parsed_rows(short, date_str, read_bucket)
         deals = artifacts.read_deal_events(short, date_str, read_bucket)
         n_prev, n_stubs, n_parsed, n_deals = len(prev_rows), len(stubs), len(parsed), len(deals)
-        # 4d：關閉多日後才進成交列表的戶，昨日 snapshot 已無此戶 → 回看 deal lookback 天的
-        # snapshot 取最後一列，成交列才帶得出最後已知值（沒找到＝只帶成交欄的空白列）
-        orphans = {e['vendor_house_id'] for e in deals} - {r['vendor_house_id'] for r in prev_rows}
-        lookback = int(os.environ.get('TWRH_DEAL_LOOKBACK_DAYS', '7'))   # 同 vendor profile 預設
-        closed_rows = artifacts.find_closed_rows(short, orphans, prev_day.isoformat(), lookback, read_bucket)
+        # 昨日 snapshot 沒有、今日又有訊號的戶（關閉多日後才進成交列表；掉出後回列）：
+        # 先查 S3c 總表 latest(prev_day) 拿最後已知列（2026-09-19 起）；總表不在（起點／
+        # 回填）才退回掃 deal lookback 天的 snapshot、且只為成交事件的戶（舊行為）
+        prev_ids = {r['vendor_house_id'] for r in prev_rows}
+        orphans = ({s['vendor_house_id'] for s in stubs} | {p['vendor_house_id'] for p in parsed}
+                   | {e['vendor_house_id'] for e in deals}) - prev_ids
+        closed_rows = artifacts.read_latest_rows_for(short, prev_day.isoformat(), orphans, read_bucket)
+        recovered_from = 'latest'
+        if closed_rows is None:
+            recovered_from = 'earlier snapshots'
+            orphans = {e['vendor_house_id'] for e in deals} - prev_ids
+            lookback = int(os.environ.get('TWRH_DEAL_LOOKBACK_DAYS', '7'))   # 同 vendor profile 預設
+            closed_rows = artifacts.find_closed_rows(short, orphans, prev_day.isoformat(), lookback, read_bucket)
         n_orphans, n_closed = len(orphans), len(closed_rows)
         rows = snapshot.fold(prev_rows, stubs, parsed, deals, date_str, vendor=short,
                              closed_rows=closed_rows)
@@ -165,9 +173,8 @@ class Command(BaseCommand):
                   short, day, kind, n_prev, n_stubs, n_parsed, n_deals,
                   n, by_source, path, os.path.getsize(path) / 1e6))
         if n_orphans:
-            print('    deal events for houses not in {} snapshot: {} (recovered from earlier '
-                  'snapshots: {}, blank deal-only rows: {})'.format(
-                      prev_day, n_orphans, n_closed, n_orphans - n_closed))
+            print('    houses with signals today but not in {} snapshot: {} (recovered from {}: {}, '
+                  'blank rows: {})'.format(prev_day, n_orphans, recovered_from, n_closed, n_orphans - n_closed))
         self.upload(bucket, short, day, path)
 
     def upload(self, bucket, short, day, path):

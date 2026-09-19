@@ -329,6 +329,15 @@ def stage_snapshotfinal(_ctx):
         print('!!! snapshotfold --only final failed (seed 將退回 DB 判準或讀到 provisional)')
 
 
+def stage_latest(_ctx):
+    # S3c：總表(昨日) = fold(總表(前日), 昨日 final)。snapshotfinal 之後、seed 之前；
+    # 今日 provisional 的 fold 對「昨日 snapshot 沒有、今日又有訊號」的戶查它。
+    # advisory：失敗大聲講、不擋 pipeline（fold 退回掃近幾天 snapshot、只救成交事件的戶）
+    result = manage('latestfold', check=False)
+    if result.returncode != 0:
+        print('!!! latestfold failed (advisory; 今日 fold 的回列戶退回掃近幾天 snapshot)')
+
+
 def stage_snapshot(_ctx):
     # 4c：今日 provisional ＝ fold(昨日 final, 今日分區)；昨日 final 已在 snapshotfinal
     # stage 摺好。雙寫期 advisory：失敗大聲講、不擋 pipeline
@@ -531,6 +540,8 @@ RUN_STAGES = [
     ('liststubs', stage_liststubs, None),
     # 昨日 final snapshot 要在 seed 之前摺好（S1 種子判準讀它；2026-09-19）
     ('snapshotfinal', stage_snapshotfinal, None),
+    # S3c 總表(昨日)：吃剛摺好的昨日 final（2026-09-19 上線）
+    ('latest', stage_latest, None),
     ('seed', stage_seed, None),
     ('seedcheck', stage_seedcheck, None),
     ('detail', stage_detail, None),

@@ -2059,6 +2059,70 @@ class SnapshotFoldTests(TestCase):
             self.assertIsNone(by[hid]['deal_source'], hid)
             self.assertEqual(by[hid]['source'], 'list', hid)
 
+    def test_detail_none_does_not_erase_known_values(self):
+        '''2026-09-19 拍板：parsed 列的 None 不蓋既有值。detail 從不帶 rough_address／
+        vendor_house_url（S3c dry-run：12,787／4,533 戶被蓋成 NULL），parser 這次沒抽到的
+        has_parking／管理費也一樣；狀態欄與 crawled_at 照舊由 detail 決定。'''
+        from rental.snapshot import fold
+        stub = {**self.stub('a', 'T1'), 'rough_address': '大安區-臨江街', 'floor_ping': 12.5}
+        day1 = fold([], [stub], [{**self.parsed('a', 'T1d'), 'rough_address': None,
+                                  'vendor_house_url': None, 'has_parking': True,
+                                  'monthly_parking_fee': 0, 'deal_time': None}], [], self.D1)
+        a = day1[0]
+        self.assertEqual((a['rough_address'], a['has_parking'], a['source']), ('大安區-臨江街', True, 'detail'))
+        # 隔日 detail：parser 沒抽到 has_parking、價格變、狀態欄照寫
+        day2 = fold(day1, [], [{**self.parsed('a', 'T2d', price=11000), 'has_parking': None,
+                                'rough_address': None, 'deal_time': None, 'n_day_deal': None}], [], self.D2)
+        a = day2[0]
+        self.assertEqual((a['monthly_price'], a['has_parking'], a['rough_address'], a['last_detail_at']),
+                         (11000, True, '大安區-臨江街', 'T2d'))
+        self.assertIsNone(a['deal_time'])
+
+    def test_list_price_change_recomputes_per_ping(self):
+        '''2026-09-19 拍板：list 改價，每坪租金跟著重算，公式同 detail（含管理費／停車費）。'''
+        from rental.snapshot import fold
+        day1 = fold([], [self.stub('a', 'T1')],
+                    [{**self.parsed('a', 'T1d'), 'monthly_management_fee': 500,
+                      'monthly_parking_fee': 0, 'per_ping_price': 840.0}], [], self.D1)
+        self.assertEqual(day1[0]['per_ping_price'], 840.0)
+        day2 = fold(day1, [{**self.stub('a', 'T2', fp='f2', price=12000), 'per_ping_price': 960.0}],
+                    [], [], self.D2)
+        a = day2[0]
+        self.assertEqual((a['monthly_price'], a['source']), (12000, 'list'))
+        self.assertAlmostEqual(a['per_ping_price'], (12000 + 500) / 12.5)   # 不是 list 的 960
+        # 坪數未知：留 list 自己算的值
+        day1b = fold([], [{**self.stub('b', 'T1', price=5000), 'per_ping_price': 500.0}], [], [], self.D1)
+        self.assertEqual(day1b[0]['per_ping_price'], 500.0)
+
+    def test_same_day_404_wins_status_but_list_fields_carry(self):
+        '''同日 detail 404 且 list 又出現：狀態讓 404 勝、list 的其他資料照帶（2026-09-19 確認）。'''
+        from rental.snapshot import fold, NOT_FOUND
+        day1 = fold([], [self.stub('a', 'T1')], [self.parsed('a', 'T1d')], [], self.D1)
+        day2 = fold(day1, [self.stub('a', 'T2', fp='f2', price=9000)],
+                    [{'vendor_house_id': 'a', 'deal_status': NOT_FOUND}], [], self.D2)
+        a = day2[0]
+        self.assertEqual((a['deal_status'], a['monthly_price'], a['source'], a['last_seen_at'],
+                          a['days_absent'], a['last_fingerprint'], a['floor_ping']),
+                         (NOT_FOUND, 9000, 'list', 'T2', 0, 'f2', 12.5))
+        self.assertAlmostEqual(a['per_ping_price'], 9000 / 12.5)
+
+    def test_returning_house_recovers_from_latest_row(self):
+        '''掉出 snapshot 多日後回列：有總表列當昨日列就帶回最後已知值並回 OPENED；
+        沒有就是只帶今日 list 欄的空白列（S3c dry-run 挖出的第二個缺陷）。'''
+        from rental.snapshot import fold, NOT_FOUND, OPENED
+        day1 = fold([], [self.stub('a', 'T1')], [self.parsed('a', 'T1d')], [], self.D1)
+        day2 = fold(day1, [], [{'vendor_house_id': 'a', 'deal_status': NOT_FOUND}], [], self.D2)
+        self.assertEqual(day2[0]['deal_status'], NOT_FOUND)
+        day3 = fold(day2, [], [], [], '2026-01-17')
+        self.assertEqual(day3, [])                                   # 關閉且無訊號：不攜帶
+        blank = fold(day3, [self.stub('a', 'T4', price=9500)], [], [], '2026-01-18')[0]
+        self.assertEqual((blank['floor_ping'], blank['last_detail_at'], blank['deal_status']), (None, None, OPENED))
+        back = fold(day3, [self.stub('a', 'T4', price=9500)], [], [], '2026-01-18',
+                    closed_rows={'a': day2[0]})[0]
+        self.assertEqual((back['floor_ping'], back['last_detail_at'], back['deal_status'], back['monthly_price'],
+                          back['source'], back['days_absent'], back['first_seen_at']),
+                         (12.5, 'T1d', OPENED, 9500, 'list', 0, 'T1'))
+
     def test_day_one_and_day_two_carry_semantics(self):
         from rental.snapshot import fold
         day1 = fold([], [self.stub('a', 'T1'), self.stub('b', 'T1'), self.stub('c', 'T1')],
@@ -2298,12 +2362,14 @@ class SweepWorkersTests(TestCase):
         import flow
         from unittest.mock import patch
         names = flow.RUN_STAGE_NAMES
-        self.assertLess(names.index('snapshotfinal'), names.index('seed'))
+        self.assertLess(names.index('snapshotfinal'), names.index('latest'))   # 總表吃剛摺好的昨日 final
+        self.assertLess(names.index('latest'), names.index('seed'))
         self.assertLess(names.index('liststubs'), names.index('snapshotfinal'))
         self.assertLess(names.index('parsedcheck'), names.index('snapshot'))
         with patch.object(flow, 'DRY_RUN', True):
             out = {}
             for name, body in (('snapshotfinal', flow.stage_snapshotfinal),
+                               ('latest', flow.stage_latest),
                                ('snapshot', flow.stage_snapshot)):
                 buf = io.StringIO()
                 with redirect_stdout(buf):
@@ -2313,6 +2379,7 @@ class SweepWorkersTests(TestCase):
         self.assertIn('snapshotfold --only final', out['snapshotfinal'][0])
         self.assertEqual(len(out['snapshot']), 1)
         self.assertIn('snapshotfold --only provisional', out['snapshot'][0])
+        self.assertIn('manage.py latestfold', out['latest'][0])
 
 
 class QueueBusyTests(QueueTestMixin, TestCase):
@@ -2539,6 +2606,36 @@ class DealEventAndSnapshotTests(QueueTestMixin, TestCase):
         self.assertEqual(sorted(today), ['h1', 'h2'])
         self.assertEqual(today['h2']['monthly_price'], 8000)
         self.assertEqual(artifacts.read_snapshot('591', y_str), before)
+
+    def test_latestfold_folds_yesterday_and_snapshotfold_recovers_from_it(self):
+        '''S3c：latestfold 把昨日 final 摺進總表（前日缺＝重放）；隔天 snapshotfold 對
+        「昨日 snapshot 沒有、今日又回列」的戶從總表拿最後已知列。'''
+        from django.core.management import call_command
+        from rental import artifacts
+        self.seed_yesterday_db()
+        call_command('snapshotfold', '--date', TEST_DATE, '--no-upload')   # 昨日 bootstrap＋今日 provisional
+        y_str = self.yesterday.isoformat()
+        tomorrow = (self.day + timedelta(days=1)).isoformat()
+        # 總表(昨日)：前日沒有總表 → 從起點重放（起點＝昨日自己）
+        with mock.patch.dict(os.environ, {'TWRH_LATEST_BOOTSTRAP_FROM': y_str}):
+            call_command('latestfold', '--date', TEST_DATE, '--no-upload')
+        table = {r['vendor_house_id']: r for r in artifacts.read_latest('591', y_str)}
+        self.assertEqual(sorted(table), ['h1', 'h2', 'h3'])
+        self.assertNotIn('vendor_extra', table['h1'])
+        # 總表(今日) = fold(總表(昨日), snapshot(今日))：h3 掉出 snapshot 但總表接住
+        call_command('latestfold', '--date', tomorrow, '--no-upload')
+        table2 = {r['vendor_house_id']: r for r in artifacts.read_latest('591', TEST_DATE)}
+        self.assertEqual(sorted(table2), ['h1', 'h2', 'h3'])
+        self.assertEqual(table2['h3']['date'], y_str)
+        self.assertEqual(table2['h1']['date'], TEST_DATE)
+        # 明日：h3（DEAL、不在今日 snapshot）回列 → snapshotfold 從總表(今日) 拿回它的列
+        self.write_rows('list', 'run', [{'vendor_house_id': 'h3', 'seen_at': self.at(self.day + timedelta(days=1), 2).isoformat(),
+                                         'fingerprint': 'fp3', 'monthly_price': 9000}], tomorrow)
+        call_command('artifactpack', '--tree', 'list', '--date', tomorrow, '--no-upload')
+        call_command('snapshotfold', '--date', tomorrow, '--only', 'provisional', '--no-upload')
+        by = {r['vendor_house_id']: r for r in artifacts.read_snapshot('591', tomorrow)}
+        self.assertEqual((by['h3']['deal_status'], by['h3']['monthly_price'], by['h3']['source']), (0, 9000, 'list'))
+        self.assertEqual(by['h3']['first_seen_at'], table2['h3']['first_seen_at'])
 
     def test_snapshotfold_recovers_late_deal_from_earlier_snapshot(self):
         '''4d：今日 deals 事件的戶不在昨日 snapshot、但在前幾天的 snapshot 有 → 補值。'''

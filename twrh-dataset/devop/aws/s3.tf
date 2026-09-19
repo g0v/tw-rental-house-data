@@ -68,6 +68,17 @@ resource "aws_s3_bucket_lifecycle_configuration" "raw" {
       days = 365
     }
   }
+  rule {
+    # S3c 總表日檔：15 MB／天、可由月檢查點＋snapshot 重放，留兩週即可；monthly/ 永久
+    id     = "expire-latest-daily-14d"
+    status = "Enabled"
+    filter {
+      prefix = "latest/591/daily/"
+    }
+    expiration {
+      days = 14
+    }
+  }
 }
 
 resource "aws_s3_bucket_public_access_block" "raw" {
@@ -103,6 +114,8 @@ resource "aws_iam_role_policy" "crawler_raw_upload" {
           # 4d deal events（一輪一檔）、4c snapshot（一天一檔，final 覆寫 provisional）
           "${aws_s3_bucket.raw.arn}/deals/*",
           "${aws_s3_bucket.raw.arn}/snapshot/*",
+          # S3c 全戶最新狀態總表：daily/ 一天一檔（同 key 重跑覆寫）、monthly/ 每月 1 日檢查點
+          "${aws_s3_bucket.raw.arn}/latest/*",
         ]
       },
       {
