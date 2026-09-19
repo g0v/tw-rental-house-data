@@ -20,9 +20,24 @@ from django.utils import timezone
 
 from crawlerrequest.enums import RequestType
 from crawlerrequest.models import RequestTS
-from rental import artifacts, enums, filequeue, seeding
+from rental import artifacts, enums, filequeue, seeding, snapshot_db
 from rental.models import House, HouseTS, Vendor
 from rental.raws import vendor_dirname
+
+
+def merge_fingerprint(result, fingerprint):
+    '''DB 軌的 stale／absent／returned ＋ snapshot 軌的 fingerprint 類。
+
+    S2 之後 house_etc 停寫、`House.list_fingerprint_changed_at` 不再維護，DB 軌算不出
+    fingerprint 類（生產判準自 S1 起讀 snapshot 的 fingerprint_at_last_detail 對今日 stub
+    指紋）；不補，S2 隔天起 seedcheck 每天 DIFF by construction（only_db ≈ 1,200 戶全是
+    這一類），其餘三類的獨立對帳也跟著沒人看。fingerprint 類全在今日 list 內，skipped
+    只需扣掉新加進 seeds 的那些。
+    '''
+    fingerprint = set(fingerprint)
+    seeds = result.stale | fingerprint | result.absent | result.returned
+    return result._replace(fingerprint=fingerprint, seeds=seeds,
+                           skipped=result.skipped - len(fingerprint - result.seeds))
 
 
 class Command(BaseCommand):
@@ -93,6 +108,9 @@ class Command(BaseCommand):
         # HouseState 撐破 2 GB task memory（9/11 seedcheck 兩次 exit 137 OOM）
         source = options['state_source']
 
+        # S2 後 list_fingerprint_changed_at 凍在停寫那一刻的值：拿凍值判會零星誤報，一律當無
+        db_has_fingerprint = snapshot_db.etc_available()
+
         def db_state():
             out = {}
             for hid, crawled, fp_changed in House.objects.filter(
@@ -102,7 +120,7 @@ class Command(BaseCommand):
                 out[hid] = seeding.HouseState(
                     open=True,
                     detail_crawled_at=crawled,
-                    fingerprint_changed_at=fp_changed)
+                    fingerprint_changed_at=fp_changed if db_has_fingerprint else None)
             return out
 
         def snapshot_state():
@@ -140,6 +158,16 @@ class Command(BaseCommand):
                 refresh_jitter_days=options['refresh_jitter'])
 
         result = seeds_from(state)
+        fingerprint_source = source
+        if source == 'db' and not db_has_fingerprint:
+            # S2：DB 軌沒有 fingerprint 類，改由 snapshot 軌補（見 merge_fingerprint）；
+            # 昨日 snapshot 不在就明講，這一類會全數落在 only_db
+            try:
+                result = merge_fingerprint(result, seeds_from(snapshot_state()).fingerprint)
+                fingerprint_source = 'snapshot'
+            except CommandError as e:
+                print('seedcheck: {}——fingerprint 類無來源（S2 後 DB 無指紋），only_db 會含這一類'.format(e))
+                fingerprint_source = 'unavailable'
 
         if file_ledger:
             db_seeds = filequeue.seed_ids(vendor_dirname(vendor.name), day.isoformat(), 'detail')
@@ -165,6 +193,7 @@ class Command(BaseCommand):
             'now': now.isoformat(timespec='seconds'),
             'now_source': now_source,
             'state_source': source,
+            'fingerprint_source': fingerprint_source,
         }
         if stamp:
             report['db_classes'] = stamp.get('classes')
