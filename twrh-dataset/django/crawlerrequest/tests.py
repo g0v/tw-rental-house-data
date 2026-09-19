@@ -3282,12 +3282,12 @@ class CompareExportTests(TestCase):
         return proc.returncode, proc.stdout
 
     def test_decimal_mapping_is_identical_only_with_expect_mapped(self):
-        db = ['2,22.6,1106.19,2', '1,10,1000,1']
-        snap = ['1,10,1000,1', '2,22.58,1107.17,2']    # 順序不同＋坪數 1 位 vs 2 位
-        code, out = self._compare(db, snap, '--expect-mapped')
+        db = ['2,22.6,1106.19,2', '1,10,1000,1', '3,19.0,1000,1']
+        snap = ['1,10,1000,1', '2,22.58,1107.17,2', '3,18.95,1000,1']   # 順序不同＋坪數 1 位 vs 2 位；
+        code, out = self._compare(db, snap, '--expect-mapped')            # 18.95 是 x.x5 四捨五入（#2 剩 3 戶）
         self.assertEqual(code, 0, out)
         self.assertIn('小數位對映', out)
-        self.assertIn('坪數 1 戶', out)
+        self.assertIn('坪數 2 戶', out)
         code, out = self._compare(db, snap)             # 純逐 byte：仍是 DIFF
         self.assertEqual(code, 1, out)
 

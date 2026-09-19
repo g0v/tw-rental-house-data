@@ -25,6 +25,7 @@ zip 會取其中第一個 *.csv（月包形狀：tw-rental-data/<prefix>-raw.csv
 '''
 import argparse
 import csv
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import hashlib
 import io
 import os
@@ -48,10 +49,19 @@ def _float(v):
         return None
 
 
+def _round1(v):
+    # 591 是四捨五入（18.95 → 19.0）；python 的 round() 對 x.x5 走二進位＋銀行家進位
+    # 會得 18.9（exportcheck #2 剩 3 戶全是這型），所以走十進位 HALF_UP
+    try:
+        return Decimal(str(v).strip()).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError):
+        return None
+
+
 def _ping_equal(a, b):
     # 坪數：DB（list、1 位）vs snapshot（detail、2 位）——各進位到 1 位相等即對映相等
-    fa, fb = _float(a), _float(b)
-    return fa is not None and fb is not None and round(fa, 1) == round(fb, 1)
+    ra, rb = _round1(a), _round1(b)
+    return ra is not None and rb is not None and ra == rb
 
 
 def _per_ping_equal(a, b):
