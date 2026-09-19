@@ -159,6 +159,22 @@ def archive_scrapy_log(ctx, name):
     return dst
 
 
+def ship_scrapy_log(path):
+    '''歸檔、讀完就立刻 gzip＋上 S3，不等收尾的 logs stage——9/17、9/19 兩次 task
+    在 logs stage 之前死掉，那一場的 spider log 就跟著沒了。S3 logs/<date>/ 是唯一
+    長期留存；本機／DRY_RUN 只 gzip。上傳失敗（或沒有 TWRH_CLUSTER）.gz 留在
+    LOGS_DIR，stage_logs 收尾時照舊重送。呼叫端先讀完（breaker／seed 計數）再 ship。'''
+    if DRY_RUN or not os.path.exists(path):
+        return
+    with open(path, 'rb') as src, gzip.open(path + '.gz', 'wb') as dst:
+        shutil.copyfileobj(src, dst)
+    os.unlink(path)
+    if os.environ.get('TWRH_CLUSTER'):
+        # ship_logs 以前綴 glob：傳整個檔名只會撈到這一個 .gz
+        run(['poetry', 'run', 'python', 'devop/workers.py',
+             'ship_logs', LOGS_DIR, os.path.basename(path)], check=False)
+
+
 def breaker_tripped(log_path):
     try:
         with open(log_path, errors='replace') as f:
@@ -180,7 +196,9 @@ class SweepYield(Exception):
 def stage_list(ctx):
     run(ctx.crawl(ctx.vendor.list_spider), check=True)
     log = archive_scrapy_log(ctx, 'list')
-    if breaker_tripped(log):
+    tripped = breaker_tripped(log)
+    ship_scrapy_log(log)
+    if tripped:
         raise StageFailed('list breaker tripped (error_rate_exceeded)')
 
 
@@ -191,8 +209,10 @@ def stage_seed(ctx):
     if DRY_RUN:
         return
     with open(log, errors='replace') as f:
-        if not any('seed-only mode' in line for line in f):
-            raise StageFailed('seed generation failed')
+        seeded = any('seed-only mode' in line for line in f)
+    ship_scrapy_log(log)
+    if not seeded:
+        raise StageFailed('seed generation failed')
 
 
 def consume_loop(ctx, batch_size, extra_env=None, tag='detail'):
@@ -216,7 +236,9 @@ def consume_loop(ctx, batch_size, extra_env=None, tag='detail'):
             raise StageFailed('detail batch {} exited {}'.format(
                 n, result.returncode))
         log = archive_scrapy_log(ctx, '{}.{}'.format(tag, n))
-        if breaker_tripped(log):
+        tripped = breaker_tripped(log)
+        ship_scrapy_log(log)
+        if tripped:
             raise StageFailed('detail breaker tripped at batch {}'.format(n))
         if not os.path.exists(marker):
             break
@@ -271,7 +293,9 @@ def stage_deals(ctx):
                   '-a', 'lookback_days=' + str(ctx.vendor.deal_lookback_days)),
         check=True)
     log = archive_scrapy_log(ctx, 'deals')
-    if breaker_tripped(log):
+    tripped = breaker_tripped(log)
+    ship_scrapy_log(log)
+    if tripped:
         raise StageFailed('deals breaker tripped (error_rate_exceeded)')
 
 
@@ -397,6 +421,8 @@ def stage_export(_ctx):
 
 
 def stage_logs(ctx):
+    # 收尾：各 stage 已由 ship_scrapy_log 逐檔 gzip＋上 S3，這裡只撿漏（沒 ship 到的
+    # .log、上傳失敗留下的 .gz）
     for path in glob.glob(os.path.join(LOGS_DIR, '{}.*.log'.format(ctx.stamp))):
         with open(path, 'rb') as src, gzip.open(path + '.gz', 'wb') as dst:
             shutil.copyfileobj(src, dst)
@@ -436,13 +462,15 @@ def stage_frontier(ctx):
                   '-a', 'frontier_pages={}'.format(ctx.vendor.frontier_pages)),
         check=True)
     log = archive_scrapy_log(ctx, 'sweep-list')
-    if breaker_tripped(log):
-        raise StageFailed('sweep list breaker tripped')
+    tripped = breaker_tripped(log)
     if not DRY_RUN:
         with open(log, errors='replace') as f:
             for line in f:
                 if 'unseen houses discovered' in line:
                     print(line.strip().split('INFO: ')[-1])
+    ship_scrapy_log(log)
+    if tripped:
+        raise StageFailed('sweep list breaker tripped')
 
 
 def stage_newdetail(ctx):
@@ -455,7 +483,9 @@ def stage_newdetail(ctx):
     for n in range(1, int(ctx.vendor.sweep_detail_passes) + 1):
         run(ctx.crawl(ctx.vendor.detail_spider, '-a', 'seed_mode=new'), check=True)
         log = archive_scrapy_log(ctx, 'sweep-detail.{}'.format(n))
-        if breaker_tripped(log):
+        tripped = breaker_tripped(log)
+        ship_scrapy_log(log)
+        if tripped:
             raise StageFailed('sweep detail breaker tripped at pass {}'.format(n))
 
 
@@ -475,6 +505,7 @@ def sweep_detail_with_workers(ctx, n_workers):
                 m = re.search(r'seed-only mode: (\d+) requests in queue', line)
                 if m:
                     total = int(m.group(1))
+        ship_scrapy_log(log)
         if total is None:
             raise StageFailed('sweep seed generation failed')
         print('sweep seeds: {} new houses'.format(total), flush=True)

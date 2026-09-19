@@ -17,6 +17,11 @@ zip 會取其中第一個 *.csv（月包形狀：tw-rental-data/<prefix>-raw.csv
   刊登者編碼（DB=Author.uuid／snapshot=author_key）
   提供家具_*（DB 被 list 的 tag 版蓋掉＝失真，snapshot 是最後一次 detail 的值＝正確；
     2026-09-18 拍板列為預期差異，但每次印「幾戶兩軌不同」當度量——歸零才奇怪）
+  坪數／每坪租金 的小數位（2026-09-19 exportcheck #1：坪數 56、每坪租金 162 戶）：591 list 頁
+    給 1 位小數、detail 頁給 2 位；同一天 detail 之後又被 sweep 的 list 看到時，DB 是
+    後寫者（list、1 位）勝，fold 是同日 detail 勝（2 位）。snapshot 較精確，不是錯——
+    坪數兩邊各進位到 1 位相等、每坪租金相對差 ≤ 1%（0.05／坪數的連鎖）就視為對映相等，
+    逐 byte 不同也判 IDENTICAL；筆數照印當度量。
 '''
 import argparse
 import csv
@@ -34,6 +39,32 @@ MAPPED_COLUMNS = ['物件首次發現時間', '物件最後更新時間', '刊�
 # snapshot 帶的是最後一次 detail 的家具 dict。2026-09-18 首次 exportcheck：3,739 筆
 # DB '-' 對 snapshot 有值。schema 1.0 §3.5 與 issue #238 已記這個修復。
 IMPROVED_COLUMNS = ['提供家具_']
+
+
+def _float(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _ping_equal(a, b):
+    # 坪數：DB（list、1 位）vs snapshot（detail、2 位）——各進位到 1 位相等即對映相等
+    fa, fb = _float(a), _float(b)
+    return fa is not None and fb is not None and round(fa, 1) == round(fb, 1)
+
+
+def _per_ping_equal(a, b):
+    # 每坪租金＝租金／坪數：坪數差 ≤ 0.05 的連鎖，相對差 ≤ 1%（坪數 ≥ 5 時的上界）
+    fa, fb = _float(a), _float(b)
+    return fa is not None and fb is not None and fb != 0 and abs(fa - fb) / abs(fb) <= 0.01
+
+
+# 小數位對映（`--expect-mapped` 才套用）：欄名 → 相等判準；不相等的照常計入 DIFF
+TOLERANT_COLUMNS = {
+    '坪數': _ping_equal,
+    '每坪租金（含管理費與停車費）': _per_ping_equal,
+}
 
 
 def read_csv(path):
@@ -120,22 +151,35 @@ def main():
     rmap = {r[key_idx]: r for r in right[1:]}
     only_l = sorted(set(lmap) - set(rmap))
     only_r = sorted(set(rmap) - set(lmap))
+
+    tolerant = {lh.index(c): fn for c, fn in TOLERANT_COLUMNS.items()
+                if args.expect_mapped and c in lh}
+    counts = {}
+    samples = {}
+    tolerated = {}
+    for hid in sorted(set(lmap) & set(rmap)):
+        for i, (a, b) in enumerate(zip(lmap[hid], rmap[hid])):
+            if a == b or i in drop_idx:
+                continue
+            col = lh[i]
+            if i in tolerant and tolerant[i](a, b):
+                tolerated[col] = tolerated.get(col, 0) + 1
+                continue
+            counts[col] = counts.get(col, 0) + 1
+            samples.setdefault(col, []).append((hid, a, b))
+    if tolerated:
+        print('小數位對映（預期差異，snapshot 為準）: {}'.format('、'.join(
+            '{} {} 戶'.format(col, n) for col, n in sorted(tolerated.items()))))
+    if not only_l and not only_r and not counts:
+        print('IDENTICAL — 逐 byte 不同，但差異全在小數位對映內')
+        return 0
+
     print('DIFF — 只在左 {} 戶、只在右 {} 戶、共有 {} 戶'.format(
         len(only_l), len(only_r), len(set(lmap) & set(rmap))))
     if only_l:
         print('  只在左樣本: {}'.format(only_l[:args.sample]))
     if only_r:
         print('  只在右樣本: {}'.format(only_r[:args.sample]))
-
-    counts = {}
-    samples = {}
-    for hid in sorted(set(lmap) & set(rmap)):
-        for i, (a, b) in enumerate(zip(lmap[hid], rmap[hid])):
-            if a == b or i in drop_idx:
-                continue
-            col = lh[i]
-            counts[col] = counts.get(col, 0) + 1
-            samples.setdefault(col, []).append((hid, a, b))
     if counts:
         print('  逐欄差異（欄位: 筆數）：')
         for col, n in sorted(counts.items(), key=lambda kv: -kv[1]):

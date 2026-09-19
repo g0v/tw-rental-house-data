@@ -51,8 +51,8 @@ SNAP_SKIP = {'vendor_extra'}
 KNOWN = {
     'facilities': 'House 被 list 日 tag 版蓋掉（2026-09-13 根因），snapshot 留 detail 版＝snapshot 對',
     'apt_feature_code': '同 facilities：list 日以 0 補陽台／衛浴位蓋掉 House 的 detail 版；snapshot 較完整',
-    'floor_ping': 'House 進位到 1 位小數、snapshot 保留 2 位（exportcheck 已列為對映格式差）',
-    'per_ping_price': 'floor_ping 進位差的連鎖；另有 list 改價後 House 重算而 snapshot fold 未重算（待補）',
+    'floor_ping': '591 list 頁 1 位小數、detail 頁 2 位：同日 detail 後再被 sweep 的 list 看到，DB 後寫者（list）勝、fold 同日 detail 勝；snapshot 較精確（compare_export 已列小數位對映）',
+    'per_ping_price': 'floor_ping 進位差的連鎖（compare_export 相對差 ≤ 1% 對映）；list 改價的重算 fold 已補（2026-09-19）',
     'imgs': 'House 存 list 的單張縮圖、parsed 2.5.0 起存 detail 整本相簿（主機／尺寸後綴已正規化）；snapshot 較完整',
 }
 

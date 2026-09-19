@@ -3207,3 +3207,93 @@ class LatestTableTests(TestCase):
         rows = latest.delta([self._row('b', '2026-09-12'), self._row('a', '2026-09-12')])
         self.assertEqual([r['vendor_house_id'] for r in rows], ['a', 'b'])
         self.assertTrue(all('vendor_extra' not in r for r in rows))
+
+
+class ScrapyLogShipTests(TestCase):
+    '''spider log 歸檔完立刻 gzip＋上 S3（2026-09-19）：9/17、9/19 兩次 task 死在 logs stage
+    之前，那一場的 log 就沒了。讀完（breaker／seed 計數）才 ship，且 ship 在 raise 之前。'''
+
+    def _run_stage_list(self, env, log_text):
+        import tempfile
+        import flow
+        from unittest.mock import patch
+        tmp = tempfile.mkdtemp(prefix='twrh-logship-')
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(' '.join(cmd))
+            import subprocess
+            return subprocess.CompletedProcess(cmd, 0, '', '')
+
+        class Opts:
+            date = '2026-09-19'; vendor = '591'
+        with patch.dict(os.environ, env, clear=False), \
+                patch.object(flow, 'DRY_RUN', False), \
+                patch.object(flow, 'BASE', tmp), \
+                patch.object(flow, 'LOGS_DIR', os.path.join(tmp, 'logs')), \
+                patch.object(flow, 'run', fake_run):
+            with patch.object(flow, 'DRY_RUN', True):
+                ctx = flow.Ctx(Opts, 'run')
+            with open(os.path.join(tmp, 'scrapy.log'), 'w') as f:
+                f.write(log_text)
+            err = None
+            try:
+                flow.stage_list(ctx)
+            except flow.StageFailed as e:
+                err = e
+        logs = os.path.join(tmp, 'logs')
+        return calls, err, sorted(os.listdir(logs)) if os.path.isdir(logs) else [], ctx.stamp
+
+    def test_ships_gz_immediately_and_before_raising(self):
+        import gzip
+        calls, err, files, stamp = self._run_stage_list(
+            {'TWRH_CLUSTER': 'twrh'}, 'INFO: crawled\nERROR: error_rate_exceeded\n')
+        self.assertIsNotNone(err)                       # breaker 仍然 raise
+        self.assertEqual(files, ['{}.list.log.gz'.format(stamp)])   # 純文字已收、只剩 .gz
+        self.assertEqual(len(calls), 2)
+        self.assertIn('scrapy crawl list591', calls[0])
+        self.assertIn('ship_logs', calls[1])
+        self.assertTrue(calls[1].endswith('{}.list.log'.format(stamp)))   # 整個檔名當前綴＝只撈這一個
+
+    def test_local_only_gzips(self):
+        calls, err, files, stamp = self._run_stage_list({'TWRH_CLUSTER': ''}, 'INFO: fine\n')
+        self.assertIsNone(err)
+        self.assertEqual(files, ['{}.list.log.gz'.format(stamp)])
+        self.assertEqual(len(calls), 1)                 # 沒有 ship_logs
+
+
+class CompareExportTests(TestCase):
+    '''S3a 驗收工具 tools/compare_export.py：逐 byte 之外的小數位對映（2026-09-19）。'''
+
+    HEADER = '物件編號,坪數,每坪租金（含管理費與停車費）,房數\n'
+
+    def _compare(self, left_rows, right_rows, *flags):
+        import subprocess
+        import tempfile
+        tmp = tempfile.mkdtemp(prefix='twrh-cmpexport-')
+        paths = []
+        for name, rows in (('db', left_rows), ('snap', right_rows)):
+            p = os.path.join(tmp, name + '.csv')
+            with open(p, 'w') as f:
+                f.write(self.HEADER + ''.join(r + '\n' for r in rows))
+            paths.append(p)
+        tool = str(Path(__file__).resolve().parents[2] / 'tools' / 'compare_export.py')
+        proc = subprocess.run([sys.executable, tool, *paths, *flags], capture_output=True, text=True)
+        return proc.returncode, proc.stdout
+
+    def test_decimal_mapping_is_identical_only_with_expect_mapped(self):
+        db = ['2,22.6,1106.19,2', '1,10,1000,1']
+        snap = ['1,10,1000,1', '2,22.58,1107.17,2']    # 順序不同＋坪數 1 位 vs 2 位
+        code, out = self._compare(db, snap, '--expect-mapped')
+        self.assertEqual(code, 0, out)
+        self.assertIn('小數位對映', out)
+        self.assertIn('坪數 1 戶', out)
+        code, out = self._compare(db, snap)             # 純逐 byte：仍是 DIFF
+        self.assertEqual(code, 1, out)
+
+    def test_real_difference_still_diff(self):
+        db = ['1,10,1000,1', '2,5.0,2000,1']
+        snap = ['1,10,1000,1', '2,5.4,2000,1']          # 進位後也不同
+        code, out = self._compare(db, snap, '--expect-mapped')
+        self.assertEqual(code, 1, out)
+        self.assertIn('坪數', out)
