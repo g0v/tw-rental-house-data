@@ -2094,6 +2094,29 @@ class SnapshotFoldTests(TestCase):
         day1b = fold([], [{**self.stub('b', 'T1', price=5000), 'per_ping_price': 500.0}], [], [], self.D1)
         self.assertEqual(day1b[0]['per_ping_price'], 500.0)
 
+    def test_list_day_rebuilds_apt_code_from_carried_balcony_bath(self):
+        '''2026-09-20：list 頁只給房／廳，stub 的格局編碼陽台／衛浴恆 00；照抄會把上次 detail
+        的陽台／衛浴蓋掉（9/19 snapshot 30,808 戶 list 來源整層住家全 0000 開頭、29,917 戶
+        與同列 n_balcony／n_bath_room 不一致）。改為列上攜帶的陽台／衛浴＋list 的房／廳重組。'''
+        from rental.snapshot import fold
+        day1 = fold([], [self.stub('a', 'T1')],
+                    [{**self.parsed('a', 'T1d'), 'n_balcony': 2, 'n_bath_room': 2,
+                      'n_bed_room': 3, 'n_living_room': 2, 'apt_feature_code': '02020302'}],
+                    [], self.D1)
+        self.assertEqual(day1[0]['apt_feature_code'], '02020302')
+        # list 日：房廳改成 2 房 1 廳、stub 碼 00000201 → 陽台衛浴沿用、房廳取 list
+        day2 = fold(day1, [{**self.stub('a', 'T2', fp='f2'), 'n_bed_room': 2, 'n_living_room': 1,
+                            'apt_feature_code': '00000201'}], [], [], self.D2)
+        self.assertEqual((day2[0]['apt_feature_code'], day2[0]['n_balcony'], day2[0]['n_bath_room'],
+                          day2[0]['n_bed_room']), ('02020201', 2, 2, 2))
+        # list 沒給房廳（套房）：碼不動
+        day3 = fold(day2, [self.stub('a', 'T3', fp='f3')], [], [], '2026-01-17')
+        self.assertEqual(day3[0]['apt_feature_code'], '02020201')
+        # 從未 detail 的新戶：陽台衛浴當 0＝與 list 自己組的相同
+        day1b = fold([], [{**self.stub('b', 'T1'), 'n_bed_room': 3, 'n_living_room': 2,
+                           'apt_feature_code': '00000302'}], [], [], self.D1)
+        self.assertEqual(day1b[0]['apt_feature_code'], '00000302')
+
     def test_same_day_404_wins_status_but_list_fields_carry(self):
         '''同日 detail 404 且 list 又出現：狀態讓 404 勝、list 的其他資料照帶（2026-09-19 確認）。'''
         from rental.snapshot import fold, NOT_FOUND
@@ -3288,6 +3311,7 @@ class CompareExportTests(TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn('小數位對映', out)
         self.assertIn('坪數 2 戶', out)
+        self.assertIn('每坪租金（含管理費與停車費） 1 戶', out)   # 修正欄：不比 byte、印筆數
         code, out = self._compare(db, snap)             # 純逐 byte：仍是 DIFF
         self.assertEqual(code, 1, out)
 

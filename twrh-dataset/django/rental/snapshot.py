@@ -16,7 +16,16 @@ House（現值＝最新 snapshot）。
   NULL，DB pipeline 十年來是留舊值。狀態欄（deal_status／deal_time／n_day_deal）與 crawled_at
   ／parser_version 例外，照舊由 detail 決定
 - list 改價：per_ping_price 跟著重算（2026-09-19 拍板），公式同 detail parser＝
-  (月租＋管理費＋停車費)／坪數；坪數缺就留 list 給的值
+  (月租＋管理費＋停車費)／坪數；坪數缺就留 list 給的值。**每個 list 日都重算**（best
+  effort，2026-09-20 維護者確認）：新月租＋列上攜帶的上次 detail 管理費／停車費，
+  沒抓過的費用當 0＝退回月租／坪數。DB pipeline 在 list 日寫的是 list 頁「月租／坪數」
+  （不含費用）、下次 detail 又蓋回含費用，同一戶在兩公式間輪流——snapshot 一致含費用，
+  exportcheck 把「每坪租金」列 IMPROVED（snapshot 為準）
+- list 日的格局編碼（apt_feature_code＝陽台／衛浴／房／廳各兩碼）同樣重組：list 頁只給
+  房／廳，list 解析器把陽台／衛浴填 0 組碼（stub 全是 0000 開頭），照抄會把上次 detail
+  的陽台／衛浴蓋掉——2026-09-19 snapshot 裡 30,808 戶 list 來源的整層住家全是 0000 開頭、
+  其中 29,917 戶同一列的 n_balcony／n_bath_room 卻 > 0（欄與碼不一致）。改為以列上攜帶的
+  n_balcony／n_bath_room＋list 的房／廳重組（2026-09-20）；list 沒給房／廳就不動
 - 今日 detail 是 404／拒解析（parsed 列只帶 deal_status=NOT_FOUND、其餘 NULL）：只當
   狀態訊號——deal_status 改 NOT_FOUND（DEAL sticky 照舊），租金／座標等沿用最後已知值，
   source／last_detail_at 不動（DB 的 detail_crawled_at 也不因 404 更新）。關閉當天那列
@@ -68,6 +77,27 @@ def _recompute_per_ping(row):
         return
     row['per_ping_price'] = (price + (row.get('monthly_management_fee') or 0)
                              + (row.get('monthly_parking_fee') or 0)) / ping
+
+
+def _recompute_apt_code(row):
+    '''list 日重組格局編碼：陽台／衛浴取列上攜帶的（上次 detail），房／廳取 list 剛給的。
+    list 沒給房／廳（套房等）就不動。'''
+    bed, living = row.get('n_bed_room'), row.get('n_living_room')
+    if bed is None or living is None:
+        return
+    row['apt_feature_code'] = '{:02d}{:02d}{:02d}{:02d}'.format(
+        row.get('n_balcony') or 0, row.get('n_bath_room') or 0, bed, living)
+
+
+def _apply_list_fields(row, stub):
+    '''list 給的欄覆蓋（None＝這次沒看到，不蓋），再重算兩個推導欄。'''
+    for name in _LIST_FIELDS:
+        if stub.get(name) is not None:
+            row[name] = stub[name]
+    if stub.get('monthly_price') is not None:
+        _recompute_per_ping(row)
+    if stub.get('apt_feature_code') is not None:
+        _recompute_apt_code(row)
 
 
 def is_closure_row(parsed):
@@ -140,18 +170,12 @@ def fold(prev_rows, stubs, parsed_rows, deal_events, date_str, vendor='591', clo
                 row['deal_status'] = NOT_FOUND
             if stub is not None:
                 # 404 勝、但 list 的其他資料照帶（2026-09-19 維護者確認）
-                for name in _LIST_FIELDS:
-                    if stub.get(name) is not None:
-                        row[name] = stub[name]
-                if stub.get('monthly_price') is not None:
-                    _recompute_per_ping(row)
+                _apply_list_fields(row, stub)
                 row['source'] = 'list'
         elif parsed is not None:
             if stub is not None:
                 # 同日在 list：list 給的欄（rough_address 等 detail 從不帶的）先落，detail 再覆蓋
-                for name in _LIST_FIELDS:
-                    if stub.get(name) is not None:
-                        row[name] = stub[name]
+                _apply_list_fields(row, stub)
             for name in _PARSED_COPY:
                 if name not in parsed:
                     continue
@@ -167,11 +191,7 @@ def fold(prev_rows, stubs, parsed_rows, deal_events, date_str, vendor='591', clo
                 for k in ('deal_status', 'deal_time', 'n_day_deal', 'deal_source'):
                     row[k] = yesterday.get(k)
         elif stub is not None:
-            for name in _LIST_FIELDS:
-                if stub.get(name) is not None:
-                    row[name] = stub[name]
-            if stub.get('monthly_price') is not None:
-                _recompute_per_ping(row)
+            _apply_list_fields(row, stub)
             row['source'] = 'list'
             # 重新出現在 list 且今日無關閉／成交訊號＝在架的正面證據，狀態要回
             # OPENED（2026-09-17 維護者拍板）。此前沒有任何路徑會把 deal_status

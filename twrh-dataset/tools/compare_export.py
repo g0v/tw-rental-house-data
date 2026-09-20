@@ -17,11 +17,16 @@ zip 會取其中第一個 *.csv（月包形狀：tw-rental-data/<prefix>-raw.csv
   刊登者編碼（DB=Author.uuid／snapshot=author_key）
   提供家具_*（DB 被 list 的 tag 版蓋掉＝失真，snapshot 是最後一次 detail 的值＝正確；
     2026-09-18 拍板列為預期差異，但每次印「幾戶兩軌不同」當度量——歸零才奇怪）
-  坪數／每坪租金 的小數位（2026-09-19 exportcheck #1：坪數 56、每坪租金 162 戶）：591 list 頁
-    給 1 位小數、detail 頁給 2 位；同一天 detail 之後又被 sweep 的 list 看到時，DB 是
-    後寫者（list、1 位）勝，fold 是同日 detail 勝（2 位）。snapshot 較精確，不是錯——
-    坪數兩邊各進位到 1 位相等、每坪租金相對差 ≤ 1%（0.05／坪數的連鎖）就視為對映相等，
-    逐 byte 不同也判 IDENTICAL；筆數照印當度量。
+  每坪租金（含管理費與停車費）（2026-09-20 維護者確認 best effort、snapshot 為準）：DB 的 list
+    pipeline 每個 list 日寫 list 頁的「月租／坪數」（不含費用），下次 detail 又蓋回含費用，
+    同一戶在兩公式間輪流；snapshot fold 每個 list 日以新月租＋攜帶的管理費／停車費重算，
+    一致符合欄名。exportcheck #2 量到 29,644 戶。
+  格局編碼（陽台/衛浴/房/廳）（2026-09-20）：list 頁只給房／廳，list 解析器把陽台／衛浴填 0
+    組碼，DB 每個 list 日被蓋成 0000 開頭；snapshot fold 改為攜帶的陽台／衛浴＋list 房／廳重組。
+  坪數 的小數位（2026-09-19 exportcheck #1：56 戶）：591 list 頁給 1 位小數、detail 頁給 2 位；
+    同一天 detail 之後又被 sweep 的 list 看到時，DB 是後寫者（list、1 位）勝，fold 是同日
+    detail 勝（2 位）。snapshot 較精確，不是錯——兩邊各進位到 1 位（HALF_UP）相等就視為
+    對映相等，逐 byte 不同也判 IDENTICAL；筆數照印當度量。
 '''
 import argparse
 import csv
@@ -39,14 +44,9 @@ MAPPED_COLUMNS = ['物件首次發現時間', '物件最後更新時間', '刊�
 # 床／電視／冷氣 的 key，KeyTextTransform 取出來是 NULL → 公開 CSV 整欄失真；
 # snapshot 帶的是最後一次 detail 的家具 dict。2026-09-18 首次 exportcheck：3,739 筆
 # DB '-' 對 snapshot 有值。schema 1.0 §3.5 與 issue #238 已記這個修復。
-IMPROVED_COLUMNS = ['提供家具_']
-
-
-def _float(v):
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
+# 2026-09-20 加兩欄（見檔頭）：每坪租金＝DB 兩公式輪流、snapshot 一致含費用；格局編碼＝DB 被
+# list 日 0000 前綴蓋掉、snapshot 攜帶陽台／衛浴重組。都是 1.0 修 0.x 失真、值會變（schema 1.0 §3.5）
+IMPROVED_COLUMNS = ['提供家具_', '每坪租金（含管理費與停車費）', '格局編碼（陽台/衛浴/房/廳）']
 
 
 def _round1(v):
@@ -64,16 +64,9 @@ def _ping_equal(a, b):
     return ra is not None and rb is not None and ra == rb
 
 
-def _per_ping_equal(a, b):
-    # 每坪租金＝租金／坪數：坪數差 ≤ 0.05 的連鎖，相對差 ≤ 1%（坪數 ≥ 5 時的上界）
-    fa, fb = _float(a), _float(b)
-    return fa is not None and fb is not None and fb != 0 and abs(fa - fb) / abs(fb) <= 0.01
-
-
 # 小數位對映（`--expect-mapped` 才套用）：欄名 → 相等判準；不相等的照常計入 DIFF
 TOLERANT_COLUMNS = {
     '坪數': _ping_equal,
-    '每坪租金（含管理費與停車費）': _per_ping_equal,
 }
 
 
@@ -107,7 +100,8 @@ def main():
     ap.add_argument('--key', default='物件編號')
     ap.add_argument('--sample', type=int, default=5)
     ap.add_argument('--expect-mapped', action='store_true',
-                    help='略過三個已知改對映的欄＋家具欄（S3a 過渡期的預期差異）')
+                    help='略過三個已知改對映的欄＋修正欄（家具／每坪租金／格局編碼；1.0 修 0.x 失真）'
+                         '＋坪數小數位對映')
     args = ap.parse_args()
 
     left, right = read_csv(args.left), read_csv(args.right)
@@ -139,12 +133,16 @@ def main():
     improved = [i for i in drop_idx if lh[i] not in MAPPED_COLUMNS]
     if improved:
         lmap0 = {r[key_idx]: r for r in left[1:]}
-        n_diff = 0
+        n_diff = {p: 0 for p in IMPROVED_COLUMNS}
         for hid, rrow in ((r[key_idx], r) for r in right[1:]):
             lrow = lmap0.get(hid)
-            if lrow and any(lrow[i] != rrow[i] for i in improved):
-                n_diff += 1
-        print('家具欄（預期差異，snapshot 為準）: {} 戶兩軌不同'.format(n_diff))
+            if not lrow:
+                continue
+            for p in IMPROVED_COLUMNS:
+                if any(lrow[i] != rrow[i] for i in improved if lh[i].startswith(p)):
+                    n_diff[p] += 1
+        print('修正欄（預期差異，snapshot 為準）: {}'.format('、'.join(
+            '{} {} 戶'.format(p.rstrip('_'), n) for p, n in n_diff.items())))
 
     lb = normalized_bytes(lh, left[1:], key_idx, drop_idx)
     rb = normalized_bytes(rh, right[1:], key_idx, drop_idx)
