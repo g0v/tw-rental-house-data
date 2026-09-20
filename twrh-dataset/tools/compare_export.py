@@ -6,6 +6,12 @@ S3a 的驗收門檻（2026-09-17 維護者拍板）：同一區間由 DB 路徑�
 
 一致就 exit 0；不一致列出「只在一邊的戶」與逐欄差異筆數＋樣本，exit 1。
 
+**殘餘門檻（`--max-residual N`，2026-09-21 維護者拍板）**：逐 byte 一致在現行設計下達不到——
+同一天有 detail 又被 sweep 的 list 看到時，DB 是後寫者勝、fold 是同日 detail／404 勝，
+月租／出租狀態／客廳數每天都會差個位數戶，結構上不會歸零。S3a 的門檻因此改成
+「連三天**沒有未歸因的新類別**，且殘餘戶數（只在一邊的戶＋任一欄仍不同的戶，去重）≤ 150」。
+工具只管數字：殘餘 ≤ N 就 exit 0 並印 `WITHIN — 殘餘 n 戶`；有沒有新類別看逐欄明細，是人判的。
+
 用法（在 twrh-dataset/ 下）：
   poetry run python tools/compare_export.py DB.csv SNAPSHOT.csv [--sample 5] [--key 物件編號]
   poetry run python tools/compare_export.py A.zip B.zip        # 直接吃 export 的 zip
@@ -99,6 +105,8 @@ def main():
     ap.add_argument('right', help='snapshot 路徑那份（csv 或 zip）')
     ap.add_argument('--key', default='物件編號')
     ap.add_argument('--sample', type=int, default=5)
+    ap.add_argument('--max-residual', type=int, default=0,
+                    help='殘餘戶數（只在一邊＋任一欄仍不同，去重）不超過它就 exit 0；預設 0＝要求完全一致')
     ap.add_argument('--expect-mapped', action='store_true',
                     help='略過三個已知改對映的欄＋修正欄（家具／每坪租金／格局編碼；1.0 修 0.x 失真）'
                          '＋坪數小數位對映')
@@ -165,6 +173,7 @@ def main():
     counts = {}
     samples = {}
     tolerated = {}
+    diff_houses = set()
     for hid in sorted(set(lmap) & set(rmap)):
         for i, (a, b) in enumerate(zip(lmap[hid], rmap[hid])):
             if a == b or i in drop_idx:
@@ -174,6 +183,7 @@ def main():
                 tolerated[col] = tolerated.get(col, 0) + 1
                 continue
             counts[col] = counts.get(col, 0) + 1
+            diff_houses.add(hid)
             samples.setdefault(col, []).append((hid, a, b))
     if tolerated:
         print('小數位對映（預期差異，snapshot 為準）: {}'.format('、'.join(
@@ -182,8 +192,11 @@ def main():
         print('IDENTICAL — 逐 byte 不同，但差異全在小數位對映內')
         return 0
 
-    print('DIFF — 只在左 {} 戶、只在右 {} 戶、共有 {} 戶'.format(
-        len(only_l), len(only_r), len(set(lmap) & set(rmap))))
+    residual = len(only_l) + len(only_r) + len(diff_houses)
+    within = 0 < args.max_residual >= residual
+    print('{} — 殘餘 {} 戶（門檻 {}）：只在左 {} 戶、只在右 {} 戶、共有 {} 戶中 {} 戶有欄位不同'.format(
+        'WITHIN' if within else 'DIFF', residual, args.max_residual or '無',
+        len(only_l), len(only_r), len(set(lmap) & set(rmap)), len(diff_houses)))
     if only_l:
         print('  只在左樣本: {}'.format(only_l[:args.sample]))
     if only_r:
@@ -193,7 +206,7 @@ def main():
         for col, n in sorted(counts.items(), key=lambda kv: -kv[1]):
             print('    {:<30} {:>7}  例 {}'.format(
                 col, n, samples[col][:args.sample]))
-    return 1
+    return 0 if within else 1
 
 
 if __name__ == '__main__':

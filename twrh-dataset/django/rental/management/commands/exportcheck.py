@@ -7,6 +7,10 @@ provisional、而今天的 sweep 還沒再動 DB」那個空檔才對齊。窗�
 （`TWRH_TARGET_DATE`），不是昨天——取昨天的話，今天已爬過的戶在 DB 是今天的值、
 在 snapshot 是昨天的值，會報出一堆假差異。
 
+**判準（2026-09-21 維護者拍板）**：逐 byte 一致達不到（同日 detail／list 先後，兩軌天生差個位數戶），
+改為「殘餘戶數 ≤ `--max-residual`（預設 150）＝AGREE」；S3a 門檻＝連三天 AGREE 且逐欄明細沒有
+未歸因的新類別（後者人判）。`--max-residual 0` 回到要求完全一致。
+
 三欄是刻意的差異（2026-09-17 維護者拍板，見 snapshot_source）：物件首次發現時間／
 物件最後更新時間／刊登者編碼。預設略過它們比，`--strict-columns` 可連它們一起比。
 
@@ -43,6 +47,8 @@ class Command(BaseCommand):
         parser.add_argument('--strict-columns', action='store_true',
                             help='連三個已知改對映的欄一起比')
         parser.add_argument('--keep', action='store_true', help='保留兩份 CSV')
+        parser.add_argument('--max-residual', type=int, default=150,
+                            help='殘餘戶數不超過它就 AGREE（預設 150；0＝要求完全一致）')
         parser.add_argument('--strict', action='store_true',
                             help='DIFF 時 exit 1（預設 advisory exit 0）')
 
@@ -70,7 +76,8 @@ class Command(BaseCommand):
                     from_dt, to_dt, print_enum=False, outfile=out)
                 paths[source] = out + '.csv'
 
-            cmd = [sys.executable, COMPARE, paths['db'], paths['snapshot']]
+            cmd = [sys.executable, COMPARE, paths['db'], paths['snapshot'],
+                   '--max-residual', str(options['max_residual'])]
             if not options['strict_columns']:
                 cmd.append('--expect-mapped')
             proc = subprocess.run(cmd, capture_output=True, text=True)

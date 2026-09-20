@@ -3335,6 +3335,17 @@ class CompareExportTests(TestCase):
         code, out = self._compare(db, snap)             # 純逐 byte：仍是 DIFF
         self.assertEqual(code, 1, out)
 
+    def test_max_residual_threshold(self):
+        '''2026-09-21：同日 detail／list 先後讓兩軌天生差個位數戶，門檻改殘餘戶數。'''
+        db = ['1,10,1000,1', '2,5.0,2000,1', '4,8,1000,2']
+        snap = ['1,10,1000,1', '2,5.4,2000,3']          # 戶 2 兩欄不同（算 1 戶）＋戶 4 只在左
+        code, out = self._compare(db, snap, '--expect-mapped', '--max-residual', '2')
+        self.assertEqual(code, 0, out)
+        self.assertIn('WITHIN — 殘餘 2 戶', out)
+        code, out = self._compare(db, snap, '--expect-mapped', '--max-residual', '1')
+        self.assertEqual(code, 1, out)
+        self.assertIn('DIFF — 殘餘 2 戶', out)
+
     def test_real_difference_still_diff(self):
         db = ['1,10,1000,1', '2,5.0,2000,1']
         snap = ['1,10,1000,1', '2,5.4,2000,1']          # 進位後也不同
