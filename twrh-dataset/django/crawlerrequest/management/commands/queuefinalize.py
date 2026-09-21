@@ -21,6 +21,7 @@ import os
 from datetime import timedelta
 
 from django.core.management.base import BaseCommand, CommandError
+from rental.vendors import needs_orm as vendor_needs_orm
 from django.conf import settings
 from django.db.models import Count
 from django.utils import timezone
@@ -29,7 +30,8 @@ from crawlerrequest.models import RequestTS
 from crawlerrequest.enums import RequestType, RequestStatus
 from crawlerrequest.notify import send_slack
 from rental import models
-from rental.models import Vendor
+from rental.models import Vendor  # noqa: F401
+from rental import vendors as vendor_registry
 
 DEFAULT_RETENTION_DAYS = int(os.environ.get('TWRH_QUEUE_RETENTION_DAYS', 90))
 
@@ -41,7 +43,9 @@ def default_source():
 
 class Command(BaseCommand):
     help = 'Assert seeds == terminals for today\'s crawl queue; red on residue'
-    requires_migrations_checks = True
+    # 檔案時代（house 停寫、queue 不在 DB 記帳）這支指令不碰 DB；migrations check 會為了
+    # 查 django_migrations 開連線，S5 之後沒有 DB 可連。還需要 ORM 時才檢查
+    requires_migrations_checks = property(lambda self: vendor_needs_orm())
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -58,6 +62,11 @@ class Command(BaseCommand):
                  '未給時跟 filequeue.db_bookkeeping() 走（S4b 起 flow 預設 file）')
 
     def cleanup(self, days):
+        from rental import filequeue
+        if not filequeue.db_bookkeeping():
+            # S4b 起 request_ts 沒人寫：沒有新的終結列要清，也不為此開 DB 連線（S5 後無 DB）。
+            # 停寫前留下的舊列隨 RDS destroy 一起消失
+            return
         cutoff = timezone.now() - timedelta(days=days)
         deleted, _ = RequestTS.objects.filter(
             status__in=(RequestStatus.DONE, RequestStatus.DEAD),
@@ -82,7 +91,7 @@ class Command(BaseCommand):
         threshold = float(os.environ.get(
             'TWRH_QUEUE_DEAD_RATIO',
             getattr(settings, 'STATSCHECK_FAIL_RATIO', 0.05)))
-        vendors = {v.id: v.name for v in Vendor.objects.all()}
+        vendors = {v.id: v.name for v in vendor_registry.all()}
 
         # (vendor, type) → {status: count}
         matrix = {}
@@ -94,7 +103,7 @@ class Command(BaseCommand):
             from rental.raws import vendor_dirname
             date_iso = '{year:04d}-{month:02d}-{day:02d}'.format(**this_ts)
             max_attempts = int(os.environ.get('TWRH_QUEUE_MAX_ATTEMPTS', 3))
-            for vendor in Vendor.objects.all():
+            for vendor in vendor_registry.all():
                 short = vendor_dirname(vendor.name)
                 for type_name in filequeue.type_names(short, date_iso):
                     r = filequeue.reconcile(short, date_iso, type_name, max_attempts)

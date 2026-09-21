@@ -8,12 +8,12 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 from .json_writer import ListWriter
 from .field import Field
-from rental.models import Vendor
+from rental import vendors as vendor_registry
 from rental import enums
 
-vendors = {}
-for vendor in Vendor.objects.all():
-    vendors[vendor.id] = vendor.name
+# S5 前置：import 時就查 DB 會讓沒有 DB 的環境連 export 模組都載不進來；改讀常數登錄
+# （id↔name 與 Vendor 表一致，見 rental/vendors.py）
+vendors = {ref.id: ref.name for ref in vendor_registry.REGISTRY}
 
 class Export(ABC):
     headers = []

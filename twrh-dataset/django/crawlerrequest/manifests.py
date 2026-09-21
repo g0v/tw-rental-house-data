@@ -53,6 +53,7 @@ from rental import enums
 from rental.enums import DealStatusType
 from rental.models import House, HouseTS
 from rental.switches import house_db
+from rental import vendors
 
 # 檔案層（路徑／讀寫／dot-path 取值）住在 manifest_files.py——純函數、
 # 無 Django 相依，離線斷言（tools/quality_offline.py）直接 import 那邊；
@@ -124,7 +125,7 @@ def _queue_stats_file(ts, request_type):
     max_attempts = int(os.environ.get('TWRH_QUEUE_MAX_ATTEMPTS', 3))
     total = {'seeds': 0, 'done': 0, 'dead': 0, 'residue': 0}
     errors = {}
-    for vendor in Vendor.objects.all():
+    for vendor in vendors.all():
         short = vendor_dirname(vendor.name)
         if type_name not in filequeue.type_names(short, date_str):
             continue
@@ -172,7 +173,7 @@ def _partition_block(stage, date_obj):
     bucket = os.environ.get('TWRH_RAW_BUCKET')
     date_str = date_obj.isoformat()
     out = {}
-    for vendor in Vendor.objects.all():
+    for vendor in vendors.all():
         short = vendor_dirname(vendor.name)
         try:
             block = _PARTITION_COUNTERS[stage](short, date_str, bucket, artifacts)
@@ -411,7 +412,7 @@ _LIST_ONLY_FILL = ('rough_address',)
 def _vendor_shorts():
     from rental.models import Vendor
     from rental.raws import vendor_dirname
-    return [vendor_dirname(v.name) for v in Vendor.objects.all()]
+    return [vendor_dirname(v.name) for v in vendors.all()]
 
 
 class _DayPartitions:

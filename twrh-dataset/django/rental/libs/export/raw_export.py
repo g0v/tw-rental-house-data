@@ -2,7 +2,8 @@ from django.core.paginator import Paginator
 from django.db.models import Case, CharField, F, Value, When
 from django.db.models.functions import Concat
 from rental.libs import filters
-from rental.models import House, Vendor
+from rental.models import House
+from rental import vendors as vendor_registry
 from rental import enums
 from . import snapshot_source
 from .export import Export
@@ -126,7 +127,7 @@ class RawExport(Export):
         # S3a：改讀 4c 的 snapshot 分區，不碰 House
         if only_big6:
             raise NotImplementedError('snapshot 路徑尚未支援 -b6（月包不用它）')
-        vendor = Vendor.objects.filter(name='591 租屋網').first()
+        vendor = vendor_registry.get('591 租屋網', orm=False)
         window = snapshot_source.SnapshotWindow(
             from_date, to_date, vendor='591',
             vendor_id=vendor.id if vendor else None,

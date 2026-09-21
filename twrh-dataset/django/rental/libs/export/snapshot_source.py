@@ -27,6 +27,7 @@ import json
 import os
 from datetime import datetime, timedelta
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 
 # JSON 欄在 parquet 裡是字串（contracts 約定）；DB 路徑用 KeyTextTransform 取出來是
@@ -120,7 +121,9 @@ class SnapshotWindow:
                 if self._in_window(table, local, hid):
                     keep_local.append(local)
                     kept.append((hid, date_str, len(keep_local) - 1))
-            self._tables[date_str] = table.take(keep_local)
+            # 空 list 會被 pyarrow 推成 null 型別的索引，take 沒有那個 kernel——某一天沒有任何戶
+            # 通過窗選時（小窗、測試資料、剛冷啟）整支 export 會炸；明講型別
+            self._tables[date_str] = table.take(pa.array(keep_local, type=pa.int64()))
         self._index = sorted(kept, key=lambda r: r[0], reverse=sort_desc)
 
     def _in_window(self, table, local, hid):

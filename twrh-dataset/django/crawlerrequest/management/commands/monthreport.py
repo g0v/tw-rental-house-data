@@ -29,6 +29,7 @@ from datetime import date, datetime
 
 from rental.switches import house_db
 from django.core.management.base import BaseCommand, CommandError
+from rental.vendors import needs_orm as vendor_needs_orm
 from django.utils import timezone
 from scrapy_twrh.cli.runner import compare_invariants, invariants
 
@@ -112,7 +113,9 @@ def _stack_daily_dists(dists):
 
 class Command(BaseCommand):
     help = 'Aggregate a month of manifests into a report and a red/green verdict'
-    requires_migrations_checks = True
+    # 檔案時代（house 停寫、queue 不在 DB 記帳）這支指令不碰 DB；migrations check 會為了
+    # 查 django_migrations 開連線，S5 之後沒有 DB 可連。還需要 ORM 時才檢查
+    requires_migrations_checks = property(lambda self: vendor_needs_orm())
 
     def add_arguments(self, parser):
         parser.add_argument(

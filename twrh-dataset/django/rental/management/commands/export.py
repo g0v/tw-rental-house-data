@@ -5,6 +5,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 from tempfile import mkdtemp
 from datetime import datetime, date, timedelta
 from django.core.management.base import BaseCommand, CommandError
+from rental.vendors import needs_orm as vendor_needs_orm
 from django.utils import timezone
 from rental.libs.export import UniqExport, RawExport
 
@@ -14,7 +15,9 @@ class Command(BaseCommand):
     help = 'Export house data by given time range'
     default_export_dir = 'tw-rental-data'
     zip_dir = path.join(path.dirname(path.realpath(__file__)), '../../../../datas')
-    requires_migrations_checks = True
+    # 檔案時代（house 停寫、queue 不在 DB 記帳）這支指令不碰 DB；migrations check 會為了
+    # 查 django_migrations 開連線，S5 之後沒有 DB 可連。還需要 ORM 時才檢查
+    requires_migrations_checks = property(lambda self: vendor_needs_orm())
 
     def parse_date(self, input):
         try: 
@@ -253,11 +256,11 @@ class Command(BaseCommand):
     def handle_periodic(self, source='db'):
         today = self.target_now()
 
-        # 2026-09-07 改：每月 1 日出「上個月」，且 flow 把 export 排在 list 之前
-        # ——此刻 DB 是前一天 23:00 sweep 之後的狀態，上月最後一天全天的
-        # 前緣掃描都收得到，當日爬取尚未動到任何一列（export 讀 House 現況，
-        # 爬完再出會把 1 日的 updated／狀態混進上月資料集）。
-        # 舊制「月底當天 02:10 出本月」會漏掉最後一天 05:00–23:00 的 sweep。
+        # 每月 1 日出「上個月」（2026-09-07）。S3a 起來源是 snapshot 分區、日期顯式，
+        # flow 把它排在 snapshot stage 之後：要的是上月最後一天的 final snapshot，
+        # 那一份在 1 日這場的 snapshotfinal stage 才摺出來（含最後一天全天的 sweep）。
+        # DB 路徑（回退）讀的是 House 現況，排在爬取之後會混進 1 日的狀態——回退期間
+        # 剛好跨月時要手動 -f/-t 補。
         if today.day != 1:
             return
 

@@ -20,6 +20,7 @@ from django.core.management.base import BaseCommand, CommandError
 from rental import artifacts, latest
 from rental.models import Vendor
 from rental.raws import vendor_dirname
+from rental import vendors
 
 _SNAPSHOT_COLUMNS = [name for name, _ in latest.LATEST_FIELDS]
 
@@ -36,7 +37,7 @@ class Command(BaseCommand):
         parser.add_argument('--to', dest='to_date')
 
     def handle(self, *_args, **options):
-        vendor = Vendor.objects.get(name=options['vendor'])
+        vendor = vendors.get(options['vendor'])
         short = vendor_dirname(vendor.name)
         bucket = None if options['no_upload'] else os.environ.get('TWRH_RAW_BUCKET')
         read_bucket = os.environ.get('TWRH_RAW_BUCKET')

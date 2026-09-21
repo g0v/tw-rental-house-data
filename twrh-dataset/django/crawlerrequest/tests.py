@@ -3648,3 +3648,77 @@ class HouseDbOffTests(QueueTestMixin, TestCase):
             {'n': 300, 'median_floor': 5, 'share_公寓': 0.4, 'rooftop_rate': 0.02},
             {'n': 100, 'median_floor': 4, 'share_公寓': 0.2, 'rooftop_rate': 0.0}])
         self.assertEqual(out, {'n': 500, 'median_floor': 4, 'share_公寓': 0.32, 'rooftop_rate': 0.012})
+
+
+class NoDatabaseTests(QueueTestMixin, TestCase):
+    '''S5 前置：house 停寫＋queue 不在 DB 記帳時，生產路徑一個 query 都不發。
+    （真正的驗收是把 DB 指到連不上的埠跑整條鏈——2026-09-21 金門縣端到端跑過；
+    這裡用 assertNumQueries(0) 把同一件事釘在矩陣裡。）'''
+
+    def setUp(self):
+        super().setUp()
+        self.env = mock.patch.dict(os.environ, {
+            'TWRH_HOUSE_DB': '0', 'TWRH_QUEUE_SOURCE': 'file', 'TWRH_QUEUE_DB': '0',
+            'TWRH_RAW_BUCKET': '', 'TWRH_RUN_ID': 'run', 'TWRH_RAW_SINK': '0'})
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+        super().tearDown()
+
+    def test_registry_matches_vendor_fixture(self):
+        import json
+        from rental import vendors
+        path = Path(__file__).resolve().parents[1] / 'rental' / 'fixtures' / 'vendors.json'
+        fixture = [(row['pk'], row['fields']['name']) for row in json.loads(path.read_text())]
+        self.assertEqual([(ref.id, ref.name) for ref in vendors.REGISTRY], fixture)
+        # 回退時拿到的是真的 ORM 物件（FK 過濾要用）
+        with mock.patch.dict(os.environ, {'TWRH_HOUSE_DB': '1'}):
+            self.assertIsInstance(vendors.get(VENDOR_NAME), Vendor)
+        self.assertEqual(vendors.get(VENDOR_NAME), vendors.VendorRef(1, VENDOR_NAME))
+        with self.assertRaises(LookupError):
+            vendors.get('nope')
+
+    def test_crawl_side_issues_no_query(self):
+        from crawler.pipelines import CrawlerPipeline
+        from crawler.spiders.detail591_spider import Detail591Spider
+        from crawler.spiders.list591_spider import List591Spider
+        from scrapy_twrh.items import GenericHouseItem, RawHouseItem
+        with self.assertNumQueries(0):
+            pipeline = CrawlerPipeline()
+            pipeline.process_item(RawHouseItem(house_id='h1', vendor=VENDOR_NAME, is_list=True,
+                                               dict={'price': '1萬', 'title': 'x'}), None)
+            pipeline.process_item(GenericHouseItem(vendor=VENDOR_NAME, vendor_house_id='h1',
+                                                   monthly_price=10000), None)
+            pipeline.close_spider()
+            spider = List591Spider(target_cities='台北市', frontier_pages=5)
+            self.assertEqual(len(list(spider.start_list_from_persist_queue())), 1)
+            HouseDbOffTests.frontier_parse = FrontierSweepTests.frontier_parse
+            FrontierSweepTests.frontier_parse(self, spider, 0, ['n1', 'n2'])
+            detail = Detail591Spider(seed_mode='new', seed_only=True)
+            list(detail.start_detail_requests())
+
+    list_body = staticmethod(FrontierSweepTests.list_body)
+
+    def test_stage_commands_issue_no_query(self):
+        from django.core.management import call_command
+        from rental import artifacts, snapshot
+        row = snapshot._blank('591', 'h1', '2026-01-14')
+        row.update({'deal_status': 0, 'source': 'detail', 'monthly_price': 9000})
+        artifacts.write_snapshot([row], '591', '2026-01-14')
+        out = io.StringIO()
+        with self.assertNumQueries(0), mock.patch.dict(
+                os.environ, {'TWRH_LATEST_BOOTSTRAP_FROM': '2026-01-14',
+                             'TWRH_MANIFEST_DIR': os.path.join(self._artifact_tmp, 'manifests')}):
+            call_command('queuebusy', '--vendor', VENDOR_NAME, stdout=out)
+            call_command('snapshotfold', '--date', TEST_DATE, '--only', 'provisional', '--no-upload', stdout=out)
+            call_command('latestfold', '--date', TEST_DATE, '--no-upload', stdout=out)
+            call_command('manifest', stdout=out)
+            call_command('filequeuecheck', stdout=out)
+            call_command('export', '-f', '20260114', '-t', '20260115', '--source', 'snapshot',
+                         '-o', os.path.join(self._artifact_tmp, 'export'), stdout=out)
+        # migrations check 只在還需要 ORM 時才跑（它會為了查 django_migrations 開連線）
+        from crawlerrequest.management.commands.queuefinalize import Command
+        self.assertFalse(Command().requires_migrations_checks)
+        with mock.patch.dict(os.environ, {'TWRH_HOUSE_DB': '1'}):
+            self.assertTrue(Command().requires_migrations_checks)

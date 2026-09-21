@@ -37,10 +37,12 @@ import tarfile
 from datetime import date as date_cls, datetime
 
 from django.core.management.base import BaseCommand, CommandError
+from rental.vendors import needs_orm as vendor_needs_orm
 
 from rental import raws as raw_sink
 from rental.raws import raw_dir, vendor_dirname
-from rental.models import Vendor
+from rental.models import Vendor  # noqa: F401
+from rental import vendors as vendor_registry
 from crawlerrequest.models import RequestTS
 from crawlerrequest.enums import RequestType, RequestStatus
 
@@ -66,7 +68,9 @@ def pack_paths(vendor, date_str):
 
 class Command(BaseCommand):
     help = 'Pack the day\'s raw scratch into raw/<vendor>/<date>.tar.zst + index'
-    requires_migrations_checks = True
+    # 檔案時代（house 停寫、queue 不在 DB 記帳）這支指令不碰 DB；migrations check 會為了
+    # 查 django_migrations 開連線，S5 之後沒有 DB 可連。還需要 ORM 時才檢查
+    requires_migrations_checks = property(lambda self: vendor_needs_orm())
 
     def add_arguments(self, parser):
         parser.add_argument('--date', help='YYYY-MM-DD（預設 TWRH_TARGET_DATE／今天）')
@@ -93,9 +97,8 @@ class Command(BaseCommand):
                 'TWRH_TARGET_DATE') or date_cls.today().isoformat()
 
         if options['reconcile_only']:
-            vendors = sorted({vendor_dirname(v.name)
-                              for v in Vendor.objects.all()})
-            for vendor in vendors:
+            shorts = sorted({vendor_dirname(v.name) for v in vendor_registry.all()})
+            for vendor in shorts:
                 self.reconcile_existing(vendor, date_str, options)
             return
 
@@ -291,9 +294,9 @@ class Command(BaseCommand):
         D5 前這裡還逐頁比 DB raw 欄位 byte（雙寫期），DB 停存 raw 後只剩量。
         candidates：index entries（打包時＝本輪 scratch 的；--reconcile-only＝整包）。
         '''
-        vendor_obj = Vendor.objects.filter(name__startswith=vendor).first()
+        vendor_obj = vendor_registry.by_short(vendor)
         if vendor_obj is None:
-            raise CommandError('vendor {} not in DB'.format(vendor))
+            raise CommandError('vendor {} not registered'.format(vendor))
         day = datetime.strptime(date_str, '%Y-%m-%d')
 
         detail_entries = [e for e in candidates

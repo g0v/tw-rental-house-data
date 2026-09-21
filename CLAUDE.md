@@ -306,8 +306,14 @@ diff 種子只走 `seeding.seeds_from_files`，材料不齊排全量；manifest 
 算出（`source: partitions`，fill_rate 樣本刻意取 parsed 分區——snapshot 的「None 不蓋值」會遮住 parser
 靜默失效）；monthreport 的月窗分佈改疊逐日 manifest 的 dist；snapshotfold 前兩日都缺時往回找最近一份
 snapshot 逐日重放（都沒有＝以空的前日冷啟）。`crawlerrequest/tests.py` 整份以 `TWRH_HOUSE_DB=1`
-起跑（既有測試驗的是回退路徑），檔案時代集中在 `HouseDbOffTests`。Vendor 表仍是 DB 讀取點
-（十幾處 `Vendor.objects`），S5 destroy 前要另外收掉。
+起跑（既有測試驗的是回退路徑），檔案時代集中在 `HouseDbOffTests`。**S5 前置（無 DB 也起得來）**：
+Vendor 改由常數登錄 `rental/vendors.py` 提供（id／name 與 `fixtures/vendors.json` 一致，矩陣有一例在對）——
+`vendors.get()`／`all()` 在還需要 ORM 時（house DB 回退、或 queue 還在 DB 記帳）回真的 Vendor instance，
+其餘回 `VendorRef`、不碰 DB；`requires_migrations_checks` 同樣只在需要 ORM 時才開（它會為了查
+`django_migrations` 連線）；queuefinalize 的終結列清理、detail 種子的 `transaction.atomic()` 都跟著
+`filequeue.db_bookkeeping()` 走。驗收法＝把 `TWRH_DB_PORT` 指到連不上的埠跑整條鏈；矩陣裡是
+`NoDatabaseTests` 的 `assertNumQueries(0)`。DB 時代的指令（seedcheck／parsedcheck／snapshotcheck／
+snapshotcarryfill／synthts／syncstateful／archivehistory／invalidate）仍直接用 ORM，S6 去 Django 時一起刪。
 
 ### TWRH_TARGET_DATE
 `flow.py` exports `TWRH_TARGET_DATE=YYYY-MM-DD`（`--date`，預設今天）and pins it for the whole run so

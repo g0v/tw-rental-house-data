@@ -10,6 +10,7 @@ from django.db import connection
 from django.utils import timezone
 from scrapy.spidermiddlewares.httperror import HttpError
 from rental.models import HouseTS, Vendor
+from rental import vendors
 from rental import models
 from crawlerrequest.models import RequestTS
 from crawlerrequest.enums import (
@@ -92,12 +93,11 @@ class PersistQueue(object):
         # Initialize progress tracker
         self.progress_tracker = ProgressTracker(logger, log_interval=log_interval)
         
+        # S5 前置：queue 不在 DB 記帳、house 表也停寫時，這裡拿到的是常數 VendorRef（不碰 DB）
         try:
-            self.vendor = Vendor.objects.get(
-                name = vendor
-            )
-        except Vendor.DoesNotExist:
-            raise Exception('Vendor "{}" is not defined.'.format(vendor))
+            self.vendor = vendors.get(vendor)
+        except LookupError as err:
+            raise Exception(str(err))
 
         # request_type 顯式優先（deals stage 等第三種類型）；is_list 為舊介面
         if request_type is not None:

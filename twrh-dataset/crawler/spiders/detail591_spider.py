@@ -307,7 +307,11 @@ class Detail591Spider(Rental591Spider):
             self.logger.info('generating request: {} (mode: {}, append: {})'.format(
                 len(house_ids), self.seed_mode, self.append))
 
-            with transaction.atomic():
+            # queue 在 DB 記帳時整批種子包一個 transaction；S4b 後種子寫檔案，
+            # 不必為此開 DB 連線（S5 之後也沒有 DB 可連）
+            from contextlib import nullcontext
+            from rental import filequeue
+            with (transaction.atomic() if filequeue.db_bookkeeping() else nullcontext()):
                 try:
                     for house_id in house_ids:
                         self.persist_queue.gen_persist_request({'id': house_id})

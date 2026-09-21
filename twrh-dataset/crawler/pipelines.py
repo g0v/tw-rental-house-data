@@ -11,6 +11,7 @@ import traceback
 from django.utils import timezone
 from rental.models import HouseTS, House, HouseEtc, Vendor, Author
 from rental.switches import house_db
+from rental import vendors
 from rental.enums import DealStatusType
 from scrapy_twrh.items import GenericHouseItem, RawHouseItem
 from django.contrib.gis.geos import Point
@@ -36,7 +37,7 @@ class CrawlerPipeline(object):
     def __init__(self) -> None:
         super().__init__()
         self.vendorMap = {}
-        for vendor in Vendor.objects.all():
+        for vendor in vendors.all():
             self.vendorMap[vendor.name] = vendor
         if not raw_sink.enabled():
             # D5 後 DB 不存 raw：sink 關＝raw 無處可去；不擋爬，但大聲講

@@ -29,6 +29,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from rental import artifacts, snapshot, snapshot_db
 from rental.switches import house_db
+from rental import vendors
 from rental.models import Vendor
 from rental.raws import vendor_dirname
 
@@ -62,7 +63,7 @@ class Command(BaseCommand):
         else:
             env = os.environ.get('TWRH_TARGET_DATE')
             day = datetime.strptime(env, '%Y-%m-%d').date() if env else date_cls.today()
-        vendor = Vendor.objects.get(name=options['vendor'])
+        vendor = vendors.get(options['vendor'])
         short = vendor_dirname(vendor.name)
         bucket = None if options['no_upload'] else os.environ.get('TWRH_RAW_BUCKET')
         read_bucket = os.environ.get('TWRH_RAW_BUCKET')

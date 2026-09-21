@@ -20,7 +20,8 @@ from django.utils import timezone
 from crawlerrequest.models import RequestTS
 from crawlerrequest.enums import RequestStatus
 from rental import filequeue
-from rental.models import Vendor
+from rental.models import Vendor  # noqa: F401
+from rental import vendors as vendor_registry
 from rental.raws import vendor_dirname
 
 
@@ -38,9 +39,10 @@ class Command(BaseCommand):
         override = options['date'] or os.environ.get('TWRH_TARGET_DATE')
         today = (datetime.strptime(override, '%Y-%m-%d').date() if override
                  else timezone.localtime().date())
-        vendor = Vendor.objects.filter(name=options['vendor']).first()
-        if vendor is None:
-            raise CommandError('vendor {!r} not in DB'.format(options['vendor']))
+        try:
+            vendor = vendor_registry.get(options['vendor'])
+        except LookupError:
+            raise CommandError('vendor {!r} not registered'.format(options['vendor']))
         if options['source'] == 'file':
             active = filequeue.active_workers(
                 vendor_dirname(vendor.name), today.isoformat(), options['hours'])

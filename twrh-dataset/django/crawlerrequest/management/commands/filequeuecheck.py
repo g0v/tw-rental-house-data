@@ -17,7 +17,8 @@ from django.db.models import Count
 from crawlerrequest.enums import RequestStatus, RequestType
 from crawlerrequest.models import RequestTS
 from rental import filequeue
-from rental.models import Vendor
+from rental.models import Vendor  # noqa: F401
+from rental import vendors as vendor_registry
 from rental.raws import vendor_dirname
 
 
@@ -46,7 +47,7 @@ class Command(BaseCommand):
 
         all_agree = True
         checked = 0
-        for vendor in Vendor.objects.all():
+        for vendor in vendor_registry.all():
             short = vendor_dirname(vendor.name)
             for type_name in filequeue.type_names(short, day.isoformat()):
                 request_type = RequestType[type_name.upper()]
