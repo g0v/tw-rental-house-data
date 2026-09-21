@@ -37,6 +37,11 @@ from crawler.spiders.persist_queue import PersistQueue  # noqa: E402
 import logging  # noqa: E402
 
 TEST_DATE = '2026-01-15'
+
+# S3b（house／house_ts 停寫）之後預設是檔案時代。這份矩陣的既有測試驗的是 DB 時代的
+# 語意——那條路是回退鈕（TWRH_HOUSE_DB=1），還得活著——所以整份以 1 起跑；檔案時代的
+# 行為集中在 HouseDbOffTests，逐例顯式設 0。
+os.environ.setdefault('TWRH_HOUSE_DB', '1')
 VENDOR_NAME = '591 租屋網'
 
 
@@ -3426,3 +3431,220 @@ class SeedcheckS2FingerprintTests(TestCase):
         self.assertEqual((merged.n_open, merged.n_in_list), (10, 8))
         # 空集合＝原樣
         self.assertEqual(merge_fingerprint(db, set()), db)
+
+
+class HouseDbOffTests(QueueTestMixin, TestCase):
+    '''S3b：house／house_ts 停寫後，寫入只落分區檔，每個 DB 讀取點都有檔案版接手。'''
+
+    YESTERDAY = '2026-01-14'
+
+    def setUp(self):
+        super().setUp()
+        self.env = mock.patch.dict(os.environ, {
+            'TWRH_HOUSE_DB': '0', 'TWRH_RAW_BUCKET': '', 'TWRH_RUN_ID': 'run', 'TWRH_RAW_SINK': '0'})
+        self.env.start()
+        self.vendor = Vendor.objects.get(name=VENDOR_NAME)
+
+    def tearDown(self):
+        self.env.stop()
+        super().tearDown()
+
+    def write_latest(self, rows, date_str=None):
+        from rental import artifacts, snapshot
+        full = []
+        for hid, extra in rows.items():
+            row = snapshot._blank('591', hid, date_str or self.YESTERDAY)
+            row.pop('vendor_extra', None)
+            row.update(extra)
+            full.append(row)
+        artifacts.write_latest(full, '591', date_str or self.YESTERDAY)
+
+    def write_stubs(self, hids, date_str=TEST_DATE, run='run'):
+        from django.core.management import call_command
+        from rental import artifacts
+        writer = artifacts.ShardWriter('list')
+        for hid in hids:
+            writer.append({'vendor': '591', 'vendor_house_id': hid, 'date': date_str, 'run': run,
+                           'seen_at': timezone.now().isoformat(), 'fingerprint': 'fp-' + hid,
+                           'monthly_price': 10000, 'stub_version': 1})
+        writer.close()
+        call_command('artifactpack', '--tree', 'list', '--date', date_str, '--no-upload')
+
+    def test_pipeline_writes_files_only(self):
+        from django.core.management import call_command
+        from crawler.pipelines import CrawlerPipeline
+        from rental import artifacts
+        from scrapy_twrh.items import GenericHouseItem, RawHouseItem
+        pipeline = CrawlerPipeline()
+        pipeline.process_item(RawHouseItem(house_id='h1', vendor=VENDOR_NAME, is_list=True,
+                                           dict={'price': '1萬', 'title': 'x'}), None)
+        pipeline.process_item(GenericHouseItem(vendor=VENDOR_NAME, vendor_house_id='h1',
+                                               monthly_price=10000), None)
+        pipeline.process_item(RawHouseItem(house_id='h1', vendor=VENDOR_NAME, is_list=False,
+                                           dict={'side_metas': {'型態': '公寓'}}), None)
+        pipeline.process_item(GenericHouseItem(vendor=VENDOR_NAME, vendor_house_id='h1',
+                                               monthly_price=10000, floor_ping=12.5,
+                                               deal_status=enums.DealStatusType.OPENED), None)
+        pipeline.close_spider()
+        self.assertEqual(House.objects.count(), 0)
+        self.assertEqual(HouseTS.objects.count(), 0)
+        call_command('artifactpack', '--tree', 'list', '--date', TEST_DATE, '--no-upload')
+        call_command('artifactpack', '--tree', 'parsed', '--date', TEST_DATE, '--no-upload')
+        stubs = list(artifacts.read_list_stubs('591', TEST_DATE))
+        parsed = artifacts.read_parsed_rows('591', TEST_DATE)
+        self.assertEqual([(s['vendor_house_id'], s['monthly_price']) for s in stubs], [('h1', 10000)])
+        self.assertEqual([(r['vendor_house_id'], r['floor_ping']) for r in parsed], [('h1', 12.5)])
+        self.assertIn('公寓', parsed[0]['vendor_extra'])
+
+    def test_artifact_write_failure_is_not_swallowed(self):
+        '''分區檔是唯一落地：寫失敗要讓熔斷 extension 看得到，不能只記 log。'''
+        from crawler.pipelines import CrawlerPipeline
+        from scrapy_twrh.items import GenericHouseItem
+        pipeline = CrawlerPipeline()
+        sent = []
+        spider = mock.Mock()
+        spider.crawler.signals.send_catch_log.side_effect = lambda *a, **k: sent.append(k)
+        with mock.patch('crawler.artifact_sink.parsed_row', side_effect=RuntimeError('disk full')):
+            pipeline.process_item(GenericHouseItem(
+                vendor=VENDOR_NAME, vendor_house_id='gone',
+                deal_status=enums.DealStatusType.NOT_FOUND), spider)
+        self.assertEqual(len(sent), 1)
+        self.assertIsInstance(sent[0]['exception'], RuntimeError)
+
+    def test_known_houses_from_latest_and_stubs(self):
+        from rental import known
+        at = timezone.now()
+        self.write_latest({'old': {'deal_status': 0, 'last_detail_at': at},
+                           'closed': {'deal_status': 1, 'last_detail_at': at}})
+        self.write_stubs(['old', 'new1'])
+        k = known.load('591', TEST_DATE)
+        self.assertEqual((k.base_date, k.stub_days), (self.YESTERDAY, [TEST_DATE]))
+        self.assertEqual(k.ids, {'old', 'closed', 'new1'})
+        self.assertEqual((k.state['old'].open, k.state['old'].detail_crawled_at), (True, at))
+        self.assertFalse(k.state['closed'].open)
+        self.assertEqual((k.state['new1'].open, k.state['new1'].detail_crawled_at), (True, None))
+
+    def test_known_houses_falls_back_to_older_latest_plus_gap_stubs(self):
+        '''昨夜 latest stage 沒跑成：往回找最近一份總表，把之後每一天的 stub 都併進來。'''
+        from rental import known
+        self.write_latest({'old': {'deal_status': 0}}, date_str='2026-01-12')
+        self.write_stubs(['gap'], date_str='2026-01-14')
+        self.write_stubs(['today'])
+        k = known.load('591', TEST_DATE)
+        self.assertEqual(k.base_date, '2026-01-12')
+        self.assertEqual(k.ids, {'old', 'gap', 'today'})
+        self.assertEqual(k.stub_days, ['2026-01-14', TEST_DATE])
+
+    def test_frontier_uses_known_houses_without_db(self):
+        from crawler.spiders.list591_spider import List591Spider
+        self.write_latest({'k1': {'deal_status': 0}, 'k2': {'deal_status': 1}})
+        spider = List591Spider(target_cities='台北市', frontier_pages=5)
+        parse = lambda page, ids: FrontierSweepTests.frontier_parse(self, spider, page, ids)
+        rows = lambda: sorted(r.seed['page'] for r in RequestTS.objects.filter(
+            year=2026, month=1, day=15, hour=0, request_type=RequestType.LIST))
+        parse(0, ['n1', 'k1', 'n2'])
+        self.assertEqual((rows(), spider.frontier_new), ([1], 2))
+        # 第 2 頁：k1／k2 在總表、n1 是上一頁剛看到的 → 整頁已知，收單
+        parse(1, ['k1', 'k2', 'n1'])
+        self.assertEqual((rows(), spider.frontier_new), ([1], 2))
+        self.assertEqual(House.objects.count(), 0)
+
+    list_body = staticmethod(FrontierSweepTests.list_body)
+
+    def test_new_seeds_from_latest_and_today_stubs(self):
+        from crawler.spiders.detail591_spider import Detail591Spider
+        self.write_latest({'old': {'deal_status': 0, 'last_detail_at': timezone.now()},
+                           'never': {'deal_status': 0},
+                           'closed': {'deal_status': 1}})
+        self.write_stubs(['old', 'never', 'closed', 'brand-new'])
+        spider = Detail591Spider(seed_mode='new')
+        self.assertEqual(spider.gen_new_seeds(), ['brand-new', 'never'])
+        self.assertEqual(spider.gen_full_seeds(), ['brand-new', 'never', 'old'])
+
+    def test_manifests_from_partitions(self):
+        from rental import artifacts, snapshot
+        from crawlerrequest import manifests
+        at = timezone.now()
+        def row(hid, **kw):
+            r = snapshot._blank('591', hid, TEST_DATE)
+            r.update({'deal_status': 0, 'source': 'carry'}); r.update(kw)
+            return r
+        artifacts.write_snapshot([
+            row('d1', source='detail', floor=3, total_floor=5, monthly_price=9000, rough_lat=25.0,
+                rough_address='台北市', first_seen_at=timezone.make_aware(datetime(2026, 1, 15, 12))),
+            row('l1', source='list', monthly_price=8000),
+            row('c1'),                                    # 不在 list、沒 detail＝待確認關閉
+            row('x1', deal_status=1, source='detail'),
+            row('s1', deal_status=2, deal_time=at, n_day_deal=4, deal_source='deals'),
+        ], '591', TEST_DATE)
+        self.write_stubs(['d1', 'l1'])
+        writer = artifacts.ShardWriter('parsed')
+        writer.append({'vendor': '591', 'vendor_house_id': 'd1', 'date': TEST_DATE, 'run': 'run',
+                       'crawled_at': at.isoformat(), 'deal_status': 0, 'monthly_price': 9000,
+                       'floor': 3, 'facilities': '{}', 'parsed_version': 2})
+        writer.close()
+        from django.core.management import call_command
+        call_command('artifactpack', '--tree', 'parsed', '--date', TEST_DATE, '--no-upload')
+        manifests._DayPartitions._cache.clear()
+        day = date(2026, 1, 15)
+        lm = manifests.build_list_manifest(day)
+        self.assertEqual(lm['source'], 'partitions')
+        self.assertEqual(lm['counts']['n_in_list'], 2)
+        self.assertEqual({k: lm['capture'][k] for k in (
+            'n_open', 'n_open_in_list', 'n_confirmed_open', 'n_confirmed_open_in_list',
+            'ratio', 'n_pending_absent')},
+            {'n_open': 3, 'n_open_in_list': 2, 'n_confirmed_open': 1,
+             'n_confirmed_open_in_list': 1, 'ratio': 1.0, 'n_pending_absent': 1})
+        dm = manifests.build_detail_manifest(day)
+        self.assertEqual(dm['counts'], {'n_crawled': 5, 'n_opened': 3, 'n_closed': 1,
+                                        'n_dealt': 1, 'n_new_item': 1})
+        # fill_rate 樣本＝parsed 分區（parser 的輸出），不是帶舊值的 snapshot
+        self.assertEqual((dm['fill_rate']['n'], dm['fill_rate']['monthly_price'],
+                          dm['fill_rate']['facilities'], dm['fill_rate']['rough_coordinate'],
+                          dm['fill_rate']['rough_address']), (1, 1.0, 0.0, 0.0, 1.0))
+        self.assertEqual(dm['dist']['n'], 3)
+        self.assertEqual(manifests.build_deals_manifest(day)['counts']['n_events'], 1)
+        sm = manifests.build_snapshot_manifest(day)
+        self.assertEqual((sm['counts']['n_total'], sm['counts']['n_synthesized']), (5, 3))
+
+    def test_flow_skips_db_era_stages_and_exports_from_snapshot(self):
+        import io
+        from contextlib import redirect_stdout
+        import flow
+        names = flow.RUN_STAGE_NAMES
+        self.assertLess(names.index('snapshot'), names.index('export'))
+        self.assertLess(names.index('snapshotfinal'), names.index('export'))
+        with mock.patch.object(flow, 'DRY_RUN', True):
+            out = {}
+            for name in ('seedcheck', 'parsedcheck', 'synthts', 'sync', 'snapshotcheck',
+                         'exportcheck', 'export'):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    dict((n, b) for n, b, _ in flow.RUN_STAGES)[name](mock.Mock(seed_mode='diff'))
+                out[name] = buf.getvalue()
+        for name in ('seedcheck', 'parsedcheck', 'synthts', 'sync', 'snapshotcheck', 'exportcheck'):
+            self.assertIn('skip (house DB off', out[name], name)
+            self.assertNotIn('+ ', out[name], name)
+        self.assertIn('export -p --source snapshot', out['export'])
+
+    def test_snapshotfold_replays_from_last_snapshot_when_two_nights_missing(self):
+        from django.core.management import call_command
+        from rental import artifacts, snapshot
+        base = snapshot._blank('591', 'h1', '2026-01-12')
+        base.update({'deal_status': 0, 'source': 'detail', 'monthly_price': 9000})
+        artifacts.write_snapshot([base], '591', '2026-01-12')
+        self.write_stubs(['h1', 'h2'], date_str='2026-01-13')
+        self.write_stubs(['h1'], date_str='2026-01-14')
+        call_command('snapshotfold', '--date', TEST_DATE, '--only', 'final', '--no-upload')
+        self.assertTrue(artifacts.snapshot_exists('591', '2026-01-13'))
+        by = {r['vendor_house_id']: r for r in artifacts.read_snapshot('591', '2026-01-14')}
+        self.assertEqual(sorted(by), ['h1', 'h2'])
+        self.assertEqual((by['h1']['monthly_price'], by['h2']['days_absent']), (10000, 1))
+
+    def test_monthreport_stacks_daily_dists(self):
+        from crawlerrequest.management.commands.monthreport import _stack_daily_dists
+        out = _stack_daily_dists([
+            {'n': 100, 'median_floor': 3, 'share_公寓': 0.2, 'rooftop_rate': 0.0},
+            {'n': 300, 'median_floor': 5, 'share_公寓': 0.4, 'rooftop_rate': 0.02},
+            {'n': 100, 'median_floor': 4, 'share_公寓': 0.2, 'rooftop_rate': 0.0}])
+        self.assertEqual(out, {'n': 500, 'median_floor': 4, 'share_公寓': 0.32, 'rooftop_rate': 0.012})

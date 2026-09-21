@@ -9,12 +9,29 @@ manifest 是「對當日資料的純函數」：同一天重算結果相同，�
 回補歷史（1-3 的 9 月 backfill）——queue 終結統計在舊制（刪列＝完成）
 下已丟，回補時缺項標 source=backfill、對應斷言由引擎降 advisory。
 
+**S3b（house 三表停寫）起來源改為分區檔**（`rental.switches.house_db()` 為假時）：四份
+manifest 由當日 snapshot／list stub／parsed 分區算出，欄位與 DB 版同名同義，`source` 標
+`partitions`。定義上的對映與已知差：
+  當日列（HouseTS 該日 bucket）      ← 當日 snapshot 的列
+  在今日 list（list_crawled_at 有值）  ← 今日 stub 出現過的戶
+  確認開放（非合成列）               ← snapshot `source == 'detail'` 的 OPENED 列。DB 版的「非合成」
+                                       還含「只在 list、從未 detail 的新戶」（synthts 沒東西可補＝untouched，
+                                       每日約 850 戶）；那批必在 list，拿掉後 capture.ratio 低約 0.001
+  合成列數 n_synthesized              ← snapshot `source != 'detail'`（同上，多約 850）
+  fill_rate 樣本                      ← **今日 parsed 分區**的 OPENED 列（每戶取最後一列）。刻意不用
+                                       snapshot：fold 的「None 不蓋值」會拿舊值補洞，正好遮住 parser
+                                       靜默失效，而 fill_rate 就是為了抓它。detail 從不帶的
+                                       rough_address 改看同戶的 snapshot 列（list 給的）
+  dist 樣本                           ← 當日 snapshot 的 OPENED 列
+  n_new_item（House.created 在當日）  ← snapshot `first_seen_at` 落在當日（台北日界）
+
 stage 對應現制（3-2 flow 收斂前的過渡分界）：
   list     — list 爬取＋L-B 捕獲哨兵
   detail   — detail 爬取＋解析（fill_rate／dist 都量在這）
   deals    — 「已成交」列表產出的成交事件（#229）：當日 TS 的 DEAL 列
   snapshot — syncstateful／synthts 之後的當日 TS 總覽
 '''
+import json
 import os
 from datetime import datetime, timedelta
 from importlib.metadata import version, PackageNotFoundError
@@ -35,6 +52,7 @@ from crawlerrequest.enums import RequestType, RequestStatus
 from rental import enums
 from rental.enums import DealStatusType
 from rental.models import House, HouseTS
+from rental.switches import house_db
 
 # 檔案層（路徑／讀寫／dot-path 取值）住在 manifest_files.py——純函數、
 # 無 Django 相依，離線斷言（tools/quality_offline.py）直接 import 那邊；
@@ -378,6 +396,204 @@ def build_snapshot_manifest(date_obj, source='live'):
         'partitions': _partition_block('snapshot', date_obj),
     }
 
+
+# ---- S3b：分區檔版 ---------------------------------------------------------------
+
+_SNAPSHOT_COLS = [
+    'vendor_house_id', 'deal_status', 'source', 'first_seen_at', 'deal_time', 'n_day_deal',
+    'rough_address', 'floor', 'total_floor', 'building_type', 'property_type', 'is_rooftop',
+    'floor_ping', 'monthly_price', 'rough_lat',
+]
+# detail 從不帶、list 才給的欄：fill_rate 改看同戶的 snapshot 列
+_LIST_ONLY_FILL = ('rough_address',)
+
+
+def _vendor_shorts():
+    from rental.models import Vendor
+    from rental.raws import vendor_dirname
+    return [vendor_dirname(v.name) for v in Vendor.objects.all()]
+
+
+class _DayPartitions:
+    '''某日各 vendor 的 snapshot 列、今日 stub 出現過的戶、parsed 列（每戶最後一列）。
+    一份 manifest 算一次；四個 builder 共用（build_all 走快取）。'''
+
+    _cache = {}
+
+    @classmethod
+    def of(cls, date_obj):
+        key = (date_obj.isoformat(), os.environ.get('TWRH_ARTIFACT_DIR'))
+        if key not in cls._cache:
+            cls._cache.clear()
+            cls._cache[key] = cls(date_obj)
+        return cls._cache[key]
+
+    def __init__(self, date_obj):
+        from rental import artifacts, contracts
+        bucket = os.environ.get('TWRH_RAW_BUCKET')
+        date_str = date_obj.isoformat()
+        self.rows, self.in_list, self.parsed = [], set(), {}
+        json_fields = {name for name, kind in contracts.PARSED_FIELDS if kind == contracts.JSON}
+        for short in _vendor_shorts():
+            self.rows.extend(artifacts.read_snapshot(short, date_str, bucket, _SNAPSHOT_COLS) or [])
+            for stub in artifacts.read_list_stubs(short, date_str, bucket):
+                self.in_list.add(stub['vendor_house_id'])
+            for row in artifacts.read_parsed_rows(short, date_str, bucket):
+                row.pop('vendor_extra', None)
+                for name in json_fields & set(row):
+                    if isinstance(row[name], str):
+                        try:
+                            row[name] = json.loads(row[name])
+                        except ValueError:
+                            pass
+                prev = self.parsed.get(row['vendor_house_id'])
+                if prev is None or (row.get('crawled_at') and prev.get('crawled_at')
+                                    and row['crawled_at'] >= prev['crawled_at']):
+                    self.parsed[row['vendor_house_id']] = row
+        self.by_id = {r['vendor_house_id']: r for r in self.rows}
+        self.opened = [r for r in self.rows if r['deal_status'] == int(DealStatusType.OPENED)]
+
+
+def _partitions_list_manifest(date_obj, source):
+    day = _DayPartitions.of(date_obj)
+    ts = _ts_of(date_obj)
+    in_list = day.in_list
+    n_open = len(day.opened)
+    n_in_list = sum(1 for r in day.opened if r['vendor_house_id'] in in_list)
+    confirmed = [r for r in day.opened if r['source'] == 'detail']
+    n_confirmed = len(confirmed)
+    n_confirmed_in_list = sum(1 for r in confirmed if r['vendor_house_id'] in in_list)
+    n_pending_absent = sum(1 for r in day.opened
+                           if r['source'] != 'detail' and r['vendor_house_id'] not in in_list)
+    return {
+        **_base('list', date_obj, source),
+        'queue': _queue_stats(ts, RequestType.LIST, source),
+        'counts': {'n_in_list': len(in_list & set(day.by_id))},
+        'capture': {
+            'n_open': n_open,
+            'n_open_in_list': n_in_list,
+            'n_confirmed_open': n_confirmed,
+            'n_confirmed_open_in_list': n_confirmed_in_list,
+            'ratio': round(n_confirmed_in_list / n_confirmed, 4) if n_confirmed else None,
+            'ratio_all_open': round(n_in_list / n_open, 4) if n_open else None,
+            'n_pending_absent': n_pending_absent,
+        },
+        'partitions': _partition_block('list', date_obj),
+    }
+
+
+def _partitions_detail_manifest(date_obj, source):
+    day = _DayPartitions.of(date_obj)
+    ts = _ts_of(date_obj)
+    by_deal = {}
+    for r in day.rows:
+        by_deal[r['deal_status']] = by_deal.get(r['deal_status'], 0) + 1
+    n_opened = by_deal.get(int(DealStatusType.OPENED), 0)
+    n_closed = by_deal.get(int(DealStatusType.NOT_FOUND), 0)
+    n_dealt = by_deal.get(int(DealStatusType.DEAL), 0)
+
+    n_new = sum(1 for r in day.rows if r['first_seen_at'] is not None
+                and timezone.localtime(r['first_seen_at']).date() == date_obj)
+
+    fill_sample = [p for p in day.parsed.values()
+                   if p.get('deal_status') == int(DealStatusType.OPENED)]
+    fill_rate = {'n': len(fill_sample)}
+    if fill_sample:
+        for field in FILL_RATE_FIELDS:
+            key = 'rough_lat' if field == 'rough_coordinate' else field
+            filled = 0
+            for p in fill_sample:
+                value = p.get(key)
+                if value is None and field in _LIST_ONLY_FILL:
+                    value = (day.by_id.get(p['vendor_house_id']) or {}).get(field)
+                filled += 1 if is_filled(value) else 0
+            fill_rate[field] = round(filled / len(fill_sample), 4)
+
+    generics = [{
+        'floor': r['floor'], 'total_floor': r['total_floor'],
+        'building_type': _enum_or_none(enums.BuildingType, r['building_type']),
+        'property_type': _enum_or_none(enums.PropertyType, r['property_type']),
+        'is_rooftop': r['is_rooftop'], 'floor_ping': r['floor_ping'],
+        'monthly_price': r['monthly_price'], 'rough_coordinate': r['rough_lat'],
+    } for r in day.opened]
+
+    return {
+        **_base('detail', date_obj, source),
+        'queue': _queue_stats(ts, RequestType.DETAIL, source),
+        'counts': {
+            'n_crawled': n_opened + n_closed + n_dealt,
+            'n_opened': n_opened,
+            'n_closed': n_closed,
+            'n_dealt': n_dealt,
+            'n_new_item': n_new,
+        },
+        'fill_rate': fill_rate,
+        'dist': invariants(generics),
+        'partitions': _partition_block('detail', date_obj),
+    }
+
+
+def _partitions_deals_manifest(date_obj, source):
+    day = _DayPartitions.of(date_obj)
+    ts = _ts_of(date_obj)
+    rows = [r for r in day.rows if r['deal_status'] == int(DealStatusType.DEAL)]
+    by_date = {}
+    for row in rows:
+        key = (timezone.localtime(row['deal_time']).date().isoformat()
+               if row['deal_time'] else 'unknown')
+        by_date[key] = by_date.get(key, 0) + 1
+    n_days = sorted(r['n_day_deal'] for r in rows if r['n_day_deal'] is not None)
+    return {
+        **_base('deals', date_obj, source),
+        'queue': _queue_stats(ts, RequestType.DEAL, source),
+        'counts': {
+            'n_events': len(rows),
+            'n_with_deal_time': sum(1 for r in rows if r['deal_time']),
+            'n_with_n_day_deal': len(n_days),
+        },
+        'by_deal_date': dict(sorted(by_date.items())),
+        'dist': {'n': len(n_days), 'median_n_day_deal': n_days[len(n_days) // 2] if n_days else None},
+        'partitions': _partition_block('deals', date_obj),
+    }
+
+
+def _partitions_snapshot_manifest(date_obj, source):
+    day = _DayPartitions.of(date_obj)
+    by_deal = {}
+    for r in day.rows:
+        by_deal[r['deal_status']] = by_deal.get(r['deal_status'], 0) + 1
+    return {
+        **_base('snapshot', date_obj, source),
+        'counts': {
+            'n_total': len(day.rows),
+            'n_synthesized': sum(1 for r in day.rows if r['source'] != 'detail'),
+            'n_opened': by_deal.get(int(DealStatusType.OPENED), 0),
+            'n_closed': by_deal.get(int(DealStatusType.NOT_FOUND), 0),
+            'n_dealt': by_deal.get(int(DealStatusType.DEAL), 0),
+        },
+        'partitions': _partition_block('snapshot', date_obj),
+    }
+
+
+_PARTITION_BUILDERS = {
+    'list': _partitions_list_manifest, 'detail': _partitions_detail_manifest,
+    'deals': _partitions_deals_manifest, 'snapshot': _partitions_snapshot_manifest,
+}
+
+
+def _dispatch(stage, db_builder):
+    def build(date_obj, source='live'):
+        # backfill 指的是「從 DB 回補歷史」；DB 停寫後只有分區檔這一條路
+        if house_db():
+            return db_builder(date_obj, source)
+        return _PARTITION_BUILDERS[stage](date_obj, 'partitions' if source == 'live' else source)
+    return build
+
+
+build_list_manifest = _dispatch('list', build_list_manifest)
+build_detail_manifest = _dispatch('detail', build_detail_manifest)
+build_deals_manifest = _dispatch('deals', build_deals_manifest)
+build_snapshot_manifest = _dispatch('snapshot', build_snapshot_manifest)
 
 BUILDERS = {
     'list': build_list_manifest,

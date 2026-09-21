@@ -48,7 +48,8 @@ poetry run python django/manage.py loaddata vendors   # required: pipeline looks
 ```bash
 # Full crawl pipeline（D6b 起唯一編排：flow.py；go.sh／gobg.sh／orchestrate.sh／sweep.sh 已退役 2026-09-07）
 poetry run python flow.py run [--date YYYY-MM-DD] [--from STAGE] [--executor local|ecs] [--append] [--vendor 591] [--dry-run]
-#   run stages：export→list→liststubs→snapshotfinal→latest→seed→seedcheck→detail→deals→queuefinalize→filequeuecheck→rawpack→parsed→dealevents→parsedcheck→snapshot→synthts→sync→snapshotcheck→exportcheck→manifest→quality→logs
+#   run stages：list→liststubs→snapshotfinal→latest→seed→seedcheck→detail→deals→queuefinalize→filequeuecheck→rawpack→parsed→dealevents→parsedcheck→snapshot→export→synthts→sync→snapshotcheck→exportcheck→manifest→quality→logs
+#   （S3b 起 house／house_ts 停寫：seedcheck／parsedcheck／synthts／sync／snapshotcheck／exportcheck 自印 skip；export 讀 snapshot、排在 snapshot 之後。回退＝TWRH_HOUSE_DB=1）
 #   （snapshotfinal＝昨日 final snapshot 重摺，必須在 seed 之前：S1 種子判準讀它；2026-09-19 首夜讀到 provisional 多播 3,625 戶）
 poetry run python flow.py sweep [--date YYYY-MM-DD] [--vendor 591] [--dry-run]   # 前緣掃描：busy→frontier→liststubs→newdetail→queuefinalize→filequeuecheck→rawpack→parsed→logs
 poetry run python flow.py status [--date YYYY-MM-DD]                             # 日跑 stage 與各輪 sweep 的完成狀態
@@ -296,6 +297,17 @@ date-keyed:
   直到空結果頁收單；list manifest 的 `capture.ratio`（當日 OPENED 中出現在 list 的比率，
   assertions `list.capture.ratio` min 0.85）監控捕獲率。
 - `--start-early`: when run at/after 22:00, bucket the data under tomorrow's date.
+
+### S3b：house／house_ts 停寫（`rental/switches.py` 的 `house_db()`，預設關）
+停寫後單一真相是檔案分區：pipeline 只落 scratch shard（寫失敗會送 parse_error 給熔斷，不再只記 log）；
+前緣掃描／deal591 的「已知物件」與 sweep 的 `seed_mode=new`、full 模式都讀 `rental/known.py`
+（總表 latest(昨日)＋今日 list stub；昨夜總表沒摺成就往回找最近一份、把之後每天的 stub 併進來）；
+diff 種子只走 `seeding.seeds_from_files`，材料不齊排全量；manifest 四份由當日 snapshot／stub／parsed
+算出（`source: partitions`，fill_rate 樣本刻意取 parsed 分區——snapshot 的「None 不蓋值」會遮住 parser
+靜默失效）；monthreport 的月窗分佈改疊逐日 manifest 的 dist；snapshotfold 前兩日都缺時往回找最近一份
+snapshot 逐日重放（都沒有＝以空的前日冷啟）。`crawlerrequest/tests.py` 整份以 `TWRH_HOUSE_DB=1`
+起跑（既有測試驗的是回退路徑），檔案時代集中在 `HouseDbOffTests`。Vendor 表仍是 DB 讀取點
+（十幾處 `Vendor.objects`），S5 destroy 前要另外收掉。
 
 ### TWRH_TARGET_DATE
 `flow.py` exports `TWRH_TARGET_DATE=YYYY-MM-DD`（`--date`，預設今天）and pins it for the whole run so

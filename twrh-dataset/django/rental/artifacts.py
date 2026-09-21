@@ -242,13 +242,14 @@ def latest_exists(vendor_short, date_str, bucket=None):
     return _fetch_latest(vendor_short, date_str, bucket) is not None
 
 
-def read_latest(vendor_short, date_str, bucket=None):
-    '''某日總表列（list of dict）；不存在回 None。'''
+def read_latest(vendor_short, date_str, bucket=None, columns=None):
+    '''某日總表列（list of dict）；不存在回 None。columns：只讀這些欄（十幾萬戶 × 60 欄
+    攤成 dict 很吃記憶體；rental.known 只要三欄）。'''
     path = _fetch_latest(vendor_short, date_str, bucket)
     if path is None:
         return None
     import pyarrow.parquet as pq
-    return pq.read_table(path).to_pylist()
+    return pq.read_table(path, columns=columns).to_pylist()
 
 
 def read_latest_rows_for(vendor_short, date_str, hids, bucket=None):

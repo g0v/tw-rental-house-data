@@ -9,7 +9,8 @@ from rental.models import House, HouseTS
 from rental import enums
 from scrapy_twrh.items import GenericHouseItem
 from scrapy_twrh.spiders.rental591 import Rental591Spider, util
-from rental import artifacts, seeding
+from rental import artifacts, seeding, known
+from rental.switches import house_db
 from .persist_queue import PersistQueue
 from .item_hygiene import strip_detail_item
 
@@ -90,8 +91,23 @@ class Detail591Spider(Rental591Spider):
             return util.DetailRequestMeta(**seed)
         return util.DetailRequestMeta(*seed)
 
+    def load_known(self):
+        pq = self.persist_queue
+        k = known.load(pq.short, pq.date_str, os.environ.get('TWRH_RAW_BUCKET') or None)
+        self.logger.info('known houses: %d (latest %s + stubs of %s)',
+                         len(k.ids), k.base_date, k.stub_days)
+        return k
+
+    def gen_full_seeds_from_files(self):
+        '''S3b 的全量模式：總表(昨日)＋今日 stub 裡所有 OPENED 的戶；append＝其中從未 detail 的。'''
+        k = self.load_known()
+        return sorted(hid for hid, st in k.state.items()
+                      if st.open and (not self.append or st.detail_crawled_at is None))
+
     def gen_full_seeds(self):
         '''現行全量模式：所有 OPENED 房源都排 detail。'''
+        if not house_db():
+            return self.gen_full_seeds_from_files()
         query = House.objects.filter(
             deal_status = enums.DealStatusType.OPENED
         )
@@ -152,6 +168,14 @@ class Detail591Spider(Rental591Spider):
         # 當日已有 detail 列者（含 dead）不重排：同日多輪 sweep 不能把
         # 重試計數歸零、也不製造重複列
         already = pq.seed_ids_today()
+        if not house_db():
+            # S3b：狀態來自總表(昨日)＋今日 stub（不在總表的＝新戶：open、從未 detail）。
+            # 今天稍早才 detail 過的戶總表還不知道，靠 already（今日 detail 種子）擋掉
+            k = self.load_known()
+            stubs = list(artifacts.read_list_stubs(
+                pq.short, pq.date_str, os.environ.get('TWRH_RAW_BUCKET') or None))
+            self.logger.info('new seeds: {} stubs today'.format(len(stubs)))
+            return sorted(h for h in seeding.select_new_seeds(stubs, k.state) if h not in already)
         stubs = list(artifacts.read_list_stubs(
             pq.short, pq.date_str, os.environ.get('TWRH_RAW_BUCKET') or None))
         if not stubs:
@@ -266,8 +290,13 @@ class Detail591Spider(Rental591Spider):
                 # S1：TWRH_SEED_SOURCE=snapshot 時判準改走檔案（純函數）；材料不齊
                 # 或未啟用就退回 DB 判準。回退鈕＝把這個環境變數拿掉／設 db
                 house_ids = None
-                if os.environ.get('TWRH_SEED_SOURCE', 'db') == 'snapshot':
+                if not house_db() or os.environ.get('TWRH_SEED_SOURCE', 'db') == 'snapshot':
                     house_ids = self.gen_snapshot_seeds()
+                if house_ids is None and not house_db():
+                    # S3b：沒有 DB 判準可退。材料不齊（昨日 snapshot／今日 stub 缺）就排
+                    # 全量——多爬一晚，不漏；gen_snapshot_seeds 已經把原因 log 成 warning
+                    self.logger.error('snapshot seeds unavailable and house DB is off — full seeds')
+                    house_ids = self.gen_full_seeds_from_files()
                 if house_ids is None:
                     house_ids = self.gen_diff_seeds()
             elif self.seed_mode == 'new':

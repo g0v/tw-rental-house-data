@@ -10,6 +10,7 @@ import os
 import traceback
 from django.utils import timezone
 from rental.models import HouseTS, House, HouseEtc, Vendor, Author
+from rental.switches import house_db
 from rental.enums import DealStatusType
 from scrapy_twrh.items import GenericHouseItem, RawHouseItem
 from django.contrib.gis.geos import Point
@@ -41,7 +42,11 @@ class CrawlerPipeline(object):
             # D5 後 DB 不存 raw：sink 關＝raw 無處可去；不擋爬，但大聲講
             logging.error(
                 'raw has no sink: TWRH_RAW_SINK=0 — raw HTML of this run will be lost')
-        # 4a／4b 檔案分區（雙寫期：DB 仍是真相）：list stub 與 parsed 列各自
+        if not house_db() and not artifact_sink.enabled():
+            logging.error(
+                'items have no sink: house DB is off (S3b) and TWRH_ARTIFACT_SINK=0 — '
+                'everything parsed in this run will be lost')
+        # 4a／4b 檔案分區（S3b 起是唯一落地；TWRH_HOUSE_DB=1 回退時才又是雙寫）：list stub 與 parsed 列各自
         # 一個 shard writer；指紋在 RawHouseItem(list) 算好、等同戶的
         # GenericHouseItem 到再寫 stub（兩個 item 同一 response 連續到達）
         self.stub_writer = artifact_sink.ShardWriter('list')
@@ -98,11 +103,37 @@ class CrawlerPipeline(object):
                     self._parser_version, item, vendor_extra=detail_dict))
         except Exception:
             logging.exception('artifact row write failed for %s', house_id)
+            if not house_db():
+                # S3b：分區檔是唯一落地，寫失敗＝掉資料，不能只記 log——往上丟，
+                # process_item 的 except 會送 parse_error 給熔斷 extension
+                raise
+
+    def process_item_files_only(self, item, y, m, d):
+        '''S3b：house／house_ts 停寫後的全部工作——raw 進 scratch、list 指紋與 detail dict
+        暫存到同戶的 GenericHouseItem 到、normalized 列落 scratch shard。
+        （DEAL sticky、list_crawled_at、detail_crawled_at、Author 這些 DB 端語意都已由
+        snapshot fold 的 carry 欄接手；parsed 列的 author 只留雜湊、不需要 Author 表。）'''
+        if type(item) is RawHouseItem:
+            if 'raw' in item and raw_sink.enabled():
+                raw_sink.write_raw(
+                    item['vendor'], '{:04d}-{:02d}-{:02d}'.format(y, m, d),
+                    item['house_id'], 'list' if item['is_list'] else 'detail', item['raw'])
+            if 'dict' in item and not item['is_list']:
+                self._pending_parsed[item['house_id']] = item['dict']
+            if item['is_list'] and item.get('dict'):
+                self._pending_stub[item['house_id']] = \
+                    artifact_sink.list_fingerprint(item['dict'])
+        elif type(item) is GenericHouseItem:
+            self.write_artifact_rows(item, y, m, d)
 
     def process_item(self, item, spider):
         y, m, d, h = now_tuple()
 
         try:
+            if not house_db():
+                self.process_item_files_only(item, y, m, d)
+                return item
+
             if type(item) is RawHouseItem:
 
                 house, created = House.objects.get_or_create(

@@ -2,7 +2,10 @@ from scrapy import Request, signals
 from scrapy_twrh.items import GenericHouseItem, RawHouseItem
 from scrapy_twrh.spiders.rental591 import Rental591Spider, util
 from rental.enums import TopRegionType
+import os
 from rental.models import House
+from rental import known
+from rental.switches import house_db
 from .persist_queue import PersistQueue
 from .item_hygiene import strip_list_item
 
@@ -65,14 +68,20 @@ class List591Spider(Rental591Spider):
             return util.ListRequestMeta(**seed)
         return util.ListRequestMeta(*seed)
 
+    def ran_today(self, city):
+        '''同日重跑不重生種子。DB 時代看 HouseTS 當日有沒有這個縣市的列；S3b 後看當日
+        list 種子檔有沒有這個縣市（種子在＝今天排過，沒爬完的由 queue 自己續）。'''
+        if house_db():
+            return self.persist_queue.has_record(top_region=TopRegionType[city['city']])
+        return self.persist_queue.has_seed(seed__id=city['id'])
+
     def start_list_from_persist_queue (self):
         # In append mode, always regenerate seeds.
         # In normal mode, generate per city — has_record() must be scoped to the
         # city, or a same-day run for city B is silently skipped after city A.
         for city in self.target_cities:
             # 前緣掃描永遠重生種子（同日多輪是它的本意）
-            if not self.append and not self.frontier_pages and self.persist_queue.has_record(
-                    top_region=TopRegionType[city['city']]):
+            if not self.append and not self.frontier_pages and self.ran_today(city):
                 continue
             self.logger.info('Generating initial requests for {} (append mode: {})'.format(
                 city['city'], self.append))
@@ -110,6 +119,14 @@ class List591Spider(Rental591Spider):
                 yield item
         yield True
 
+    def known_houses(self):
+        if getattr(self, '_known', None) is None:
+            pq = self.persist_queue
+            self._known = known.load(pq.short, pq.date_str, os.environ.get('TWRH_RAW_BUCKET') or None)
+            self.logger.info('[frontier] known houses: %d (latest %s + stubs of %s)',
+                             len(self._known.ids), self._known.base_date, self._known.stub_days)
+        return self._known
+
     def parse_frontier_page(self, response):
         '''前緣模式：不接受 package 的頁範圍展開與前緣探測，翻頁自己決定。
 
@@ -120,10 +137,18 @@ class List591Spider(Rental591Spider):
         items = [item for item in self.default_parse_list(response)
                  if not isinstance(item, Request)]
         ids = [item['house_id'] for item in items if isinstance(item, RawHouseItem)]
-        known = set(House.objects.filter(
-            vendor=self.persist_queue.vendor, vendor_house_id__in=ids,
-        ).values_list('vendor_house_id', flat=True))
-        unseen = [h for h in ids if h not in known]
+        if house_db():
+            seen = set(House.objects.filter(
+                vendor=self.persist_queue.vendor, vendor_house_id__in=ids,
+            ).values_list('vendor_house_id', flat=True))
+            unseen = [h for h in ids if h not in seen]
+        else:
+            # S3b：已知物件＝總表(昨日)＋今日各輪 stub＋本行程前面幾頁剛看到的
+            # （DB 時代是 pipeline 同步寫入讓前頁的戶立刻變已知，這裡自己記）
+            seen = self.known_houses()
+            unseen = [h for h in ids if h not in seen]
+            for h in ids:
+                seen.add(h)
         self.frontier_new += len(unseen)
         self.logger.info('[frontier] %s page %d: %d items, %d unseen',
                          meta.name, meta.page + 1, len(ids), len(unseen))

@@ -27,6 +27,7 @@ import json
 import os
 from datetime import date, datetime
 
+from rental.switches import house_db
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 from scrapy_twrh.cli.runner import compare_invariants, invariants
@@ -89,6 +90,26 @@ def _queue_fail(queue):
     return fail, seeds
 
 
+def _stack_daily_dists(dists):
+    '''逐日 manifest 的 dist 節 → 月窗的 invariants 形狀（見 handle 裡的說明）。'''
+    total = sum(d['n'] for d in dists)
+    if not total:
+        return {'n': 0}
+    out = {'n': total}
+    for key in dists[0]:
+        if key == 'n':
+            continue
+        values = [(d[key], d['n']) for d in dists if d.get(key) is not None]
+        if not values:
+            out[key] = None
+        elif key.startswith('median_'):
+            ordered = sorted(v for v, _ in values)
+            out[key] = ordered[len(ordered) // 2]
+        else:
+            out[key] = round(sum(v * n for v, n in values) / sum(n for _, n in values), 3)
+    return out
+
+
 class Command(BaseCommand):
     help = 'Aggregate a month of manifests into a report and a red/green verdict'
     requires_migrations_checks = True
@@ -125,6 +146,7 @@ class Command(BaseCommand):
 
         # --- 逐日 manifest 疊月窗 ---
         days, missing_days, failed_days, queue_unknown_days = {}, [], [], []
+        daily_dists = []
         for day in range(1, n_days + 1):
             date_str = date(year, month, day).isoformat()
             detail = manifests.load_manifest(date_str, 'detail')
@@ -134,6 +156,8 @@ class Command(BaseCommand):
             listm = manifests.load_manifest(date_str, 'list') or {}
             snapshot = manifests.load_manifest(date_str, 'snapshot') or {}
 
+            if detail.get('dist', {}).get('n'):
+                daily_dists.append(detail['dist'])
             counts = detail.get('counts', {})
             d = {
                 'crawled': counts.get('n_crawled', 0),
@@ -175,17 +199,24 @@ class Command(BaseCommand):
                     continue
 
         # --- 分佈不變量（advisory，不影響紅綠）---
-        rows = HouseTS.objects.filter(
-            year=year, month=month, deal_status=DealStatusType.OPENED,
-        ).values(
-            'floor', 'total_floor', 'building_type', 'property_type',
-            'is_rooftop', 'floor_ping', 'monthly_price', 'rough_coordinate',
-        )
-        generics = [{
-            **row,
-            'building_type': _enum_or_none(enums.BuildingType, row['building_type']),
-            'property_type': _enum_or_none(enums.PropertyType, row['property_type']),
-        } for row in rows]
+        # S3b：house_ts 停寫後不再掃整月 HouseTS（兩百萬列）；改疊逐日 detail manifest 的
+        # dist 節——比率以樣本數加權平均、中位數取逐日中位數的中位數。月窗本來就是
+        # 逐日 OPENED 列的聯集，逐日值加權與整月一次算的差在小數第三位以下。
+        if house_db():
+            rows = HouseTS.objects.filter(
+                year=year, month=month, deal_status=DealStatusType.OPENED,
+            ).values(
+                'floor', 'total_floor', 'building_type', 'property_type',
+                'is_rooftop', 'floor_ping', 'monthly_price', 'rough_coordinate',
+            )
+            generics = [{
+                **row,
+                'building_type': _enum_or_none(enums.BuildingType, row['building_type']),
+                'property_type': _enum_or_none(enums.PropertyType, row['property_type']),
+            } for row in rows]
+            current = invariants(generics)
+        else:
+            current = _stack_daily_dists(daily_dists)
 
         if options['baseline']:
             with open(options['baseline']) as f:
@@ -194,7 +225,6 @@ class Command(BaseCommand):
         else:
             baseline = baseline_from_assertions()
             baseline_name = 'assertions.yaml dist.* near'
-        current = invariants(generics)
         results, inv_passed, skipped_reason = compare_invariants(current, baseline)
         invariant_report = {
             'mode': 'advisory',

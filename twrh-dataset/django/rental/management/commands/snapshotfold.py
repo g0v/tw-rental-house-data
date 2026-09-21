@@ -28,6 +28,7 @@ from datetime import date as date_cls, datetime, timedelta
 from django.core.management.base import BaseCommand, CommandError
 
 from rental import artifacts, snapshot, snapshot_db
+from rental.switches import house_db
 from rental.models import Vendor
 from rental.raws import vendor_dirname
 
@@ -92,16 +93,43 @@ class Command(BaseCommand):
             elif artifacts.snapshot_exists(short, yesterday.isoformat(), read_bucket):
                 print('=== snapshot {} {}: keep as is (no {} snapshot to refold from)'.format(
                     short, yesterday, before))
-            else:
+            elif house_db():
                 print('=== snapshot {} {}: no {} snapshot — bootstrap from DB'.format(
                     short, yesterday, before))
                 self.bootstrap(vendor, short, yesterday, bucket)
+            else:
+                self.replay_to(short, yesterday, read_bucket, bucket)
         if only != 'final':
             if not artifacts.snapshot_exists(short, yesterday.isoformat(), read_bucket):
                 raise CommandError(
                     'snapshot {} missing — snapshotfinal stage 沒跑？'
                     '（--only provisional 需要昨日 final）'.format(yesterday))
             self.fold(short, yesterday, day, 'provisional', read_bucket, bucket)
+
+    def replay_to(self, short, target, read_bucket, bucket):
+        '''S3b：前日與昨日的 snapshot 都不在、又沒有 DB 可摺（flow 連兩晚沒走到 snapshot）。
+        往回找最近一份 snapshot，從它的隔天逐日重放到 target——各日分區（list／parsed／deals）
+        永遠留著，fold 是純函數，重放的結果與當時每天照跑相同。找不到任何一份＝冷啟動：
+        以空的前日摺出 target（只有 target 當天的訊號，carry 欄從這天數起）。'''
+        lookback = int(os.environ.get('TWRH_SNAPSHOT_REPLAY_DAYS', '14'))
+        base = None
+        for back in range(2, lookback + 1):
+            d = target - timedelta(days=back)
+            if artifacts.snapshot_exists(short, d.isoformat(), read_bucket):
+                base = d
+                break
+        if base is None:
+            print('!!! snapshot {} {}: no snapshot within {} days — cold start from empty'.format(
+                short, target, lookback))
+            self.fold(short, target - timedelta(days=1), target, 'final', read_bucket, bucket,
+                      allow_empty_prev=True)
+            return
+        print('=== snapshot {} {}: replay from {} ({} days)'.format(
+            short, target, base, (target - base).days))
+        d = base + timedelta(days=1)
+        while d <= target:
+            self.fold(short, d - timedelta(days=1), d, 'final', read_bucket, bucket)
+            d += timedelta(days=1)
 
     def backfill(self, vendor, short, options, read_bucket, bucket):
         try:
@@ -136,8 +164,10 @@ class Command(BaseCommand):
             short, day, n, path, os.path.getsize(path) / 1e6))
         self.upload(bucket, short, day, path)
 
-    def fold(self, short, prev_day, day, kind, read_bucket, bucket):
+    def fold(self, short, prev_day, day, kind, read_bucket, bucket, allow_empty_prev=False):
         prev_rows = artifacts.read_snapshot(short, prev_day.isoformat(), read_bucket)
+        if prev_rows is None and allow_empty_prev:
+            prev_rows = []
         if prev_rows is None:
             raise CommandError('snapshot {} missing, cannot fold {}'.format(prev_day, day))
         date_str = day.isoformat()

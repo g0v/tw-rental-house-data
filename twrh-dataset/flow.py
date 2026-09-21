@@ -42,6 +42,7 @@ sys.path.insert(0, BASE)
 sys.path.insert(0, os.path.join(BASE, 'django'))
 from crawler import vendor_profiles  # noqa: E402
 from crawlerrequest import manifest_files  # noqa: E402  純函數層，無 Django
+from rental.switches import house_db  # noqa: E402  無 Django
 
 DRY_RUN = False
 
@@ -148,6 +149,16 @@ def advisory_check(ctx, name, *args, record_as=None):
         manifest_files.record_check(ctx.date, ctx.run_id, record_as or name, verdict, line)
     print('{} → {}'.format(record_as or name, verdict), flush=True)
     return result
+
+
+def db_era_stage(name):
+    '''S3b：house 三表停寫後，靠 DB 當日列才成立的 stage 自印 skip（synthts／syncstateful
+    的工作由 snapshot fold 接手；四支雙軌對帳沒有 DB 那一軌可比）。回退 TWRH_HOUSE_DB=1
+    時它們原樣回來，所以 stage 名單與順序不動。回傳 True＝這個 stage 不用跑。'''
+    if house_db():
+        return False
+    print('{}: skip (house DB off since S3b — files are the only ledger)'.format(name), flush=True)
+    return True
 
 
 def archive_scrapy_log(ctx, name):
@@ -334,6 +345,8 @@ def stage_liststubs(_ctx):
 
 def stage_seedcheck(ctx):
     # 4a 驗收：純函數從 stub 重算 seeds 對 queue；advisory，不擋 pipeline
+    if db_era_stage('seedcheck'):
+        return
     advisory_check(ctx, 'seedcheck')
 
 
@@ -377,6 +390,8 @@ def stage_parsed(_ctx):
 
 def stage_parsedcheck(ctx):
     # 4b 驗收：當日 parquet 逐欄對 HouseTS；advisory（雙寫期 DB 是真相）
+    if db_era_stage('parsedcheck'):
+        return
     advisory_check(ctx, 'parsedcheck')
 
 
@@ -384,12 +399,16 @@ def stage_snapshotcheck(ctx):
     # 4c 驗收（synthts／sync 之後，DB 當日列已齊）：昨日 final 與今日 provisional 各對一次
     # HouseTS／House；advisory。昨日那筆記成 snapshotcheck-final（House 現值已是今日，
     # carry 欄只對 TS 可推的兩項）
+    if db_era_stage('snapshotcheck'):
+        return
     yesterday = (datetime.strptime(ctx.date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
     advisory_check(ctx, 'snapshotcheck', '--date', yesterday, record_as='snapshotcheck-final')
     advisory_check(ctx, 'snapshotcheck')
 
 
 def stage_exportcheck(ctx):
+    if db_era_stage('exportcheck'):
+        return
     # S3a 驗收：同一窗由 DB 路徑與 snapshot 路徑各出 CSV，排序正規化後逐 byte；advisory。
     # 排在 sync／snapshotcheck 之後＝今日 provisional 已摺、DB 當日列已齊、當日 sweep 還沒
     # 再動 DB，這是兩軌唯一對齊的空檔（窗尾＝今天，見 exportcheck 的說明）
@@ -397,6 +416,8 @@ def stage_exportcheck(ctx):
 
 
 def stage_synthts(ctx):
+    if db_era_stage('synthts'):
+        return
     if ctx.seed_mode == 'diff':
         manage('synthts')
     else:
@@ -404,6 +425,8 @@ def stage_synthts(ctx):
 
 
 def stage_sync(_ctx):
+    if db_era_stage('sync'):
+        return
     manage('syncstateful', '-ts')
 
 
@@ -417,7 +440,11 @@ def stage_quality(_ctx):
 
 
 def stage_export(_ctx):
-    manage('export', '-p')
+    # S3a：月包改讀 snapshot 分區。排在 snapshot stage 之後（見 RUN_STAGES 的說明）
+    if house_db():
+        manage('export', '-p')
+    else:
+        manage('export', '-p', '--source', 'snapshot')
 
 
 def stage_logs(ctx):
@@ -564,9 +591,6 @@ def rawpack_artifacts(date_str):
 
 RUN_STAGES = [
     # (name, body, artifact_fn 或 None＝stamp 檔)
-    # export 排最前：每月 1 日出上月（export -p 自判），此刻 DB＝上月最後一天
-    # 23:00 sweep 後的狀態，當日爬取尚未動到任何列（2026-09-07 拍板）
-    ('export', stage_export, None),
     ('list', stage_list, None),
     ('liststubs', stage_liststubs, None),
     # 昨日 final snapshot 要在 seed 之前摺好（S1 種子判準讀它；2026-09-19）
@@ -584,6 +608,12 @@ RUN_STAGES = [
     ('dealevents', stage_dealevents, None),
     ('parsedcheck', stage_parsedcheck, None),
     ('snapshot', stage_snapshot, None),
+    # export（每月 1 日出上月，export -p 自判）：S3a 起讀 snapshot 分區，日期是顯式的，
+    # 「排最前、趁 DB 還沒被當日爬取動過」的理由消失；要的是上月最後一天的 **final**
+    # snapshot，它在本場的 snapshotfinal stage 才摺出來，所以排在 snapshot 之後
+    # （2026-09-17 記在階梯表 S3a 列）。回退 TWRH_HOUSE_DB=1 時走 DB 路徑、此刻 House
+    # 已含當日爬取——只有「回退期間剛好跨月」才踩得到，屆時手動 export -f/-t 補
+    ('export', stage_export, None),
     ('synthts', stage_synthts, None),
     ('sync', stage_sync, None),
     ('snapshotcheck', stage_snapshotcheck, None),
