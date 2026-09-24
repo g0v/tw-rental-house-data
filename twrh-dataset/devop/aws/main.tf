@@ -183,6 +183,12 @@ locals {
 }
 
 resource "aws_ecs_task_definition" "crawler" {
+  # 先註冊新 revision 再註銷舊的：2026-09-25 S5 destroy 時預設的「先刪後建」在 RDS 刪除被拒後
+  # 中止，留下沒有任何 ACTIVE revision、排程指向已註銷版本的斷檔（07:35–07:38）
+  lifecycle {
+    create_before_destroy = true
+  }
+
   family                   = "twrh-crawler"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
