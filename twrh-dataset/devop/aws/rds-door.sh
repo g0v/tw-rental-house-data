@@ -5,6 +5,9 @@
 #   ./rds-door.sh open 1.2.3.4/32 # 額外保留其他 CIDR（如遷移期 workbench task）
 # 爬蟲/workbench 走 task SG 規則，不受此白名單影響。
 set -euo pipefail
+# 2026-09-25 S5：RDS 已 destroy（最後一份 snapshot＝twrh-final）。本腳本 apply 時帶 enable_rds=true，
+# 照跑會建一台空的新 RDS——退役。要讀舊資料：從 twrh-final restore，或讀 s3://twrh-w2/archive/rds/。
+echo "rds-door.sh 已退役（RDS 於 2026-09-25 destroy）；要開回 DB 請先確認意圖" >&2; exit 1
 cd "$(dirname "$0")"
 
 MODE=${1:?usage: rds-door.sh open|close [extra_cidr ...]}; shift || true

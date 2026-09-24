@@ -48,6 +48,7 @@ Apply 後仍需人工做的事：
 | Phase 4 4a／4b 上線（9/9） | image 先出（model 已無 raw 欄）→ `rds-door.sh` 開門 `manage.py migrate`（0014 drop raw 欄、0006 drop stats）→ 關門；`terraform apply`（S3 policy 加 `list/*`、`parsed/*`、task def 加 `TWRH_ARTIFACT_DIR`、拿掉 `raw_db_write`）——apply 前 artifactpack 上傳會失敗但只 advisory、分區檔留在 EFS，apply 後補 `run-cloud.sh poetry run python django/manage.py artifactpack --tree list --reupload --date <日>`（parsed 同；只上傳 S3 缺的 key） | runcheck 看到 `=== list 591 <日> sweep-HHMM: … rows` 與 `uploaded s3://…/list/…`；隔日 `seedcheck: AGREE` |
 | 1 日 export 補跑 | flow 若在 export 之後的 stage 紅，export 已出、不需補；若 export 本身紅：`run-cloud.sh poetry run python django/manage.py export -p`（task 的 TWRH_TARGET_DATE 未設時取真實當天，須在 1 日當天跑；否則加 `env TWRH_TARGET_DATE=YYYY-MM-01`）——**不要**用 `flow.py run --from export`，export 已是第一個 stage、會把整天重爬 | 07:00 publisher 前 `datas/` 有 `[YYYYMM][CSV][Raw]` zip |
 | 回退 | tfvars 翻回 `raw_db_write = "1"` → apply（D6b 後 orchestrate.sh 已刪，排程只能指 flow；flow 出問題用 `--from` 續跑或 run-cloud 跑單一 manage 指令） | image 不需重出 |
+| S5 RDS destroy（2026-09-25） | 已完成。RDS、subnet group、SG 已刪，最後 snapshot＝`twrh-final`（120 GiB）；housekeep 排程關（`enable_housekeep_schedule`）；本機 tfvars `enable_rds = false`；`rds-door.sh` 已退役。task def 仍帶 `TWRH_DB_NAME`／`TWRH_DB_USER`、`TWRH_DB_HOST` 為空（＝連不上，S5 前置驗過），S6 去 Django 時一起拿掉。`twrh-agent` 的 `rds-provision` 刻意無 `rds:Delete*`：destroy 當下臨時加 `DeleteDBInstance`／`CreateDBSnapshot`／`DeleteDBSubnetGroup`（IAM 生效約 1 分鐘），完成即還原 | 隔日早驗收 flow 全綠、task 無 DB 連線錯誤 |
 
 ## 刻意不做（見 aws-deployment-plan「刻意避開的費用陷阱」）
 
