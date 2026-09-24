@@ -281,8 +281,10 @@ resource "aws_scheduler_schedule" "frontier_sweep" {
 
 # ---- 月度 housekeep（raw offload ＋ HouseTS 歸檔，節省槓桿 1＋2）----
 # 同一顆 image、command override；時間須避開爬蟲時段（rawoffload 無鎖）
+# S5（2026-09-25）起關閉：archivehistory 讀 HouseTS，RDS destroy 後無物可歸檔；
+# raw 早由 rawpack 每日上 S3（3-1），snapshot 分區取代 TS 歸檔 tgz（4c）
 resource "aws_scheduler_schedule" "monthly_housekeep" {
-  count                        = var.enable_schedule ? 1 : 0
+  count                        = var.enable_schedule && var.enable_housekeep_schedule ? 1 : 0
   name                         = "twrh-monthly-housekeep"
   schedule_expression          = var.housekeep_schedule
   schedule_expression_timezone = "Asia/Taipei"

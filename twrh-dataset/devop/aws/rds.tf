@@ -65,12 +65,12 @@ resource "aws_db_instance" "twrh" {
   db_subnet_group_name   = aws_db_subnet_group.twrh[0].name
   vpc_security_group_ids = [aws_security_group.rds[0].id]
   # 遷移期公網直連（SG 白名單守門）；M4 切換後可收回 private（SG 清空即無暴露面）
-  publicly_accessible    = true
-  multi_az               = false
+  publicly_accessible = true
+  multi_az            = false
 
-  backup_retention_period = 7
-  deletion_protection     = true
-  skip_final_snapshot     = false
+  backup_retention_period   = 7
+  deletion_protection       = var.rds_deletion_protection
+  skip_final_snapshot       = false
   final_snapshot_identifier = "twrh-final"
 
   auto_minor_version_upgrade = true

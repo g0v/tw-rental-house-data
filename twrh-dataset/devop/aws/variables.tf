@@ -182,6 +182,18 @@ variable "sweep_schedule" {
   default     = "cron(0 5,8,11,14,17,20,23 * * ? *)"
 }
 
+variable "enable_housekeep_schedule" {
+  description = "月度 housekeep 排程；S5（RDS destroy）起預設關——archivehistory 讀 HouseTS，DB 退役後無物可做"
+  type        = bool
+  default     = false
+}
+
+variable "rds_deletion_protection" {
+  description = "RDS deletion_protection。S5 destroy 前先以 false apply 一次解鎖，再 enable_rds=false"
+  type        = bool
+  default     = true
+}
+
 variable "housekeep_schedule" {
   description = "月度 housekeep（raw offload＋HouseTS 歸檔）的 cron（Asia/Taipei）；避開爬蟲時段"
   type        = string
