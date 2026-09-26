@@ -50,3 +50,7 @@ jobs:
           TWRH_DB_HOST: 127.0.0.1
           TWRH_DB_PORT: '5432'
         run: poetry run python django/manage.py test crawlerrequest -v 2
+      # S6：twrhctl（無 Django 指令入口）不需要 DB——每支指令 import 時不得帶進 django、
+      # 三個 Django 等價物（JSON encoder／Paginator／台北時區）與原版逐字相同
+      - name: Run twrhctl (no-Django) tests
+        run: poetry run python -m unittest discover -s twrhctl/tests -t . -v

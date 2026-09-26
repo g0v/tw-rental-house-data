@@ -1,0 +1,296 @@
+'''export（twrhctl 版，無 Django；由 django/rental/management/commands/export.py 搬來。
+只有 --source snapshot（預設即是）；DB 路徑與 -u 拒跑。TWRHCTL_EXPORT_ZIP_DIR 可改月包落點）。'''
+import argparse
+import shutil
+from os import path, mkdir, remove, listdir, environ
+from zipfile import ZipFile, ZIP_DEFLATED
+from tempfile import mkdtemp
+from datetime import datetime, date, timedelta
+from twrhctl.base import BaseCommand, CommandError
+from twrhctl import tz as timezone   # make_aware／localtime 同介面
+from twrhctl.export import RawExport
+
+# TODO: uniq support postgres only
+
+class Command(BaseCommand):
+    help = 'Export house data by given time range'
+    default_export_dir = 'tw-rental-data'
+    # twrhctl/commands/ → twrh-dataset/datas（同 Django 版位置）；TWRHCTL_EXPORT_ZIP_DIR 覆寫給平行比對
+    zip_dir = environ.get('TWRHCTL_EXPORT_ZIP_DIR') or path.join(
+        path.dirname(path.realpath(__file__)), '../../datas')
+
+    def parse_date(self, input):
+        try: 
+            return timezone.make_aware(datetime.strptime(input, '%Y%m%d'))
+        except ValueError:
+            raise argparse.ArgumentTypeError('Invalid date string: {}'.format(input))
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '-p',
+            '--periodic-export',
+            dest='is_periodic',
+            default=False,
+            const=True,
+            nargs='?',
+            help='perform periodic export'
+        )
+
+        parser.add_argument(
+            '-u',
+            '--unique',
+            default=False,
+            const=True,
+            nargs='?',
+            help='remove duplicated item or not'
+        )
+
+        parser.add_argument(
+            '-e',
+            '--enum',
+            default=False,
+            const=True,
+            nargs='?',
+            help='print enumeration or not'
+        )
+
+        parser.add_argument(
+            '-f',
+            '--from',
+            dest='from_date',
+            default=None,
+            type=self.parse_date,
+            help='from date, format: YYYYMMDD, default today'
+        )
+
+        parser.add_argument(
+            '-t',
+            '--to',
+            dest='to_date',
+            default=None,
+            type=self.parse_date,
+            help='to date, format: YYYYMMDD, default today'
+        )
+
+        parser.add_argument(
+            '-o',
+            '--outfile',
+            default='rental_house',
+            help='output file name, without postfix(.csv)'
+        )
+
+        parser.add_argument(
+            '-j',
+            '--json',
+            default=False,
+            const=True,
+            nargs='?',
+            help='export json or not, each top region will be put in seperated files'
+        )
+
+        parser.add_argument(
+            '-b6',
+            '--big6',
+            default=False,
+            const=True,
+            nargs='?',
+            help='only export 六都'
+        )
+
+        parser.add_argument(
+            '--both',
+            default=False,
+            const=True,
+            nargs='?',
+            help='do all in one'
+        )
+
+        parser.add_argument(
+            '--source',
+            default='snapshot',
+            choices=['db', 'snapshot'],
+            help='S3a：db＝讀 House（現行）；snapshot＝讀 4c 的 snapshot 分區'
+        )
+
+        parser.add_argument(
+            '-01',
+            '--01-instead-of-truefalse',
+            dest='use_01',
+            default=False,
+            const=True,
+            nargs='?',
+            help='use T/F to express boolean value in csv, instead of 1/0'
+        )
+
+    def target_now(self):
+        """今天零點，吃 go.sh 的 TWRH_TARGET_DATE 日期釘選。
+
+        export 過去不吃它是既有 caveat（dx-roadmap backlog）——補跑過去日期的
+        pipeline 時，export 會落在真實當天而非目標日。補上後與
+        rental.models / persist_queue / statscheck 的日期語意一致。
+        """
+        override = environ.get('TWRH_TARGET_DATE')
+        if override:
+            return timezone.make_aware(datetime.strptime(override, '%Y-%m-%d'))
+        return timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    def handle_manual(self, **options):
+        need_uniq = options['unique'] is not False
+        print_enum = options['enum'] is not False
+        want_json = options['json'] is not False
+        use_tf = options['use_01'] is not True
+        big6 = options['big6'] is not False
+        from_date = options['from_date']
+        to_date = options['to_date']
+        all_in_one = options['both'] is not False
+
+        if from_date is None:
+            from_date = self.target_now()
+
+        if to_date is None:
+            to_date = self.target_now()
+
+        if from_date > to_date:
+            from_date, to_date = to_date, from_date
+
+        to_date += timedelta(days=1)
+
+        source = options['source']
+
+        if all_in_one:
+          self.export_everything(from_date, to_date, options['outfile'], source=source)
+        else:
+          if need_uniq:
+              raise CommandError('-u（Deduplicated）只有 DB 路徑，twrhctl 不支援（去重交給 csv-aggregator）')
+          else:
+              tool = RawExport(source=source)
+
+          tool.print(
+              from_date,
+              to_date,
+              print_enum=print_enum,
+              only_big6=big6,
+              outfile=options['outfile'],
+              export_json=want_json,
+              use_tf=use_tf
+          )
+
+    def is_end_of_sth(self):
+        today = self.target_now().date()
+        tomorrow = today + timedelta(days=1)
+
+        is_end_of_month = today.month != tomorrow.month
+        is_end_of_quarter = False
+        is_end_of_year = False
+
+        if is_end_of_month:
+            is_end_of_quarter = today.month % 3 == 0
+            is_end_of_year = today.month == 12
+
+        return {
+            'month': is_end_of_month,
+            'quarter': is_end_of_quarter,
+            'year': is_end_of_year
+        }
+
+    def zip_everything(self, tmp_dir, prefix, type='raw'):
+        zip_name = path.join(self.zip_dir, '[{}][CSV][{}] TW-Rental-Data.zip'.format(prefix, type.capitalize()))
+        csv_postfix = list(map(lambda name: '-{}{}'.format(type, name), ['-01.csv', '-01.json', '.csv', '.json']))
+        with ZipFile(zip_name, 'w', compression=ZIP_DEFLATED) as zip:
+            for postfix in csv_postfix:
+                filename = '{}{}'.format(prefix, postfix)
+                filepath = path.join(tmp_dir, filename)
+                if path.isfile(filepath):
+                    zip.write(filepath, arcname=path.join(self.default_export_dir, filename))
+
+        for postfix in csv_postfix:
+            filename = '{}{}'.format(prefix, postfix)
+            filepath = path.join(tmp_dir, filename)
+            if path.isfile(filepath):
+                remove(filepath)
+
+        zip_name = path.join(self.zip_dir, '[{}][JSON][{}] TW-Rental-Data.zip'.format(prefix, type.capitalize()))
+        with ZipFile(zip_name, 'w', compression=ZIP_DEFLATED) as zip:
+            for f in listdir(tmp_dir):
+                zip.write(path.join(tmp_dir, f), arcname=path.join(self.default_export_dir, f))
+
+    def export_everything(self, from_date, to_date, prefix, source='db'):
+
+        to_date += timedelta(days=1)
+        tmp_dir = mkdtemp()
+        outfile_prefix = path.join(tmp_dir, prefix)
+
+        print('#### Export everything in {} ####'.format(prefix))
+        # uniq = UniqExport()
+        raw = RawExport(source=source)
+
+        # export tf raw + json
+        raw.print(
+            from_date,
+            to_date,
+            print_enum=False,
+            outfile='{}-raw'.format(outfile_prefix)
+        )
+
+        self.zip_everything(tmp_dir, prefix, 'raw')
+        shutil.rmtree(tmp_dir)
+
+        # skip uniq export as we have aggregator now~~~
+        # # export tf uniq + json
+        # tmp_dir = mkdtemp()
+        # outfile_prefix = path.join(tmp_dir, prefix)
+
+        # uniq.print(
+        #     from_date,
+        #     to_date,
+        #     print_enum=False,
+        #     outfile='{}-deduplicated'.format(outfile_prefix),
+        #     export_json=True
+        # )
+
+        # self.zip_everything(tmp_dir, prefix, 'deduplicated')
+        # shutil.rmtree(tmp_dir)
+
+    def handle_periodic(self, source='db'):
+        today = self.target_now()
+
+        # 每月 1 日出「上個月」（2026-09-07）。S3a 起來源是 snapshot 分區、日期顯式，
+        # flow 把它排在 snapshot stage 之後：要的是上月最後一天的 final snapshot，
+        # 那一份在 1 日這場的 snapshotfinal stage 才摺出來（含最後一天全天的 sweep）。
+        # DB 路徑（回退）讀的是 House 現況，排在爬取之後會混進 1 日的狀態——回退期間
+        # 剛好跨月時要手動 -f/-t 補。
+        if today.day != 1:
+            return
+
+        last_month_end = (today - timedelta(days=1)).date()
+        last_month_start = last_month_end.replace(day=1)
+        month_prefix = last_month_start.strftime('%Y%m')
+        self.export_everything(
+            timezone.make_aware(datetime.combine(last_month_start, datetime.min.time())),
+            timezone.make_aware(datetime.combine(last_month_end, datetime.min.time())),
+            month_prefix, source=source)
+
+        # don't do quarterly & annual export during periodic task,
+        # as this task has to be run in a more powerful instance
+        # quarterly export
+        # if end_of_sth['quarter']:
+        #     # we are at the end of quarter, no month underflow :)
+        #     quarter_ago = today.replace(month=today.month-2, day=1)
+        #     quarter_prefix = '{}Q{}'.format(today.year, int(today.month/3))
+        #     self.export_everything(quarter_ago, today, quarter_prefix)
+
+        # annual export
+        # if end_of_sth['year']:
+        #     year_ago = today.replace(month=1, day=1)
+        #     year_prefix = '{}'.format(today.year)
+        #     self.export_everything(year_ago, today, year_prefix)
+
+    def handle(self, *args, **options):
+        if options['source'] != 'snapshot':
+            raise CommandError('--source db 需要 DB，twrhctl 只有 snapshot 路徑')
+        is_periodic = options['is_periodic'] is not False
+
+        if is_periodic:
+            self.handle_periodic(source=options['source'])
+        else:
+            self.handle_manual(**options)

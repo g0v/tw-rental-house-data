@@ -439,6 +439,51 @@ def stage_quality(_ctx):
     manage('qualitycheck', check=False)
 
 
+def stage_nodjango(ctx):
+    '''S6 平行比對（advisory）：同一天的 fold／總表／manifest／qualitycheck／export／monthreport／
+    queue 系／rawpack 對帳，Django 路徑與 twrhctl（無 Django）各跑一次、逐項比對產物。
+    排在 quality 之後：此刻今日 provisional、manifest 都已定稿，當日 sweep 還沒開始。
+    判定記進 checks.json（名 nodjango）並補傳 S3——manifest stage 已經傳過一次了。
+    關掉＝TWRH_NODJANGO_SHADOW=0。10/1 月包比對一致後切入口，這個 stage 隨 Django 一起退役。'''
+    if os.environ.get('TWRH_NODJANGO_SHADOW', '1') != '1':
+        print('nodjango: skip (TWRH_NODJANGO_SHADOW=0)', flush=True)
+        return
+    try:
+        _nodjango_shadow(ctx)
+    except Exception as err:  # noqa: BLE001 — 平行比對壞掉不能把已完成的日跑染紅
+        print('!!! nodjango stage crashed: {}: {}'.format(type(err).__name__, err), flush=True)
+
+
+def _nodjango_shadow(ctx):
+    result = run(['poetry', 'run', 'python', '-m', 'twrhctl', 'shadowcheck'],
+                 check=False, capture_output=True, text=True)
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    sys.stdout.flush()
+    verdict, line = None, ''
+    for out in result.stdout.splitlines():
+        if out.startswith('nodjango:'):
+            line = out
+            rest = out[len('nodjango:'):].strip()
+            verdict = 'AGREE' if rest.startswith('AGREE') else 'DIFF'
+    if verdict is None:
+        verdict = 'crashed(exit {})'.format(result.returncode) if result.returncode else 'no-output'
+    if DRY_RUN:
+        return
+    manifest_files.record_check(ctx.date, ctx.run_id, 'nodjango', verdict, line)
+    print('nodjango → {}'.format(verdict), flush=True)
+    bucket = os.environ.get('TWRH_RAW_BUCKET')
+    path = manifest_files.manifest_path(ctx.date, manifest_files.CHECKS_STAGE)
+    if bucket and os.path.exists(path):
+        try:
+            import boto3
+            key = 'manifests/{}/checks.json'.format(ctx.date)
+            boto3.client('s3').upload_file(path, bucket, key)
+            print('  -> s3://{}/{}'.format(bucket, key), flush=True)
+        except Exception as err:  # noqa: BLE001 — advisory：本地 checks.json 在
+            print('!!! checks.json upload failed: {}'.format(err), flush=True)
+
+
 def stage_export(_ctx):
     # S3a：月包改讀 snapshot 分區。排在 snapshot stage 之後（見 RUN_STAGES 的說明）
     if house_db():
@@ -620,6 +665,8 @@ RUN_STAGES = [
     ('exportcheck', stage_exportcheck, None),
     ('manifest', stage_manifest, manifest_artifacts),
     ('quality', stage_quality, None),
+    # S6 平行比對（2026-09-26 起、10/1 切換前）：Django 路徑 vs twrhctl，advisory
+    ('nodjango', stage_nodjango, None),
     ('logs', stage_logs, None),
 ]
 RUN_STAGE_NAMES = [name for name, _, _ in RUN_STAGES]

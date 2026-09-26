@@ -1,0 +1,83 @@
+'''manifest（twrhctl 版，無 Django；分區檔路徑，builder 在 twrhctl/manifests.py。多一個 --no-upload）。
+
+原說明：產出當日各 stage 的 manifest（architecture-roadmap 1-2）。
+
+在 syncstateful（與 diff 模式的 synthts）之後跑，對當日資料重算
+list／detail／snapshot 三份 manifest。manifest 是對資料的純函數，
+同日重跑即覆蓋。品質斷言交給 qualitycheck，這裡只負責產出。
+
+    manage.py manifest                     # 當日（吃 TWRH_TARGET_DATE）
+    manage.py manifest --date 2026-09-01   # 指定日
+    manage.py manifest --from 2026-09-01 --to 2026-09-10 --source backfill
+                                           # 區間回補（1-3 的 9 月 backfill）
+'''
+import os
+from datetime import date, datetime, timedelta
+
+from twrhctl.base import BaseCommand, CommandError
+from twrhctl import manifests
+from crawlerrequest import manifest_files
+
+
+def _parse(value):
+    try:
+        return datetime.strptime(value, '%Y-%m-%d').date()
+    except ValueError:
+        raise CommandError('日期需為 YYYY-MM-DD: {}'.format(value))
+
+
+class Command(BaseCommand):
+    help = 'Build per-stage manifests for a date (or a backfill range)'
+
+    def add_arguments(self, parser):
+        parser.add_argument('--date', help='YYYY-MM-DD（預設 TWRH_TARGET_DATE／今天）')
+        parser.add_argument('--from', dest='date_from', help='區間起（含）')
+        parser.add_argument('--to', dest='date_to', help='區間迄（含）')
+        parser.add_argument(
+            '--source', choices=['live', 'backfill'], default='live',
+            help='backfill＝由 DB 回補歷史（queue 統計缺席，相關斷言降 advisory）')
+        parser.add_argument('--no-upload', action='store_true',
+                            help='不上 S3（nodjango 平行比對寫影子目錄用）')
+
+    def handle(self, *_args, **options):
+        if options['date_from'] or options['date_to']:
+            if not (options['date_from'] and options['date_to']):
+                raise CommandError('--from 與 --to 需成對')
+            current = _parse(options['date_from'])
+            end = _parse(options['date_to'])
+        elif options['date']:
+            current = end = _parse(options['date'])
+        else:
+            override = os.environ.get('TWRH_TARGET_DATE')
+            current = end = _parse(override) if override else date.today()
+
+        from rental.switches import house_db
+        if house_db():
+            raise CommandError('TWRH_HOUSE_DB=1（DB 版 manifest）需要 DB，twrhctl 不支援')
+        bucket = None if options['no_upload'] else os.environ.get('TWRH_RAW_BUCKET')
+        s3 = None
+        if bucket:
+            import boto3
+            s3 = boto3.client('s3')
+
+        n = 0
+        while current <= end:
+            for path in manifests.build_all(current, source=options['source']):
+                print('wrote {}'.format(os.path.relpath(path)))
+                # manifest 同步上雲（北極星 S3 樹的 manifests/ 分支）：
+                # 檔案極小、日日覆蓋；3-3 的 sync-dev-data.sh 從這裡拉
+                if s3 is not None:
+                    key = 'manifests/{}/{}'.format(
+                        current.isoformat(), os.path.basename(path))
+                    s3.upload_file(path, bucket, key)
+                    print('  -> s3://{}/{}'.format(bucket, key))
+                n += 1
+            # flow advisory stage 記的 checks.json（seedcheck／filequeuecheck／parsedcheck
+            # 判定）一併上雲，runcheck 讀 S3 就看得到門檻狀態
+            checks_path = manifest_files.manifest_path(current.isoformat(), manifest_files.CHECKS_STAGE)
+            if s3 is not None and os.path.exists(checks_path):
+                key = 'manifests/{}/checks.json'.format(current.isoformat())
+                s3.upload_file(checks_path, bucket, key)
+                print('  -> s3://{}/{}'.format(bucket, key))
+            current += timedelta(days=1)
+        print('{} manifest(s) written'.format(n))
