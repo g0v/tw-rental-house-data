@@ -40,7 +40,10 @@ def _init_sentry():
     if not dsn:
         return
     import sentry_sdk
-    sentry_sdk.init(dsn=dsn, traces_sample_rate=0.1, profiles_sample_rate=0.1)
+    # auto_enabling_integrations 會試 import django（Django 整合）——在 image 裡拿到的是 twrh-dataset
+    # 自己的 django/ 目錄，違反「行程內不載入 django」。錯誤回報靠預設整合（logging／excepthook）就夠
+    sentry_sdk.init(dsn=dsn, traces_sample_rate=0.1, profiles_sample_rate=0.1,
+                    auto_enabling_integrations=False)
 
 
 _load_env()

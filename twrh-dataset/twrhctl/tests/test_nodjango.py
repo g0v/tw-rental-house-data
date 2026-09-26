@@ -39,6 +39,16 @@ class NoDjangoImportTests(unittest.TestCase):
                               capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
 
+    def test_sentry_init_does_not_import_django(self):
+        # 雲上有 SENTRY_DSN：sentry 的自動整合會試 import django（2026-09-26 雲上實測 exit 3）
+        env = dict(os.environ, SENTRY_DSN='https://public@o0.ingest.sentry.io/0')
+        code = ('import sys\nimport twrhctl\n'
+                'leaked = [m for m in sys.modules if m == "django" or m.startswith("django.")]\n'
+                'print(leaked)\nsys.exit(1 if leaked else 0)\n')
+        proc = subprocess.run([sys.executable, '-c', code], cwd=BASE, capture_output=True,
+                              text=True, env=env)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+
     def test_main_help_lists_all_commands(self):
         proc = subprocess.run([sys.executable, '-m', 'twrhctl'], cwd=BASE, capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0, proc.stderr)
