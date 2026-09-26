@@ -77,7 +77,14 @@ import json,os
 p='$STATE'; d=json.load(open(p)) if os.path.exists(p) else {}
 d['$1']=True; json.dump(d,open(p,'w'),indent=1)"; state_push "$STATE" "$YM.state.json"; }
 
+# S6：TWRH_ENTRY=twrhctl 時月報與通知改走 twrhctl（無 Django）；平行期預設照舊 manage.py
+ENTRY=${TWRH_ENTRY:-django}
+
 notify() {  # notify <emoji+text>（webhook 缺就跳過；雙態都發）
+  if [ "$ENTRY" = twrhctl ]; then
+    NOTIFY_TEXT="$1" poetry run python -m twrhctl notify || echo '(slack notify skipped)'
+    return
+  fi
   # 走 manage.py shell 取 settings（與 statscheck 同路）——cwd 底下的 django/
   # 專案目錄會遮蔽同名套件，直接 import django 必炸（2026-08-31 實踩，通知
   # 因此靜默跳過了一整輪出貨）
@@ -141,7 +148,12 @@ if ! step_done verify; then
   ( cd "$AGG" && ./check.sh "$OLDPWD/$DEDUP_ZIP" ) | tail -8
   mark_done verify
 fi
-poetry run python django/manage.py monthreport --month "$YM" -o "$STATE_DIR" \
+if [ "$ENTRY" = twrhctl ]; then
+  MONTHREPORT=(poetry run python -m twrhctl monthreport)
+else
+  MONTHREPORT=(poetry run python django/manage.py monthreport)
+fi
+"${MONTHREPORT[@]}" --month "$YM" -o "$STATE_DIR" \
   && VERDICT=green || { [ $? -eq 2 ] && VERDICT=red || exit 1; }
 state_push "$STATE_DIR/$YM.report.json" "$YM.report.json"
 echo "gate verdict: $VERDICT"

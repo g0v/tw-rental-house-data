@@ -16,7 +16,7 @@ from scrapy import Request, signals
 from scrapy_twrh.items import GenericHouseItem
 from scrapy_twrh.spiders.rental591 import Rental591Spider, util
 import os
-from rental.models import House
+from crawler.orm import House   # S6：house DB 回退才用得到，延遲載入
 from rental import known as known_houses
 from rental.switches import house_db
 from crawlerrequest.enums import RequestType

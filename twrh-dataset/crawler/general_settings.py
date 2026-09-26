@@ -2,16 +2,24 @@
 # can be override by settings
 import sys
 import os
-import django
 import scrapy
 from scrapy.logformatter import LogFormatter
 
-# Allow Scrapy to use Django
+# rental／crawlerrequest 的純模組住在 django/ 樹（歷史佈局）
 sys.path.append('{}/../django'.format(os.path.dirname(os.path.realpath(__file__))))
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
-# Allow synchronous Django ORM calls in Scrapy's Twisted async context
-os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
-django.setup()
+
+# S6（2026-09-26）：DB 退場後預設不起 Django。只有還要 ORM 的時候（house DB 回退 TWRH_HOUSE_DB=1、
+# queue 回到 DB 記帳 TWRH_QUEUE_DB=1）才 setup；其餘 DB 分支的 model 經 crawler/orm.py 延遲載入。
+# 判斷前先讀 .env（以前是 django.setup() 載 settings 時順帶讀的；真環境變數優先，同 Django settings）
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '.env'))
+except ImportError:
+    pass
+from rental.vendors import needs_orm  # noqa: E402  純模組
+if needs_orm():
+    from crawler import orm  # noqa: E402
+    orm.setup()
 class QuietLogFormatter(LogFormatter):
     def scraped(self, item, response, spider):
         if spider.settings.getbool("LOG_SCRAPED_ITEMS"):

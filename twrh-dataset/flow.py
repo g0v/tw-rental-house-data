@@ -120,7 +120,22 @@ def run(cmd, **kwargs):
     return result
 
 
+# S6：flow／出貨用到的指令已搬到 twrhctl（無 Django）。TWRH_ENTRY=twrhctl 時這些改走
+# `python -m twrhctl`；其餘（synthts／syncstateful／四支 DB 對帳——只在 house DB 回退時才跑）
+# 照舊走 manage.py。平行期預設 django；10/1 月包兩路一致後把預設翻成 twrhctl。
+TWRHCTL_COMMANDS = frozenset((
+    'artifactpack', 'export', 'filequeuecheck', 'latestfold', 'manifest', 'monthreport',
+    'qualitycheck', 'queuebusy', 'queuefinalize', 'rawpack', 'snapshotfold'))
+
+
+def entry():
+    return os.environ.get('TWRH_ENTRY', 'django')
+
+
 def manage(*args, check=True, **kwargs):
+    if entry() == 'twrhctl' and args and args[0] in TWRHCTL_COMMANDS:
+        return run(['poetry', 'run', 'python', '-m', 'twrhctl', *args],
+                   check=check, **kwargs)
     return run(['poetry', 'run', 'python', 'django/manage.py', *args],
                check=check, **kwargs)
 
@@ -447,6 +462,9 @@ def stage_nodjango(ctx):
     關掉＝TWRH_NODJANGO_SHADOW=0。10/1 月包比對一致後切入口，這個 stage 隨 Django 一起退役。'''
     if os.environ.get('TWRH_NODJANGO_SHADOW', '1') != '1':
         print('nodjango: skip (TWRH_NODJANGO_SHADOW=0)', flush=True)
+        return
+    if entry() == 'twrhctl':
+        print('nodjango: skip (TWRH_ENTRY=twrhctl — flow already runs without Django)', flush=True)
         return
     try:
         _nodjango_shadow(ctx)

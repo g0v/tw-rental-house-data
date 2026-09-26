@@ -1,11 +1,11 @@
 import os
 import traceback
 from datetime import date, timedelta
-from django.db import transaction
-from django.db.models import F, Q
-from django.utils import timezone
+from rental import tz as timezone   # S6：無 Django（同介面）
+# DB 分支（house DB 回退、queue DB 記帳）才用得到：延遲載入
+from crawler.orm import transaction, F, Q
 from scrapy import signals
-from rental.models import House, HouseTS
+from crawler.orm import House, HouseTS
 from rental import enums
 from scrapy_twrh.items import GenericHouseItem
 from scrapy_twrh.spiders.rental591 import Rental591Spider, util

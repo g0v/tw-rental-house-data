@@ -315,6 +315,18 @@ Vendor 改由常數登錄 `rental/vendors.py` 提供（id／name 與 `fixtures/v
 `NoDatabaseTests` 的 `assertNumQueries(0)`。DB 時代的指令（seedcheck／parsedcheck／snapshotcheck／
 snapshotcarryfill／synthts／syncstateful／archivehistory／invalidate）仍直接用 ORM，S6 去 Django 時一起刪。
 
+### S6：去 Django（平行期 2026-09-26 起，10/1 月包一致即切）
+- `twrhctl/`（`poetry run python -m twrhctl <cmd>`）：flow／出貨用到的指令（snapshotfold、latestfold、artifactpack、
+  rawpack、queuefinalize、queuebusy、filequeuecheck、manifest、qualitycheck、export、monthreport＋notify）以同名同參數
+  搬過來、只留檔案時代分支（DB 模式拒跑）；行程內不得載入 django（`__main__` 斷言；`twrhctl/tests` 逐支驗，CI 跑）。
+  `twrh-dataset/django/` 自己有 `__init__.py`：在 twrh-dataset 目錄下 `import django` 會拿到它，測真 Django 要在別處起行程。
+- 入口開關 `TWRH_ENTRY`（flow `manage()` 與 publish.sh）：預設 `django`；`twrhctl`＝上列指令改走 twrhctl。
+  平行期 flow 多一個 advisory stage `nodjango`（quality 之後）：`twrhctl shadowcheck` 兩路逐項比對（fold／總表在影子
+  目錄重摺、manifest、qualitycheck、月初到當日區間 export、1 日加比月包、monthreport、queue 系、rawpack 對帳），記 checks.json。
+- 爬蟲端已不 `django.setup()`，除非 `rental.vendors.needs_orm()`（`TWRH_HOUSE_DB=1`／`TWRH_QUEUE_DB=1` 回退）；DB 分支的
+  model／connection／transaction／F／Q 經 `crawler/orm.py` 延遲載入（意外被碰到會 WARNING `ORM touched outside DB mode` 並照舊起 Django）。
+  台北時區工具 `rental/tz.py`（Django timezone 的等價物，爬蟲與 twrhctl 共用）。
+
 ### TWRH_TARGET_DATE
 `flow.py` exports `TWRH_TARGET_DATE=YYYY-MM-DD`（`--date`，預設今天）and pins it for the whole run so
 a crawl that spans midnight doesn't split across two date buckets. It is read by `rental.models` (the `current_*`

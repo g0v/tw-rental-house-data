@@ -6,13 +6,12 @@ import scrapy
 import traceback
 from datetime import datetime, timedelta
 from twisted.internet import threads
-from django.db import connection
-from django.utils import timezone
+from rental import tz as timezone   # S6：無 Django（同介面）
 from scrapy.spidermiddlewares.httperror import HttpError
-from rental.models import HouseTS, Vendor
 from rental import vendors
-from rental import models
-from crawlerrequest.models import RequestTS
+from rental import tz as models   # current_year／month／day／stepped_hour 同名同義
+# DB 記帳（TWRH_QUEUE_DB=1）／house DB 回退才用得到：延遲載入
+from crawler.orm import HouseTS, RequestTS, connection
 from crawlerrequest.enums import (
     RequestType, RequestStatus, REQUEST_STATUS_ACTIVE, REQUEST_STATUS_CLAIMABLE)
 from crawler import signals as twrh_signals

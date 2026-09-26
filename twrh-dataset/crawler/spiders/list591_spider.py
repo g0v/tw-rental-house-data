@@ -3,7 +3,7 @@ from scrapy_twrh.items import GenericHouseItem, RawHouseItem
 from scrapy_twrh.spiders.rental591 import Rental591Spider, util
 from rental.enums import TopRegionType
 import os
-from rental.models import House
+from crawler.orm import House   # S6：house DB 回退才用得到，延遲載入
 from rental import known
 from rental.switches import house_db
 from .persist_queue import PersistQueue

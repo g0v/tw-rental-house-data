@@ -8,13 +8,13 @@
 import logging
 import os
 import traceback
-from django.utils import timezone
-from rental.models import HouseTS, House, HouseEtc, Vendor, Author
+from rental import tz as timezone   # S6：無 Django（同介面）
+# DB 分支（TWRH_HOUSE_DB=1 回退）才用得到的 model：延遲載入，檔案時代不起 Django
+from crawler.orm import HouseTS, House, HouseEtc, Author, Point
 from rental.switches import house_db
 from rental import vendors
 from rental.enums import DealStatusType
 from scrapy_twrh.items import GenericHouseItem, RawHouseItem
-from django.contrib.gis.geos import Point
 from crawler.utils import now_tuple
 from crawler import signals as twrh_signals
 from crawler import raw_sink

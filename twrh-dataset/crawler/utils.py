@@ -1,7 +1,7 @@
 
 import os
 from datetime import datetime
-from django.utils import timezone
+from rental import tz as timezone   # S6：無 Django 的台北時區工具（同介面）
 
 def now_tuple():
     override = os.environ.get('TWRH_TARGET_DATE')
