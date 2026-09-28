@@ -120,16 +120,17 @@ def run(cmd, **kwargs):
     return result
 
 
-# S6：flow／出貨用到的指令已搬到 twrhctl（無 Django）。TWRH_ENTRY=twrhctl 時這些改走
-# `python -m twrhctl`；其餘（synthts／syncstateful／四支 DB 對帳——只在 house DB 回退時才跑）
-# 照舊走 manage.py。平行期預設 django；10/1 月包兩路一致後把預設翻成 twrhctl。
+# S6：flow／出貨用到的指令已搬到 twrhctl（無 Django），**2026-10-01 起預設走 twrhctl**
+# （9/27–10/1 每晚 nodjango 平行比對 10 項全 AGREE、10/1 九月月包兩路逐 byte 一致後切換）。
+# 其餘（synthts／syncstateful／四支 DB 對帳——只在 house DB 回退時才跑）仍走 manage.py。
+# 回退＝環境 TWRH_ENTRY=django（Django 指令刪除前有效）。
 TWRHCTL_COMMANDS = frozenset((
     'artifactpack', 'export', 'filequeuecheck', 'latestfold', 'manifest', 'monthreport',
     'qualitycheck', 'queuebusy', 'queuefinalize', 'rawpack', 'snapshotfold'))
 
 
 def entry():
-    return os.environ.get('TWRH_ENTRY', 'django')
+    return os.environ.get('TWRH_ENTRY', 'twrhctl')
 
 
 def manage(*args, check=True, **kwargs):

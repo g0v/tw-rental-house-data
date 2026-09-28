@@ -77,8 +77,8 @@ import json,os
 p='$STATE'; d=json.load(open(p)) if os.path.exists(p) else {}
 d['$1']=True; json.dump(d,open(p,'w'),indent=1)"; state_push "$STATE" "$YM.state.json"; }
 
-# S6：TWRH_ENTRY=twrhctl 時月報與通知改走 twrhctl（無 Django）；平行期預設照舊 manage.py
-ENTRY=${TWRH_ENTRY:-django}
+# S6：月報與通知走 twrhctl（無 Django；2026-10-01 起預設）。回退＝TWRH_ENTRY=django
+ENTRY=${TWRH_ENTRY:-twrhctl}
 
 notify() {  # notify <emoji+text>（webhook 缺就跳過；雙態都發）
   if [ "$ENTRY" = twrhctl ]; then
