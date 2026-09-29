@@ -84,40 +84,6 @@ variable "crawler_memory" {
   default = 3072
 }
 
-variable "enable_rds" {
-  description = "建新 RDS（rds.tf）。apply 前先人工把 /twrh/db-password 填真值"
-  type        = bool
-  default     = false
-}
-
-variable "rds_client_cidrs" {
-  description = "允許直連 RDS 5432 的 CIDR（M2 workbench task／M3 開發機的當下 IP，遷移結束清空）"
-  type        = list(string)
-  default     = []
-}
-
-variable "rds_instance_class" {
-  description = "t4g.small 起跳（M1 後判斷），micro 可一試（帳單見真章再調）"
-  type        = string
-  default     = "db.t4g.small"
-}
-
-variable "db_host" {
-  description = "手動覆寫 DB endpoint；留空且 enable_rds=true 時自動接 rds.tf 的 endpoint"
-  type        = string
-  default     = ""
-}
-
-variable "db_name" {
-  type    = string
-  default = "twrh"
-}
-
-variable "db_user" {
-  type    = string
-  default = "twrh"
-}
-
 variable "detail_seed_mode" {
   description = "TWRH_DETAIL_SEED_MODE：full＝全量（現行）；diff＝L-C list-diff skip 降頻（dx-roadmap L-C，語意拍板後於 tfvars 切）"
   type        = string
@@ -182,24 +148,6 @@ variable "sweep_schedule" {
   default     = "cron(0 5,8,11,14,17,20,23 * * ? *)"
 }
 
-variable "enable_housekeep_schedule" {
-  description = "月度 housekeep 排程；S5（RDS destroy）起預設關——archivehistory 讀 HouseTS，DB 退役後無物可做"
-  type        = bool
-  default     = false
-}
-
-variable "rds_deletion_protection" {
-  description = "RDS deletion_protection。S5 destroy 前先以 false apply 一次解鎖，再 enable_rds=false"
-  type        = bool
-  default     = true
-}
-
-variable "housekeep_schedule" {
-  description = "月度 housekeep（raw offload＋HouseTS 歸檔）的 cron（Asia/Taipei）；避開爬蟲時段"
-  type        = string
-  default     = "cron(0 12 3 * ? *)"
-}
-
 variable "robotstxt_obey" {
   description = "TWRH_ROBOTSTXT_OBEY（per-env 於 terraform.tfvars 設定）"
   type        = string
@@ -212,20 +160,3 @@ variable "autothrottle" {
   default     = "1"
 }
 
-variable "queue_source" {
-  description = "TWRH_QUEUE_SOURCE：file＝認領讀檔案分片（S4a 起，flow 預設）；db＝回退到 request_ts 認領"
-  type        = string
-  default     = "file"
-}
-
-variable "queue_db_bookkeeping" {
-  description = "TWRH_QUEUE_DB：0＝request_ts 停寫（S4b 起，flow 預設）；1＝回退，DB 記帳鏡像回來供 filequeuecheck 對帳"
-  type        = string
-  default     = "0"
-}
-
-variable "seed_source" {
-  description = "TWRH_SEED_SOURCE：snapshot＝種子判準走檔案（S1 起）；db＝回退到 House／HouseTS 判準"
-  type        = string
-  default     = "snapshot"
-}
