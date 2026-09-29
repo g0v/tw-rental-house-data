@@ -2407,7 +2407,8 @@ class SweepWorkersTests(TestCase):
         self.assertIn('snapshotfold --only final', out['snapshotfinal'][0])
         self.assertEqual(len(out['snapshot']), 1)
         self.assertIn('snapshotfold --only provisional', out['snapshot'][0])
-        self.assertIn('manage.py latestfold', out['latest'][0])
+        # S6：入口預設 twrhctl（2026-10-01 切換）
+        self.assertIn('twrhctl latestfold', out['latest'][0])
 
 
 class QueueBusyTests(QueueTestMixin, TestCase):
