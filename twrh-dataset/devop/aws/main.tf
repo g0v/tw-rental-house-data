@@ -103,6 +103,8 @@ resource "aws_efs_mount_target" "shared" {
 # ---- SSM 機密佔位（value 人工填，terraform 不管內容）----
 resource "aws_ssm_parameter" "secrets" {
   # github-deploy-key：publisher 雲化（2026-09-05）——publish.sh 步驟 5 以此 clone／push
+  # db-password：RDS 已 destroy（S5），task def 不再引用；留著是為了萬一要從 twrh-final 還原
+  # （還原的 instance 沿用原 master 密碼），十月刪 twrh-final 時一起拿掉
   for_each = toset(["db-password", "slack-webhook", "sentry-dsn", "github-deploy-key"])
   name     = "/twrh/${each.value}"
   type     = "SecureString"
@@ -118,11 +120,7 @@ resource "aws_ecs_cluster" "twrh" {
 }
 
 locals {
-  effective_db_host = var.db_host != "" ? var.db_host : (var.enable_rds ? aws_db_instance.twrh[0].address : "")
   crawler_env = [
-    { name = "TWRH_DB_NAME", value = var.db_name },
-    { name = "TWRH_DB_USER", value = var.db_user },
-    { name = "TWRH_DB_HOST", value = local.effective_db_host },
     # container 預設 UTC，TWRH_TARGET_DATE 會算錯天（2026-08-29 本機實踩）
     { name = "TZ", value = "Asia/Taipei" },
     # 禮貌/效能參數 per-env 設定（terraform.tfvars，不入版控）；repo 內預設不變
@@ -135,7 +133,7 @@ locals {
     { name = "TWRH_DETAIL_SEED_MODE", value = var.detail_seed_mode },
     { name = "TWRH_DETAIL_REFRESH_DAYS", value = var.detail_refresh_days },
     { name = "TWRH_DEAL_LOOKBACK_DAYS", value = var.deal_lookback_days },
-    # housekeep.sh（raw offload / HouseTS 歸檔）與 3-1 rawpack／1-2 manifest 上傳目標
+    # rawpack 日包／分區檔／manifest 的上傳目標
     { name = "TWRH_RAW_BUCKET", value = aws_s3_bucket.raw.bucket },
     # 1-2 manifest 與 3-1 raw 落 EFS：manifest 的疊窗即算要跨日留存；
     # raw scratch 必須多 worker task 共享（方案 A），日包打完由 rawpack 上 S3
@@ -155,24 +153,12 @@ locals {
     { name = "TWRH_WORKER_MEMORY", value = tostring(var.worker_memory) },
     { name = "TWRH_WORKER_CONCURRENCY", value = var.worker_concurrency },
     { name = "TWRH_WORKER_DELAY", value = var.worker_download_delay },
-    # 4e／S4b queue 判準：flow.py 自己 setdefault 同一組值，但 flow 外的管理指令
-    # （run-cloud 的 seedcheck／queuefinalize／rawpack --reconcile／filequeuecheck、
-    # detail seed_mode=new）沒有它就會去讀 S4b 已停寫的 request_ts＝0 筆（9/17 seedcheck 實踩）。
-    # 回退＝改這兩個值（TWRH_QUEUE_DB=1 記帳鏡像回來、TWRH_QUEUE_SOURCE=db 認領回 DB）。
-    { name = "TWRH_QUEUE_SOURCE", value = var.queue_source },
-    { name = "TWRH_QUEUE_DB", value = var.queue_db_bookkeeping },
-    # S1：detail 種子判準的來源。snapshot＝純函數走檔案（今日 list stub＋昨日 snapshot
-    # 的 carry 欄，見 rental/seeding.seeds_from_files）；材料不齊時 spider 自己退回 DB
-    # 判準。回退＝把這個值改回 db。只影響 seed_mode=diff（日跑）；sweep 的
-    # seed_mode=new 走另一條路，不受影響
-    { name = "TWRH_SEED_SOURCE", value = var.seed_source },
     # 雲上 stdout 預設 block-buffered：慢的指令在結束前一個字都看不到，只能瞎等或
     # 停掉重跑（2026-09-18 為此瞎等兩次）。設了它每支指令都即時吐字，代價是
     # 每行一次 write syscall——爬蟲的輸出量級無感
     { name = "PYTHONUNBUFFERED", value = "1" },
   ]
   crawler_secrets = [
-    { name = "TWRH_DB_PASSWORD", valueFrom = aws_ssm_parameter.secrets["db-password"].arn },
     { name = "SLACK_WEBHOOK_URL", valueFrom = aws_ssm_parameter.secrets["slack-webhook"].arn },
     { name = "SENTRY_DSN", valueFrom = aws_ssm_parameter.secrets["sentry-dsn"].arn },
   ]
@@ -280,40 +266,6 @@ resource "aws_scheduler_schedule" "frontier_sweep" {
       containerOverrides = [{
         name    = "crawler"
         command = ["poetry", "run", "python", "flow.py", "sweep"]
-      }]
-    })
-  }
-}
-
-# ---- 月度 housekeep（raw offload ＋ HouseTS 歸檔，節省槓桿 1＋2）----
-# 同一顆 image、command override；時間須避開爬蟲時段（rawoffload 無鎖）
-# S5（2026-09-25）起關閉：archivehistory 讀 HouseTS，RDS destroy 後無物可歸檔；
-# raw 早由 rawpack 每日上 S3（3-1），snapshot 分區取代 TS 歸檔 tgz（4c）
-resource "aws_scheduler_schedule" "monthly_housekeep" {
-  count                        = var.enable_schedule && var.enable_housekeep_schedule ? 1 : 0
-  name                         = "twrh-monthly-housekeep"
-  schedule_expression          = var.housekeep_schedule
-  schedule_expression_timezone = "Asia/Taipei"
-  flexible_time_window {
-    mode = "OFF"
-  }
-  target {
-    arn      = aws_ecs_cluster.twrh.arn
-    role_arn = aws_iam_role.scheduler.arn
-    ecs_parameters {
-      task_definition_arn    = aws_ecs_task_definition.crawler.arn
-      launch_type            = "FARGATE"
-      enable_execute_command = true
-      network_configuration {
-        subnets          = data.aws_subnets.default.ids
-        security_groups  = [aws_security_group.task.id]
-        assign_public_ip = true
-      }
-    }
-    input = jsonencode({
-      containerOverrides = [{
-        name    = "crawler"
-        command = ["./devop/housekeep.sh"]
       }]
     })
   }
