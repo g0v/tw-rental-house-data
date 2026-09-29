@@ -3,9 +3,7 @@ from scrapy_twrh.items import GenericHouseItem, RawHouseItem
 from scrapy_twrh.spiders.rental591 import Rental591Spider, util
 from rental.enums import TopRegionType
 import os
-from crawler.orm import House   # S6：house DB 回退才用得到，延遲載入
 from rental import known
-from rental.switches import house_db
 from .persist_queue import PersistQueue
 from .item_hygiene import strip_list_item
 
@@ -69,10 +67,8 @@ class List591Spider(Rental591Spider):
         return util.ListRequestMeta(*seed)
 
     def ran_today(self, city):
-        '''同日重跑不重生種子。DB 時代看 HouseTS 當日有沒有這個縣市的列；S3b 後看當日
-        list 種子檔有沒有這個縣市（種子在＝今天排過，沒爬完的由 queue 自己續）。'''
-        if house_db():
-            return self.persist_queue.has_record(top_region=TopRegionType[city['city']])
+        '''同日重跑不重生種子：當日 list 種子檔有沒有這個縣市（種子在＝今天排過，
+        沒爬完的由 queue 自己續）。'''
         return self.persist_queue.has_seed(seed__id=city['id'])
 
     def start_list_from_persist_queue (self):
@@ -130,25 +126,18 @@ class List591Spider(Rental591Spider):
     def parse_frontier_page(self, response):
         '''前緣模式：不接受 package 的頁範圍展開與前緣探測，翻頁自己決定。
 
-        先把整頁 item 收齊、查 DB 哪些是沒見過的，再 yield item——pipeline
+        先把整頁 item 收齊、查總表哪些是沒見過的，再 yield item——pipeline
         是同步的，先 yield 會讓本頁物件立刻變成「已知」而誤判收單。
         '''
         meta = response.meta['rental']
         items = [item for item in self.default_parse_list(response)
                  if not isinstance(item, Request)]
         ids = [item['house_id'] for item in items if isinstance(item, RawHouseItem)]
-        if house_db():
-            seen = set(House.objects.filter(
-                vendor=self.persist_queue.vendor, vendor_house_id__in=ids,
-            ).values_list('vendor_house_id', flat=True))
-            unseen = [h for h in ids if h not in seen]
-        else:
-            # S3b：已知物件＝總表(昨日)＋今日各輪 stub＋本行程前面幾頁剛看到的
-            # （DB 時代是 pipeline 同步寫入讓前頁的戶立刻變已知，這裡自己記）
-            seen = self.known_houses()
-            unseen = [h for h in ids if h not in seen]
-            for h in ids:
-                seen.add(h)
+        # 已知物件＝總表(昨日)＋今日各輪 stub＋本行程前面幾頁剛看到的（自己記）
+        seen = self.known_houses()
+        unseen = [h for h in ids if h not in seen]
+        for h in ids:
+            seen.add(h)
         self.frontier_new += len(unseen)
         self.logger.info('[frontier] %s page %d: %d items, %d unseen',
                          meta.name, meta.page + 1, len(ids), len(unseen))

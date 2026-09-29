@@ -11,25 +11,17 @@ seeds == terminals。這裡用檔案滿足，不需要 DB server：
   其次 attempts 最大的 failed。沒有 in_flight——「未終結」即「還要做」。
 - **分片**：worker i／N 對「剩餘集合」排序後依位置輪流分（不用 hash 取模），
   所有 worker 無通訊算出同一結果；attempts 跨檔累計（取該 key 最大值）。
-- **雙軌期（4e 第一步）**：DB queue 仍是認領來源，這裡只是同步記帳；key＝
-  RequestTS.id，`filequeuecheck` 對 DB 逐型比對。
-- **S4a（4e 第二步，TWRH_QUEUE_SOURCE=file）**：認領改由這裡出——`claimable()` 對
+- **認領**：`claimable()` 對
   「當日全部 seeds」（不是剩餘集合）位置輪分再濾掉已終結；分片對象是靜態集合，所以
   worker 各自在任意時刻重啟（batch 迴圈）算出的分片都一致、永不重疊（對剩餘集合輪分
   只在所有 worker 同時開新一輪時成立，交錯重啟會整片撞車）。死掉的 worker 留下的
-  分片由收尾的單 worker 補掃（count=1 拿全部剩餘）。DB 在 S4a 仍照寫一天
-  （TWRH_QUEUE_DB=1，key 仍＝RequestTS.id）供 filequeuecheck 對帳；S4b 停寫後
-  key 改 make_key(seed) 自派。
-- **S4b（TWRH_QUEUE_SOURCE=file＋TWRH_QUEUE_DB=0，flow 預設）**：request_ts 不再有人寫；
-  `db_bookkeeping()` 是唯一判準——queuefinalize／seedcheck／rawpack 對帳、detail 的
-  seed_mode=new 去重都改讀這裡的 seeds／terminals，filequeuecheck 沒有對照物即 skip。
-  drop request_ts 另一步（一晚無紅後）。回退＝環境 TWRH_QUEUE_DB=1（記帳鏡像回來）或
-  TWRH_QUEUE_SOURCE=db。
+  分片由收尾的單 worker 補掃（count=1 拿全部剩餘）。key＝make_key(seed) 自派。
+- **歷史**：4e 雙軌（DB 認領、這裡同步記帳）→ S4a（檔案認領、DB 記帳鏡像一天）→ S4b
+  （request_ts 停寫）→ S6（2026-09-26 起 DB 與 Django 退場，這裡是 queue 的全部）。
 - **心跳**：沒有 in_flight，「有人在爬」改看 active/<run>/<worker>.json 的 mtime
   （queuebusy）；SIGKILL 殘留的心跳過窗即失效。
 
-不 import Django（manage.py／scrapy／離線工具三處共用，4f 去 Django 時
-它就是 queue 的全部）。
+純 python（twrhctl／scrapy／離線工具三處共用）。
 '''
 import glob
 import json
@@ -39,14 +31,6 @@ from datetime import datetime, timezone
 from rental.artifacts import artifact_dir, run_id  # noqa: F401
 
 STATUS_ORDER = {'done': 3, 'dead': 2, 'failed': 1}
-
-
-def db_bookkeeping():
-    '''request_ts 還有沒有人寫（S4a 雙軌＝True；S4b＝False）。DB 認領（TWRH_QUEUE_SOURCE=db）
-    恆 True；檔案認領時看 TWRH_QUEUE_DB（預設 1，flow 自 S4b 起預設 0）。'''
-    if os.environ.get('TWRH_QUEUE_SOURCE', 'db') != 'file':
-        return True
-    return os.environ.get('TWRH_QUEUE_DB', '1') == '1'
 
 
 def seed_ids(vendor_short, date_str, type_name):

@@ -39,7 +39,7 @@ class Command(BaseCommand):
         today = (datetime.strptime(override, '%Y-%m-%d').date() if override
                  else tz.localtime().date())
         try:
-            vendor = vendor_registry.get(options['vendor'], orm=False)
+            vendor = vendor_registry.get(options['vendor'])
         except LookupError:
             raise CommandError('vendor {!r} not registered'.format(options['vendor']))
         if options['source'] == 'file':

@@ -20,8 +20,7 @@ snapshot 回補（--snapshot DATE）：把 snapshot/<vendor>/<DATE>.parquet 的 
 用 --from..DATE 期間 parsed 分區裡該戶最後一次（crawled_at 最大）的 vendor_extra 補上（parsed 先回補
 完再跑）。用途＝上線當天的 provisional／隔日 final 起點：之後 fold 自己會沿用。不需要 DB。
 
-不連 DB（只用 package 端 spider 與 rental.artifacts／contracts 的純函數；load_django 只為了
-import 路徑與 settings，同 rerun_from_raws 的 dry-run）。
+不連 DB（只用 package 端 spider 與 rental.artifacts／contracts 的純函數）。
 '''
 import argparse
 import os
@@ -29,8 +28,7 @@ import sys
 from datetime import datetime, timedelta
 
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), '..'))
-from tools.utils import load_django  # noqa: E402
-load_django()
+sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'django'))
 
 import pyarrow as pa  # noqa: E402
 import pyarrow.parquet as pq  # noqa: E402

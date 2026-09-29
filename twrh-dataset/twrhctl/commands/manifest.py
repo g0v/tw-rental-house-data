@@ -51,9 +51,6 @@ class Command(BaseCommand):
             override = os.environ.get('TWRH_TARGET_DATE')
             current = end = _parse(override) if override else date.today()
 
-        from rental.switches import house_db
-        if house_db():
-            raise CommandError('TWRH_HOUSE_DB=1（DB 版 manifest）需要 DB，twrhctl 不支援')
         bucket = None if options['no_upload'] else os.environ.get('TWRH_RAW_BUCKET')
         s3 = None
         if bucket:

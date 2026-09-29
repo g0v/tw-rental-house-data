@@ -33,39 +33,18 @@ from rental import vendors as vendor_registry
 DEFAULT_RETENTION_DAYS = int(os.environ.get('TWRH_QUEUE_RETENTION_DAYS', 90))
 
 
-def default_source():
-    from rental import filequeue
-    return 'db' if filequeue.db_bookkeeping() else 'file'
-
-
 class Command(BaseCommand):
     help = 'Assert seeds == terminals for today\'s crawl queue; red on residue'
-    # 檔案時代（house 停寫、queue 不在 DB 記帳）這支指令不碰 DB；migrations check 會為了
-    # 查 django_migrations 開連線，S5 之後沒有 DB 可連。還需要 ORM 時才檢查
 
     def add_arguments(self, parser):
-        parser.add_argument(
-            '--cleanup-days', type=int, default=DEFAULT_RETENTION_DAYS,
-            help='terminal rows older than N days are deleted first '
-                 '(default {})'.format(DEFAULT_RETENTION_DAYS))
-        parser.add_argument(
-            '--no-cleanup', action='store_true',
-            help='skip the rolling cleanup of old terminal rows')
-        parser.add_argument(
-            '--source', choices=['db', 'file'],
-            default=os.environ.get('TWRH_QUEUE_FINALIZE_SOURCE') or default_source(),
-            help='對帳來源：只支援 file（檔案 queue）；db 需要 DB，twrhctl 拒跑')
+        # --cleanup-days／--no-cleanup：DB 時代清 request_ts 終結列用；檔案 queue 的終結紀錄永存，
+        # 兩個旗標保留相容、無作用
+        parser.add_argument('--cleanup-days', type=int, default=DEFAULT_RETENTION_DAYS,
+                            help='（無作用，相容保留）')
+        parser.add_argument('--no-cleanup', action='store_true', help='（無作用，相容保留）')
         parser.add_argument(
             '--no-slack', action='store_true',
-            help='紅燈也不發 Slack（nodjango 平行比對用，避免同一件事通知兩次）')
-
-    def cleanup(self, days):
-        from rental import filequeue
-        if not filequeue.db_bookkeeping():
-            # S4b 起 request_ts 沒人寫：沒有新的終結列要清，也不為此開 DB 連線（S5 後無 DB）。
-            # 停寫前留下的舊列隨 RDS destroy 一起消失
-            return
-        raise CommandError('TWRH_QUEUE_DB=1（request_ts 清理）需要 DB，twrhctl 不支援')
+            help='紅燈也不發 Slack')
 
     def handle(self, *_args, **options):
         target = tz.target_datetime()
@@ -75,34 +54,30 @@ class Command(BaseCommand):
             'day': target.day,
             'hour': target.hour - target.hour % 24,
         }
-        if options['source'] != 'file':
-            raise CommandError('--source db（request_ts）需要 DB，twrhctl 只支援 file')
+
         date_str = '{year}/{month}/{day}'.format(**this_ts)
 
-        if not options['no_cleanup']:
-            self.cleanup(options['cleanup_days'])
 
         threshold = float(os.environ.get('TWRH_QUEUE_DEAD_RATIO', 0.05))
-        vendors = {v.id: v.name for v in vendor_registry.all(orm=False)}
+        vendors = {v.id: v.name for v in vendor_registry.all()}
 
         # (vendor, type) → {status: count}
         matrix = {}
         file_errors = {}
-        if options['source'] == 'file':
-            # S4b：檔案 queue 是唯一真相——reconcile 的 done／dead／residue 直接當狀態計數
-            # （residue 記在 FAILED 位，讓下面的殘留規則與 error 分類照跑）
-            from rental import filequeue
-            from rental.raws import vendor_dirname
-            date_iso = '{year:04d}-{month:02d}-{day:02d}'.format(**this_ts)
-            max_attempts = int(os.environ.get('TWRH_QUEUE_MAX_ATTEMPTS', 3))
-            for vendor in vendor_registry.all(orm=False):
-                short = vendor_dirname(vendor.name)
-                for type_name in filequeue.type_names(short, date_iso):
-                    r = filequeue.reconcile(short, date_iso, type_name, max_attempts)
-                    key = (vendor.id, RequestType[type_name.upper()])
-                    matrix[key] = {RequestStatus.DONE: r['done'], RequestStatus.DEAD: r['dead'],
-                                   RequestStatus.FAILED: r['residue']}
-                    file_errors[key] = r['errors']
+        # 檔案 queue 是唯一真相——reconcile 的 done／dead／residue 直接當狀態計數
+        # （residue 記在 FAILED 位，讓下面的殘留規則與 error 分類照跑）
+        from rental import filequeue
+        from rental.raws import vendor_dirname
+        date_iso = '{year:04d}-{month:02d}-{day:02d}'.format(**this_ts)
+        max_attempts = int(os.environ.get('TWRH_QUEUE_MAX_ATTEMPTS', 3))
+        for vendor in vendor_registry.all():
+            short = vendor_dirname(vendor.name)
+            for type_name in filequeue.type_names(short, date_iso):
+                r = filequeue.reconcile(short, date_iso, type_name, max_attempts)
+                key = (vendor.id, RequestType[type_name.upper()])
+                matrix[key] = {RequestStatus.DONE: r['done'], RequestStatus.DEAD: r['dead'],
+                               RequestStatus.FAILED: r['residue']}
+                file_errors[key] = r['errors']
 
         problems = []
         lines = []
@@ -147,13 +122,12 @@ class Command(BaseCommand):
                         request_type.name.lower()))
 
         # error 分類統計（紅綠都列，紅燈時進 Slack）
-        if options['source'] == 'file':
-            merged = {}
-            for errs in file_errors.values():
-                for err, n in errs.items():
-                    merged[err] = merged.get(err, 0) + n
-            error_lines = ['  {} × {}'.format(n, err)
-                           for err, n in sorted(merged.items(), key=lambda kv: -kv[1])[:8]]
+        merged = {}
+        for errs in file_errors.values():
+            for err, n in errs.items():
+                merged[err] = merged.get(err, 0) + n
+        error_lines = ['  {} × {}'.format(n, err)
+                       for err, n in sorted(merged.items(), key=lambda kv: -kv[1])[:8]]
 
         for line in lines:
             print(line)

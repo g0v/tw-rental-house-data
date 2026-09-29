@@ -57,11 +57,8 @@ def launch():
     # 4e 檔案 queue 的 run 維度（seeds/<run>、terminals/<run>/）：worker 與 primary 同 run
     if os.environ.get('TWRH_RUN_ID'):
         env.append({'name': 'TWRH_RUN_ID', 'value': os.environ['TWRH_RUN_ID']})
-    # S4a 檔案認領：每個 worker 一個分片 index（1..N，primary 是 0）、count=N+1，
-    # 所以逐個 run-task（不能 count=N 一次發相同 env）；認領來源旗標一併傳
-    for name in ('TWRH_QUEUE_SOURCE', 'TWRH_QUEUE_DB'):
-        if os.environ.get(name):
-            env.append({'name': name, 'value': os.environ[name]})
+    # 檔案認領：每個 worker 一個分片 index（1..N，primary 是 0）、count=N+1，
+    # 所以逐個 run-task（不能 count=N 一次發相同 env）
     arns = []
     for index in range(1, N + 1):
         worker_env = env + [{'name': 'TWRH_WORKER_INDEX', 'value': str(index)},

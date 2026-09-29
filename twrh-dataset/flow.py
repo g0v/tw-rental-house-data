@@ -4,7 +4,8 @@
 一份 stage 定義，本機與雲上同一條 DAG，差別只在 detail stage 的 executor
 （local＝行程內 batch 迴圈；ecs＝開 N 個 worker task 搶同一個 queue＋
 primary 陪跑）。完成判據＝artifact 存在（rawpack 日包、manifest）或
-stamp 檔（DB 型 stage，Phase 4 檔案化後逐一改 artifact）。
+stamp 檔。S6（2026-10）起整條鏈沒有 DB、沒有 Django：scrapy 之外的指令都是
+`python -m twrhctl <cmd>`（twrhctl/）。
 
     poetry run python flow.py run   [--date YYYY-MM-DD] [--from STAGE]
         [--executor local|ecs] [--append] [--vendor 591] [--dry-run]
@@ -42,7 +43,6 @@ sys.path.insert(0, BASE)
 sys.path.insert(0, os.path.join(BASE, 'django'))
 from crawler import vendor_profiles  # noqa: E402
 from crawlerrequest import manifest_files  # noqa: E402  純函數層，無 Django
-from rental.switches import house_db  # noqa: E402  無 Django
 
 DRY_RUN = False
 
@@ -165,61 +165,11 @@ def run(cmd, **kwargs):
     return result
 
 
-# S6：flow／出貨用到的指令已搬到 twrhctl（無 Django），**2026-10-01 起預設走 twrhctl**
-# （9/27–10/1 每晚 nodjango 平行比對 10 項全 AGREE、10/1 九月月包兩路逐 byte 一致後切換）。
-# 其餘（synthts／syncstateful／四支 DB 對帳——只在 house DB 回退時才跑）仍走 manage.py。
-# 回退＝環境 TWRH_ENTRY=django（Django 指令刪除前有效）。
-TWRHCTL_COMMANDS = frozenset((
-    'artifactpack', 'export', 'filequeuecheck', 'latestfold', 'manifest', 'monthreport',
-    'qualitycheck', 'queuebusy', 'queuefinalize', 'rawpack', 'snapshotfold'))
-
-
-def entry():
-    return os.environ.get('TWRH_ENTRY', 'twrhctl')
-
-
 def manage(*args, check=True, **kwargs):
-    if entry() == 'twrhctl' and args and args[0] in TWRHCTL_COMMANDS:
-        return run(['poetry', 'run', 'python', '-m', 'twrhctl', *args],
-                   check=check, **kwargs)
-    return run(['poetry', 'run', 'python', 'django/manage.py', *args],
+    '''scrapy 以外的指令入口：`python -m twrhctl <cmd>`（S6 起 Django 的 manage.py 已退場；
+    名稱沿用，呼叫點不動）。'''
+    return run(['poetry', 'run', 'python', '-m', 'twrhctl', *args],
                check=check, **kwargs)
-
-
-def advisory_check(ctx, name, *args, record_as=None):
-    '''advisory 對帳 stage（seedcheck／filequeuecheck／parsedcheck／snapshotcheck）：跑指令、
-    原樣轉印輸出、把「<name>: AGREE｜DIFF」判定記進 manifests/<date>/checks.json（qualitycheck
-    的 Slack 摘要讀它；record_as 讓同一指令對不同日的兩次各記一筆）。子程序死掉沒判定行
-    ＝crashed(exit N)，不再無痕。'''
-    result = manage(name, *args, check=False, capture_output=True, text=True)
-    sys.stdout.write(result.stdout)
-    sys.stderr.write(result.stderr)
-    sys.stdout.flush()
-    verdict, line = None, ''
-    for out in result.stdout.splitlines():
-        if out.startswith(name + ':'):
-            line = out
-            rest = out[len(name) + 1:].strip()
-            verdict = 'AGREE' if rest.startswith('AGREE') else \
-                'DIFF' if rest.startswith('DIFF') else 'skip'
-            break
-    if verdict is None:
-        verdict = 'crashed(exit {})'.format(result.returncode) \
-            if result.returncode else 'no-output'
-    if not DRY_RUN:
-        manifest_files.record_check(ctx.date, ctx.run_id, record_as or name, verdict, line)
-    print('{} → {}'.format(record_as or name, verdict), flush=True)
-    return result
-
-
-def db_era_stage(name):
-    '''S3b：house 三表停寫後，靠 DB 當日列才成立的 stage 自印 skip（synthts／syncstateful
-    的工作由 snapshot fold 接手；四支雙軌對帳沒有 DB 那一軌可比）。回退 TWRH_HOUSE_DB=1
-    時它們原樣回來，所以 stage 名單與順序不動。回傳 True＝這個 stage 不用跑。'''
-    if house_db():
-        return False
-    print('{}: skip (house DB off since S3b — files are the only ledger)'.format(name), flush=True)
-    return True
 
 
 def archive_scrapy_log(ctx, name):
@@ -349,10 +299,9 @@ def stage_detail(ctx):
     if wait.returncode != 0:
         print('NOTE: worker wait timed out — data completeness suspect,'
               ' queuefinalize will tell')
-    if os.environ.get('TWRH_QUEUE_SOURCE', 'db') == 'file':
-        print('=== mop-up: single-worker pass over remaining file claims', flush=True)
-        consume_loop(ctx, batch, extra_env={
-            **rate_env, 'TWRH_WORKER_INDEX': '0', 'TWRH_WORKER_COUNT': '1'}, tag='mopup')
+    print('=== mop-up: single-worker pass over remaining file claims', flush=True)
+    consume_loop(ctx, batch, extra_env={
+        **rate_env, 'TWRH_WORKER_INDEX': '0', 'TWRH_WORKER_COUNT': '1'}, tag='mopup')
 
 
 def stage_deals(ctx):
@@ -394,21 +343,9 @@ def _artifactpack(tree):
               'scratch/local partition retained)'.format(tree))
 
 
-def stage_filequeuecheck(ctx):
-    # 4e 雙軌：檔案 queue 記帳對 request_ts；advisory
-    advisory_check(ctx, 'filequeuecheck')
-
-
 def stage_liststubs(_ctx):
     # 4a：本輪 list stub shards → list/<vendor>/<date>/<run>.jsonl.zst（＋S3）
     _artifactpack('list')
-
-
-def stage_seedcheck(ctx):
-    # 4a 驗收：純函數從 stub 重算 seeds 對 queue；advisory，不擋 pipeline
-    if db_era_stage('seedcheck'):
-        return
-    advisory_check(ctx, 'seedcheck')
 
 
 def stage_dealevents(_ctx):
@@ -461,48 +398,6 @@ def stage_parsed(_ctx):
     _artifactpack('parsed')
 
 
-def stage_parsedcheck(ctx):
-    # 4b 驗收：當日 parquet 逐欄對 HouseTS；advisory（雙寫期 DB 是真相）
-    if db_era_stage('parsedcheck'):
-        return
-    advisory_check(ctx, 'parsedcheck')
-
-
-def stage_snapshotcheck(ctx):
-    # 4c 驗收（synthts／sync 之後，DB 當日列已齊）：昨日 final 與今日 provisional 各對一次
-    # HouseTS／House；advisory。昨日那筆記成 snapshotcheck-final（House 現值已是今日，
-    # carry 欄只對 TS 可推的兩項）
-    if db_era_stage('snapshotcheck'):
-        return
-    yesterday = (datetime.strptime(ctx.date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
-    advisory_check(ctx, 'snapshotcheck', '--date', yesterday, record_as='snapshotcheck-final')
-    advisory_check(ctx, 'snapshotcheck')
-
-
-def stage_exportcheck(ctx):
-    if db_era_stage('exportcheck'):
-        return
-    # S3a 驗收：同一窗由 DB 路徑與 snapshot 路徑各出 CSV，排序正規化後逐 byte；advisory。
-    # 排在 sync／snapshotcheck 之後＝今日 provisional 已摺、DB 當日列已齊、當日 sweep 還沒
-    # 再動 DB，這是兩軌唯一對齊的空檔（窗尾＝今天，見 exportcheck 的說明）
-    advisory_check(ctx, 'exportcheck')
-
-
-def stage_synthts(ctx):
-    if db_era_stage('synthts'):
-        return
-    if ctx.seed_mode == 'diff':
-        manage('synthts')
-    else:
-        print('seed mode is full — synthts not needed')
-
-
-def stage_sync(_ctx):
-    if db_era_stage('sync'):
-        return
-    manage('syncstateful', '-ts')
-
-
 def stage_manifest(_ctx):
     manage('manifest')
 
@@ -512,59 +407,8 @@ def stage_quality(_ctx):
     manage('qualitycheck', check=False)
 
 
-def stage_nodjango(ctx):
-    '''S6 平行比對（advisory）：同一天的 fold／總表／manifest／qualitycheck／export／monthreport／
-    queue 系／rawpack 對帳，Django 路徑與 twrhctl（無 Django）各跑一次、逐項比對產物。
-    排在 quality 之後：此刻今日 provisional、manifest 都已定稿，當日 sweep 還沒開始。
-    判定記進 checks.json（名 nodjango）並補傳 S3——manifest stage 已經傳過一次了。
-    關掉＝TWRH_NODJANGO_SHADOW=0。10/1 月包比對一致後切入口，這個 stage 隨 Django 一起退役。'''
-    if os.environ.get('TWRH_NODJANGO_SHADOW', '1') != '1':
-        print('nodjango: skip (TWRH_NODJANGO_SHADOW=0)', flush=True)
-        return
-    if entry() == 'twrhctl':
-        print('nodjango: skip (TWRH_ENTRY=twrhctl — flow already runs without Django)', flush=True)
-        return
-    try:
-        _nodjango_shadow(ctx)
-    except Exception as err:  # noqa: BLE001 — 平行比對壞掉不能把已完成的日跑染紅
-        print('!!! nodjango stage crashed: {}: {}'.format(type(err).__name__, err), flush=True)
-
-
-def _nodjango_shadow(ctx):
-    result = run(['poetry', 'run', 'python', '-m', 'twrhctl', 'shadowcheck'],
-                 check=False, capture_output=True, text=True)
-    sys.stdout.write(result.stdout)
-    sys.stderr.write(result.stderr)
-    sys.stdout.flush()
-    verdict, line = None, ''
-    for out in result.stdout.splitlines():
-        if out.startswith('nodjango:'):
-            line = out
-            rest = out[len('nodjango:'):].strip()
-            verdict = 'AGREE' if rest.startswith('AGREE') else 'DIFF'
-    if verdict is None:
-        verdict = 'crashed(exit {})'.format(result.returncode) if result.returncode else 'no-output'
-    if DRY_RUN:
-        return
-    manifest_files.record_check(ctx.date, ctx.run_id, 'nodjango', verdict, line)
-    print('nodjango → {}'.format(verdict), flush=True)
-    bucket = os.environ.get('TWRH_RAW_BUCKET')
-    path = manifest_files.manifest_path(ctx.date, manifest_files.CHECKS_STAGE)
-    if bucket and os.path.exists(path):
-        try:
-            import boto3
-            key = 'manifests/{}/checks.json'.format(ctx.date)
-            boto3.client('s3').upload_file(path, bucket, key)
-            print('  -> s3://{}/{}'.format(bucket, key), flush=True)
-        except Exception as err:  # noqa: BLE001 — advisory：本地 checks.json 在
-            print('!!! checks.json upload failed: {}'.format(err), flush=True)
-
-
 def stage_export(ctx):
     # 每月 1 日出上月（export -p 自判）。排在 latest 之後、seed 之前（見 RUN_STAGES 的說明）
-    if house_db():
-        manage('export', '-p')
-        return
     if not DRY_RUN and datetime.strptime(ctx.date, '%Y-%m-%d').day == 1 \
             and not os.path.exists(snapshotfinal_marker(ctx)):
         # snapshotfinal 是 advisory、失敗不擋 flow；此刻磁碟上上月最後一天那份是昨天的
@@ -731,28 +575,18 @@ RUN_STAGES = [
     # 才摺出來）。所以緊接在 snapshotfinal／latest 之後、爬取之前——排在全量後面的話，
     # flow 中途被擋（queuefinalize 紅、detail 熔斷）就沒有月包、07:00 出貨跟著紅
     #（2026-10-01 維護者拍板；S3a 起原本排在 snapshot stage 之後）。snapshotfinal 失敗時
-    # 1 日的 export 拒跑（見 stage_export）。回退 TWRH_HOUSE_DB=1 走 DB 路徑：此刻 House
-    # 已含當日 list——只有「回退期間剛好跨月」才踩得到，屆時手動 export -f/-t 補
+    # 1 日的 export 拒跑（見 stage_export）。
     ('export', stage_export, None),
     ('seed', stage_seed, None),
-    ('seedcheck', stage_seedcheck, None),
     ('detail', stage_detail, None),
     ('deals', stage_deals, None),
     ('queuefinalize', stage_queuefinalize, None),
-    ('filequeuecheck', stage_filequeuecheck, None),
     ('rawpack', stage_rawpack, rawpack_artifacts),
     ('parsed', stage_parsed, None),
     ('dealevents', stage_dealevents, None),
-    ('parsedcheck', stage_parsedcheck, None),
     ('snapshot', stage_snapshot, None),
-    ('synthts', stage_synthts, None),
-    ('sync', stage_sync, None),
-    ('snapshotcheck', stage_snapshotcheck, None),
-    ('exportcheck', stage_exportcheck, None),
     ('manifest', stage_manifest, manifest_artifacts),
     ('quality', stage_quality, None),
-    # S6 平行比對（2026-09-26 起、10/1 切換前）：Django 路徑 vs twrhctl，advisory
-    ('nodjango', stage_nodjango, None),
     ('logs', stage_logs, None),
 ]
 RUN_STAGE_NAMES = [name for name, _, _ in RUN_STAGES]
@@ -763,7 +597,6 @@ SWEEP_STAGES = [
     ('liststubs', stage_liststubs, None),
     ('newdetail', stage_newdetail, None),
     ('queuefinalize', stage_sweep_finalize, None),
-    ('filequeuecheck', stage_filequeuecheck, None),
     # 本輪 raw 併進當日日包（rawpack 合併既有包＋scratch，同日多次 run＝聯集）
     ('rawpack', stage_rawpack, None),
     # 4a／4b 分區檔是一輪一檔，不聯集
@@ -842,10 +675,6 @@ def cmd_run(options):
     os.environ['TWRH_TARGET_DATE'] = ctx.date
     os.environ['TWRH_LOG_STAMP'] = ctx.stamp
     os.environ['TWRH_RUN_ID'] = ctx.run_id
-    # S4a：認領走檔案分片（回退＝環境設 TWRH_QUEUE_SOURCE=db）；S4b：request_ts 停寫
-    # （回退＝環境設 TWRH_QUEUE_DB=1，記帳鏡像回來、filequeuecheck 重新有對照物）
-    os.environ.setdefault('TWRH_QUEUE_SOURCE', 'file')
-    os.environ.setdefault('TWRH_QUEUE_DB', '0')
     print('=== flow run {} (vendor: {}, executor: {}, seed mode: {}) ==='.format(
         ctx.date, ctx.vendor.short, ctx.executor, ctx.seed_mode))
     code = run_stages(ctx, RUN_STAGES, options.from_stage)
@@ -859,10 +688,6 @@ def cmd_sweep(options):
     os.environ['TWRH_TARGET_DATE'] = ctx.date
     os.environ['TWRH_LOG_STAMP'] = ctx.stamp
     os.environ['TWRH_RUN_ID'] = ctx.run_id
-    # S4a：認領走檔案分片（回退＝環境設 TWRH_QUEUE_SOURCE=db）；S4b：request_ts 停寫
-    # （回退＝環境設 TWRH_QUEUE_DB=1）
-    os.environ.setdefault('TWRH_QUEUE_SOURCE', 'file')
-    os.environ.setdefault('TWRH_QUEUE_DB', '0')
     print('=== flow sweep {} {} (vendor: {}, frontier pages<={}) ==='.format(
         ctx.date, ctx.run_id, ctx.vendor.short, ctx.vendor.frontier_pages))
     code = run_stages(ctx, SWEEP_STAGES, None)

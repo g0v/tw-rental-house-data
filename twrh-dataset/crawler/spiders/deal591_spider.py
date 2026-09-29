@@ -16,9 +16,7 @@ from scrapy import Request, signals
 from scrapy_twrh.items import GenericHouseItem
 from scrapy_twrh.spiders.rental591 import Rental591Spider, util
 import os
-from crawler.orm import House   # S6：house DB 回退才用得到，延遲載入
 from rental import known as known_houses
-from rental.switches import house_db
 from crawlerrequest.enums import RequestType
 from .persist_queue import PersistQueue
 
@@ -115,20 +113,14 @@ class Deal591Spider(Rental591Spider):
             items.append(item)
 
         events = [i for i in items if isinstance(i, GenericHouseItem)]
-        if house_db():
-            known = set(House.objects.filter(
-                vendor=self.persist_queue.vendor,
-                vendor_house_id__in=[e['vendor_house_id'] for e in events],
-            ).values_list('vendor_house_id', flat=True))
-        else:
-            # S3b：已知＝總表(昨日)＋今日 stub（deals stage 在 list／liststubs 之後）
-            if getattr(self, '_known', None) is None:
-                pq = self.persist_queue
-                self._known = known_houses.load(
-                    pq.short, pq.date_str, os.environ.get('TWRH_RAW_BUCKET') or None)
-                self.logger.info('known houses: %d (latest %s + stubs of %s)',
-                                 len(self._known.ids), self._known.base_date, self._known.stub_days)
-            known = self._known
+        # 已知＝總表(昨日)＋今日 stub（deals stage 在 list／liststubs 之後）
+        if getattr(self, '_known', None) is None:
+            pq = self.persist_queue
+            self._known = known_houses.load(
+                pq.short, pq.date_str, os.environ.get('TWRH_RAW_BUCKET') or None)
+            self.logger.info('known houses: %d (latest %s + stubs of %s)',
+                             len(self._known.ids), self._known.base_date, self._known.stub_days)
+        known = self._known
 
         for item in items:
             if isinstance(item, GenericHouseItem):
