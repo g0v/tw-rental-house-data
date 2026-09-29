@@ -95,7 +95,18 @@ def _json_diff(a, b, prefix=''):
 
 
 def _parquet_diff(path_a, path_b):
-    '''兩份 parquet 逐列逐欄比（以 vendor_house_id 排序）。回傳 None＝相同，否則差異摘要。'''
+    '''兩份 parquet 逐列逐欄比（以 vendor_house_id 排序）。回傳 None＝相同，否則差異摘要。
+
+    比完把 arrow 記憶池閒置頁還給 OS：mimalloc 讀完兩份 snapshot／總表後會留著 ~1.3 GB，
+    接著的 fold 子行程（峰值 ~2.1 GB）就撞 3 GB task 上限（2026-09-30 snapshot-prov 被 OOM 殺，rc -9）。'''
+    import pyarrow as pa
+    try:
+        return _parquet_diff_tables(path_a, path_b)
+    finally:
+        pa.default_memory_pool().release_unused()
+
+
+def _parquet_diff_tables(path_a, path_b):
     import pyarrow.compute as pc
     import pyarrow.parquet as pq
     if not os.path.exists(path_a) or not os.path.exists(path_b):
