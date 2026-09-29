@@ -9,58 +9,40 @@
 
 關於環境需求與使用方式，請見[套件網頁](https://pypi.org/project/scrapy-tw-rental-house/)。
 
-## 資料庫與網頁後端
+## 資料 pipeline（twrh-dataset）
+
+2026-10 起不用資料庫：每個 stage 讀寫按日分區的檔案（本機目錄或 EFS，並同步到 S3），
+S3 上的分區就是唯一的資料來源。
 
 ### 環境需求
 
-1. Python3.10+
+1. Python 3.10+
 2. [Poetry](https://python-poetry.org/)
-3. [PostgreSQL](https://www.postgresql.org) 15+
-   - 使用 PostgresSQL 以外的資料庫時，爬蟲可以順利執行，但使用內建的匯出指令時無法用 `-u --unique` 去除重複物件
-5. GeoDjango ，目前[主要的關聯式資料庫都有支援](https://docs.djangoproject.com/en/5.0/ref/contrib/gis/db-api/)
-   - 關於如何準備 GeoDjango 所需的系統環境，請參見[官方文件](https://docs.djangoproject.com/en/5.0/ref/contrib/gis/install/)
+3. `zstd`（raw 日包與 list 分區的壓縮）
 
-#### 資料庫設定
+### 安裝與設定
 
 ```sh
-# 使用 poetry 安裝相關套件
 poetry install
 
-# 進入 virtualenv
-poetry shell
-
-cd backend
-# 設定資料庫（預設使用 sqlite；連 PostGIS 請在 repo 根目錄 .env 設 TWRH_DB_*）
-## 詳細資訊請見 .env.example 與 [Django 官網](https://docs.djangoproject.com/en/2.0/topics/settings/)
-cp ../.env.example ../.env && vim ../.env
-
-# 設定資料庫
-## 使用 --fake-init 可以讓 Django 跳過已存在的 migration script 
-python manage.py migrate
-python manage.py loaddata vendors
+# 設定檔（皆 gitignored）
+cp crawler/settings.sample.py crawler/settings.py
+cp .env.example .env && vim .env   # proxy／UA／速率、Sentry、Slack、檔案位置
 ```
 
-#### 爬蟲使用方式
-
-確定資料庫準備完成後，執行以下步驟：
+### 爬蟲使用方式
 
 ```sh
-cd crawler
-
-# 設定 Scrapy
-cp crawler/settings.sample.py crawler/settings.py
-vim crawler/settings.py
-
-# 開始爬資料（flow.py 是唯一編排；go.sh 已於 2026-09-07 退役）
-poetry run python flow.py run  # 日跑：export(1 日)→list→liststubs→seed→seedcheck→detail→deals→finalize→filequeuecheck→rawpack→parsed→parsedcheck→synthts→sync→manifest→quality→logs
-poetry run python flow.py sweep          # 前緣掃描（白天每數小時）
+poetry run python flow.py run      # 日跑：list→liststubs→snapshotfinal→latest→seed→detail→deals→queuefinalize→rawpack→parsed→dealevents→snapshot→export(1 日)→manifest→quality→logs
+poetry run python flow.py sweep    # 前緣掃描（白天每數小時）
 poetry run python flow.py status
 ```
 
-#### 資料匯出
+scrapy 以外的指令都走 `twrhctl`：
 
-```bash
-poetry run backend/manage.py export --help
+```sh
+poetry run python -m twrhctl                 # 列出全部指令
+poetry run python -m twrhctl export --help   # 資料匯出：-p 出上月月包，-f/-t YYYYMMDD 區間
 ```
 
 ### 監控與通知
@@ -79,8 +61,8 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
 3. 執行 `qualitycheck` 指令時，系統會把當日品質斷言結果發送到 Slack（單一通道）：
 
 ```bash
-poetry run python django/manage.py manifest        # 先產出當日 manifests/<date>/<stage>.json
-poetry run python django/manage.py qualitycheck    # 對 manifest 跑 quality/assertions.yaml 的斷言
+poetry run python -m twrhctl manifest        # 先產出當日 manifests/<date>/<stage>.json
+poetry run python -m twrhctl qualitycheck    # 對 manifest 跑 quality/assertions.yaml 的斷言
 ```
 
 通知訊息包含：
