@@ -3,17 +3,16 @@
 #   docker build --target crawler   -t twrh-crawler .
 #   docker build --target publisher -t twrh-publisher .
 #
-# crawler：每日排程任務跑 flow.py（run／sweep）與 management commands（保持小顆）
+# crawler：每日排程任務跑 flow.py（run／sweep）與 twrhctl 指令（保持小顆）
 # publisher：crawler ＋ clickhouse/awscli/git，跑 publish.sh（人工觸發才拉）
-# 機密（DB 密碼、Slack webhook、Sentry DSN、proxy token）一律由環境變數注入
+# 機密（Slack webhook、Sentry DSN、proxy token、deploy key）一律由環境變數注入
 # （AWS 上是 SSM SecureString → task definition secrets），永遠不進 image。
 
 FROM python:3.10-slim-bookworm AS crawler
 
-# GeoDjango 系統庫（GDAL/GEOS/PROJ）＋ psql client（工具腳本用）＋ zstd（raw offload）
+# zstd（raw 日包、list stub 分區）；S6（2026-10）起沒有 DB／GeoDjango，GDAL／GEOS／PROJ 與 psql client 拿掉
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        gdal-bin libgdal32 libgeos-c1v5 libproj25 \
-        postgresql-client zstd curl ca-certificates \
+        zstd curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir poetry==1.8.5 \

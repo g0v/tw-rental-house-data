@@ -30,7 +30,6 @@ import json
 import os
 from datetime import date, datetime
 
-from rental.switches import house_db
 from twrhctl.base import BaseCommand, CommandError
 from twrhctl import tz as timezone   # localtime() 同介面
 from scrapy_twrh.cli.runner import compare_invariants, invariants
@@ -201,8 +200,6 @@ class Command(BaseCommand):
         # S3b：house_ts 停寫後不再掃整月 HouseTS（兩百萬列）；改疊逐日 detail manifest 的
         # dist 節——比率以樣本數加權平均、中位數取逐日中位數的中位數。月窗本來就是
         # 逐日 OPENED 列的聯集，逐日值加權與整月一次算的差在小數第三位以下。
-        if house_db():
-            raise CommandError('TWRH_HOUSE_DB=1（整月掃 HouseTS）需要 DB，twrhctl 不支援')
         current = _stack_daily_dists(daily_dists)
 
         if options['baseline']:

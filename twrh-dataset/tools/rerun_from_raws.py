@@ -3,19 +3,14 @@
 3-1 後 raw 的家在日包（raws/<vendor>/<date>.tar.zst＋index.jsonl，
 production 在 S3 raw/ 樹；先 `aws s3 cp` 拉回本地目錄再跑——拍板：
 debug／重算＝整包拉回，不做 S3 內部尋址）。修完 parser bug 後對歷史
-日期重放，更新 House 欄位與（--parquet-dir）parsed 分區，**不需重爬**。
-S2 起不再寫 HouseEtc.detail_dict——整份 dict 的家是 parsed 分區的 vendor_extra。
-
-本工具只讀日包，是 D5 cutover（DB 不存 raw）後的唯一重放路徑；
-dry-run 完全不連 DB（沒有 PostGIS 的環境也能跑）。
+日期重放，產出 parsed 分區（--parquet-dir），**不需重爬**。整份 dict 落在 vendor_extra。
+S6 起沒有 DB：寫回 House 的 --commit 隨 DB 退場移除。
 
 用法（在 twrh-dataset/ 下）：
   poetry run python tools/rerun_from_raws.py --from 2026-09-01 --to 2026-09-03
-  poetry run python tools/rerun_from_raws.py --from 2026-09-01 --to 2026-09-01 --commit
   poetry run python tools/rerun_from_raws.py --from 2026-09-04 --to 2026-09-05 \
       --parquet-dir artifacts        # 4b：重放結果直接落 parsed/<vendor>/<date>/rerun-<ts>.parquet
-預設 dry-run：只解析、統計成功率，不寫 DB。--parquet-dir 不需 DB（4b 起
-「修 parser 後重算歷史」的正道：重寫分區而非 UPDATE DB）。
+不給 --parquet-dir＝dry-run：只解析、統計成功率。
 '''
 import argparse
 import io
@@ -28,19 +23,13 @@ import traceback
 from datetime import datetime, timedelta
 
 sys.path.append('{}/..'.format(os.path.dirname(os.path.realpath(__file__))))
+sys.path.append('{}/../django'.format(os.path.dirname(os.path.realpath(__file__))))
 
-from tools.utils import load_django
-load_django()
-
-from django.contrib.gis.geos import Point
-from django.db import transaction
 from scrapy.http import Request, HtmlResponse
 from scrapy_twrh.items import RawHouseItem, GenericHouseItem
 from scrapy_twrh.spiders.rental591 import util
 
 from scrapy_twrh.spiders.rental591 import Rental591Spider
-from rental import snapshot_db
-from rental.models import Author, House, HouseEtc, Vendor
 from rental import contracts
 
 DEFAULT_RAW_DIR = os.path.join(
@@ -61,7 +50,7 @@ def iter_pack(pack_path):
 
 
 def rerun_page(spider, house_id, body):
-    '''重放一頁 detail HTML，回傳 (detail_dict 或 None, house 欄位 dict)。'''
+    '''重放一頁 detail HTML，回傳 (detail_dict 或 None, GenericHouseItem 欄位 dict)。'''
     request = Request(**{
         **spider.gen_detail_request_args(util.DetailRequestMeta(id=house_id)),
         'callback': None,
@@ -69,7 +58,6 @@ def rerun_page(spider, house_id, body):
     response = HtmlResponse(
         request.url, status=200, request=request, body=body)
     detail_dict = None
-    house_fields = {}
     generic = {}
     for item in spider.default_parse_detail(response):
         if isinstance(item, RawHouseItem):
@@ -77,17 +65,7 @@ def rerun_page(spider, house_id, body):
                 detail_dict = item['dict']
         elif isinstance(item, GenericHouseItem):
             generic.update(dict(item))
-            fields = dict(item)
-            fields.pop('vendor', None)
-            fields.pop('vendor_house_id', None)
-            # 歷史 raw 不得回滾現況的 sticky 狀態（重放≠重爬）
-            fields.pop('deal_status', None)
-            # 與 pipeline 同款轉換
-            if 'rough_coordinate' in fields:
-                fields['rough_coordinate'] = Point(
-                    fields['rough_coordinate'], srid=4326)
-            house_fields.update(fields)
-    return detail_dict, house_fields, generic
+    return detail_dict, generic
 
 
 def main():
@@ -97,8 +75,6 @@ def main():
     parser.add_argument('--vendor', default='591 租屋網')
     parser.add_argument('--from', dest='date_from', required=True)
     parser.add_argument('--to', dest='date_to', required=True)
-    parser.add_argument('--commit', action='store_true',
-                        help='寫回 HouseEtc.detail_dict 與 House 欄位（預設 dry-run）')
     parser.add_argument('--parquet-dir',
                         help='把重放結果寫成 parsed 分區檔：<dir>/parsed/<vendor>/<date>/rerun-<ts>.parquet（不需 DB）')
     options = parser.parse_args()
@@ -110,13 +86,10 @@ def main():
     except Exception:
         pass
 
-    # dry-run 不碰 DB（3-3 零雲相依：sync 日包即可離線重放；Vendor 只在
-    # --commit 寫回時才需要——2026-09-06 無 DB 容器實測踩到後改）
-    vendor = Vendor.objects.get(name=options.vendor) if options.commit else None
     # 日包目錄用 vendor 短名（raws/591/，與 S3 raw/591/ 對齊）
     vendor_dir = options.vendor.split()[0]
     # 用 package 端的 spider（parser 就住在那），不用 dataset 的 Detail591Spider
-    # ——後者建構時 PersistQueue 會查 Vendor，dry-run 就得有 DB
+    # ——後者建構時會開 PersistQueue
     spider = Rental591Spider()
     current = datetime.strptime(options.date_from, '%Y-%m-%d').date()
     end = datetime.strptime(options.date_to, '%Y-%m-%d').date()
@@ -139,7 +112,7 @@ def main():
             house_id = member.rsplit('.', 2)[0]
             total += 1
             try:
-                detail_dict, house_fields, generic = rerun_page(spider, house_id, body)
+                detail_dict, generic = rerun_page(spider, house_id, body)
             except Exception:
                 failed += 1
                 print('parse error in {}'.format(member))
@@ -150,27 +123,6 @@ def main():
                 parquet_rows.append(contracts.coerce_row(contracts.parsed_row(
                     vendor_dir, house_id, date_str, run_tag, datetime.now().astimezone(),
                     parser_version, generic, vendor_extra=detail_dict), contracts.PARSED_FIELDS))
-            if not options.commit:
-                continue
-            with transaction.atomic():
-                house = House.objects.filter(
-                    vendor=vendor, vendor_house_id=house_id).first()
-                if house is None:
-                    print('{}: not in DB, skip write'.format(house_id))
-                    continue
-                # S2：house_etc 停寫／drop——重放的整份 dict 只走 --parquet-dir 的
-                # vendor_extra（parsed 分區才是它的家）。回退＝TWRH_ETC_DB_WRITE=1
-                if detail_dict is not None and snapshot_db.etc_available():
-                    HouseEtc.objects.filter(house=house).update(
-                        detail_dict=detail_dict)
-                if 'author' in house_fields:
-                    house_fields['author'], _ = Author.objects.get_or_create(
-                        truth=house_fields['author'])
-                for attr, value in house_fields.items():
-                    setattr(house, attr, value)
-                if house_fields:
-                    house.save()
-                written += 1
         if options.parquet_dir and parquet_rows:
             import pyarrow as pa
             import pyarrow.parquet as pq
@@ -186,7 +138,7 @@ def main():
     print(json.dumps({
         'detail_pages': total, 'parsed_ok': ok, 'parse_failed': failed,
         'rows_written': written, 'missing_packs': missing_pack,
-        'mode': 'commit' if options.commit else 'dry-run',
+        'mode': 'parquet' if options.parquet_dir else 'dry-run',
     }, ensure_ascii=False))
     if failed:
         sys.exit(1)

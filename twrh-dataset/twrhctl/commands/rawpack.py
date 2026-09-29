@@ -95,7 +95,7 @@ class Command(BaseCommand):
                 'TWRH_TARGET_DATE') or date_cls.today().isoformat()
 
         if options['reconcile_only']:
-            shorts = sorted({vendor_dirname(v.name) for v in vendor_registry.all(orm=False)})
+            shorts = sorted({vendor_dirname(v.name) for v in vendor_registry.all()})
             for vendor in shorts:
                 self.reconcile_existing(vendor, date_str, options)
             return
@@ -292,7 +292,7 @@ class Command(BaseCommand):
         D5 前這裡還逐頁比 DB raw 欄位 byte（雙寫期），DB 停存 raw 後只剩量。
         candidates：index entries（打包時＝本輪 scratch 的；--reconcile-only＝整包）。
         '''
-        vendor_obj = vendor_registry.by_short(vendor, orm=False)
+        vendor_obj = vendor_registry.by_short(vendor)
         if vendor_obj is None:
             raise CommandError('vendor {} not registered'.format(vendor))
         day = datetime.strptime(date_str, '%Y-%m-%d')
@@ -300,8 +300,6 @@ class Command(BaseCommand):
         detail_entries = [e for e in candidates
                           if e['member'].endswith('.detail.html')]
         from rental import filequeue
-        if filequeue.db_bookkeeping():
-            raise CommandError('TWRH_QUEUE_DB=1（queue DB 記帳）需要 DB，twrhctl 不支援')
         # S4b：request_ts 沒人寫，done 數讀檔案 queue
         n_done = filequeue.reconcile(vendor, date_str, 'detail')['done']
 

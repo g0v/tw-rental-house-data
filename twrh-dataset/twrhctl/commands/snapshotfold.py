@@ -31,7 +31,6 @@ from datetime import date as date_cls, datetime, timedelta
 from twrhctl.base import BaseCommand, CommandError
 
 from rental import artifacts, snapshot
-from rental.switches import house_db
 from rental import vendors
 from rental.raws import vendor_dirname
 
@@ -65,15 +64,15 @@ class Command(BaseCommand):
         else:
             env = os.environ.get('TWRH_TARGET_DATE')
             day = datetime.strptime(env, '%Y-%m-%d').date() if env else date_cls.today()
-        vendor = vendors.get(options['vendor'], orm=False)
+        vendor = vendors.get(options['vendor'])
         short = vendor_dirname(vendor.name)
         bucket = None if options['no_upload'] else os.environ.get('TWRH_RAW_BUCKET')
         read_bucket = os.environ.get('TWRH_RAW_BUCKET')
 
-        if options['backfill'] or options['bootstrap'] or house_db():
-            # DB 已退場（S5）：從 DB 摺 snapshot 的兩條路（#11 回填、單日 bootstrap）與
-            # house DB 回退都只剩 Django 版 manage.py snapshotfold 能跑
-            raise CommandError('--backfill／--bootstrap／TWRH_HOUSE_DB=1 需要 DB，twrhctl 不支援')
+        if options['backfill'] or options['bootstrap']:
+            # 從 DB 摺 snapshot 的兩條路（#11 回填、單日 bootstrap）隨 DB 退場（S5／S6）；
+            # 歷史 snapshot 已在 S3，前日缺由 replay_to 從最近一份逐日重放
+            raise CommandError('--backfill／--bootstrap 需要 DB（已退場）')
 
         if options['reupload']:
             if not bucket:

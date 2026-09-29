@@ -36,7 +36,7 @@ class Command(BaseCommand):
         parser.add_argument('--to', dest='to_date')
 
     def handle(self, *_args, **options):
-        vendor = vendors.get(options['vendor'], orm=False)
+        vendor = vendors.get(options['vendor'])
         short = vendor_dirname(vendor.name)
         bucket = None if options['no_upload'] else os.environ.get('TWRH_RAW_BUCKET')
         read_bucket = os.environ.get('TWRH_RAW_BUCKET')

@@ -1,6 +1,8 @@
-# twrh-dataset B 層測試（architecture-roadmap 2-3，與 1-1 同做）：
-# queue 語意矩陣掛 PostGIS 跑——queue 是歷史上 bug 密度最高的共用件，
-# 這裡是它的迴歸防線。爬蟲類 live probe 依既定原則不進公開 CI。
+# twrh-dataset 測試（S6 起不需要 DB）：
+#   tests/          檔案 queue 語意矩陣（architecture-roadmap 2-3 起的 B 層，2026-10 由 Django
+#                   TestCase＋PostGIS 搬成 unittest）、fold／總表／seeding／manifest／斷言引擎等
+#   twrhctl/tests/  指令入口行程內不得載入 django
+# 爬蟲類 live probe 依既定原則不進公開 CI。
 name: dataset tests
 
 on:
@@ -14,20 +16,8 @@ on:
       - '.github/workflows/dataset-tests.yml'
 
 jobs:
-  queue-tests:
+  dataset-tests:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgis/postgis:15-3.4
-        env:
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     defaults:
       run:
         working-directory: twrh-dataset
@@ -36,21 +26,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      # GeoDjango 需要的系統庫
-      - run: >
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends
-          gdal-bin libgdal-dev libgeos-dev libproj-dev
+      # zstd：raw 日包／list stub 分區的壓縮
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zstd
       - run: pipx install poetry
       - run: poetry install
-      - name: Run queue semantics tests
-        env:
-          TWRH_DB_NAME: twrh_ci
-          TWRH_DB_USER: postgres
-          TWRH_DB_PASSWORD: postgres
-          TWRH_DB_HOST: 127.0.0.1
-          TWRH_DB_PORT: '5432'
-        run: poetry run python django/manage.py test crawlerrequest -v 2
-      # S6：twrhctl（無 Django 指令入口）不需要 DB——每支指令 import 時不得帶進 django、
-      # 三個 Django 等價物（JSON encoder／Paginator／台北時區）與原版逐字相同
+      - name: Run dataset tests
+        run: poetry run python -m unittest discover -s tests -t . -v
       - name: Run twrhctl (no-Django) tests
         run: poetry run python -m unittest discover -s twrhctl/tests -t . -v

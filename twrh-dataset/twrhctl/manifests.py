@@ -3,7 +3,7 @@
 S3b 起 house 三表停寫，manifest 只剩「由當日 snapshot／list stub／parsed 分區算出」這一條
 （`source: partitions`）；DB 版 builder 與 request_ts 的 queue 統計隨 DB 退場不搬。
 函數本體由原檔逐字取出（ast 切片），只把 timezone.localtime → twrhctl.tz.localtime、
-vendors.all() → vendors.all(orm=False)——定義與欄位語意見原檔 docstring。
+vendors.all() → vendors.all()——定義與欄位語意見原檔 docstring。
 '''
 import json
 import os
@@ -66,7 +66,7 @@ def _queue_stats_file(ts, request_type):
     max_attempts = int(os.environ.get('TWRH_QUEUE_MAX_ATTEMPTS', 3))
     total = {'seeds': 0, 'done': 0, 'dead': 0, 'residue': 0}
     errors = {}
-    for vendor in vendors.all(orm=False):
+    for vendor in vendors.all():
         short = vendor_dirname(vendor.name)
         if type_name not in filequeue.type_names(short, date_str):
             continue
@@ -113,7 +113,7 @@ def _partition_block(stage, date_obj):
     bucket = os.environ.get('TWRH_RAW_BUCKET')
     date_str = date_obj.isoformat()
     out = {}
-    for vendor in vendors.all(orm=False):
+    for vendor in vendors.all():
         short = vendor_dirname(vendor.name)
         try:
             block = _PARTITION_COUNTERS[stage](short, date_str, bucket, artifacts)
@@ -205,7 +205,7 @@ _LIST_ONLY_FILL = ('rough_address',)
 
 def _vendor_shorts():
     from rental.raws import vendor_dirname
-    return [vendor_dirname(v.name) for v in vendors.all(orm=False)]
+    return [vendor_dirname(v.name) for v in vendors.all()]
 
 
 class _DayPartitions:

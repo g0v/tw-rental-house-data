@@ -2,15 +2,11 @@ import os
 import traceback
 from datetime import date, timedelta
 from rental import tz as timezone   # S6：無 Django（同介面）
-# DB 分支（house DB 回退、queue DB 記帳）才用得到：延遲載入
-from crawler.orm import transaction, F, Q
 from scrapy import signals
-from crawler.orm import House, HouseTS
 from rental import enums
 from scrapy_twrh.items import GenericHouseItem
 from scrapy_twrh.spiders.rental591 import Rental591Spider, util
 from rental import artifacts, seeding, known
-from rental.switches import house_db
 from .persist_queue import PersistQueue
 from .item_hygiene import strip_detail_item
 
@@ -105,29 +101,13 @@ class Detail591Spider(Rental591Spider):
                       if st.open and (not self.append or st.detail_crawled_at is None))
 
     def gen_full_seeds(self):
-        '''現行全量模式：所有 OPENED 房源都排 detail。'''
-        if not house_db():
-            return self.gen_full_seeds_from_files()
-        query = House.objects.filter(
-            deal_status = enums.DealStatusType.OPENED
-        )
-
-        # In append mode, only houses never detail-crawled. monthly_price
-        # can't tell anymore — since the 2026 redesign the list page item
-        # already carries the price, so it is never null for new houses.
-        # D5 後 DB 不存 raw，判準改 detail_crawled_at（與 seed_mode=new 同源）
-        if self.append:
-            query = query.filter(detail_crawled_at__isnull=True)
-
-        return list(query.values_list('vendor_house_id', flat=True))
+        '''全量模式：總表(昨日)＋今日 stub 裡所有 OPENED 的戶；append＝其中從未 detail 的。'''
+        return self.gen_full_seeds_from_files()
 
     def gen_snapshot_seeds(self):
-        '''S1：判準改讀檔案（今日 list stub＋昨日 snapshot 的 carry 欄），完全不碰
-        House／HouseTS，與 `gen_diff_seeds` 語意逐條對齊（同一支純函數
-        `seeding.select_seeds`，seedcheck 用的也是它）。
-
-        材料不齊回 None → 呼叫端退回 DB 判準。S3b（house 三表停寫）之後 DB 判準用的
-        欄位就不存在了，這條路屆時是唯一的；在那之前它是可回退的上位者。
+        '''diff 種子（L-C list-diff 降頻，docs/dx-roadmap.md）：判準讀檔案（今日 list stub＋
+        昨日 snapshot 的 carry 欄），純函數 `seeding.select_seeds`：stale／新物件、指紋變、
+        連續 ≥2 天缺席、回列四類聯集。材料不齊回 None → 呼叫端排全量（多爬一晚，不漏）。
         '''
         ts = self.persist_queue.ts
         today = date(ts['y'], ts['m'], ts['d'])
@@ -139,7 +119,7 @@ class Detail591Spider(Rental591Spider):
             bucket=os.environ.get('TWRH_RAW_BUCKET'))
         if result is None:
             self.logger.warning(
-                'snapshot seeds unavailable (%s) — 退回 DB 判準 gen_diff_seeds',
+                'snapshot seeds unavailable (%s) — full seeds instead',
                 meta.get('reason'))
             return None
         self.logger.info(
@@ -155,110 +135,18 @@ class Detail591Spider(Rental591Spider):
         return sorted(result.seeds)
 
     def gen_new_seeds(self):
-        '''前緣掃描用：今日在列（list stub 分區）∧ OPENED ∧ detail 從未爬過（detail_crawled_at 為空），
-        與 seeding.select_new_seeds 同義。
-
-        以前直接掃整張 House（deal_status／detail_crawled_at 都沒索引、850 萬列；db.t4g.micro 的 EBS
-        頻寬約 8 MB/s——2026-09-14 05:01 一輪兩趟各卡 7／24 分鐘在這個查詢，真正抓 89 戶只要 1 分鐘）。
-        改由今日 stub 的 id 逐批查 House（vendor＋vendor_house_id 唯一索引，讀的頁數與在列戶數成比例）；
-        沒有 stub（本機沒跑 4a）才退回全表掃。用 detail_crawled_at 而非 append 模式的
-        etc.detail_raw——D5 後 DB 不存 raw。
+        '''前緣掃描用：今日在列（list stub 分區）∧ OPENED ∧ detail 從未爬過，與
+        seeding.select_new_seeds 同義。狀態來自總表(昨日)＋今日 stub（不在總表的＝新戶：
+        open、從未 detail）。今天稍早才 detail 過的戶總表還不知道，靠當日 detail 種子擋掉——
+        同日多輪 sweep 不能把重試計數歸零、也不製造重複項。
         '''
         pq = self.persist_queue
-        # 當日已有 detail 列者（含 dead）不重排：同日多輪 sweep 不能把
-        # 重試計數歸零、也不製造重複列
         already = pq.seed_ids_today()
-        if not house_db():
-            # S3b：狀態來自總表(昨日)＋今日 stub（不在總表的＝新戶：open、從未 detail）。
-            # 今天稍早才 detail 過的戶總表還不知道，靠 already（今日 detail 種子）擋掉
-            k = self.load_known()
-            stubs = list(artifacts.read_list_stubs(
-                pq.short, pq.date_str, os.environ.get('TWRH_RAW_BUCKET') or None))
-            self.logger.info('new seeds: {} stubs today'.format(len(stubs)))
-            return sorted(h for h in seeding.select_new_seeds(stubs, k.state) if h not in already)
+        k = self.load_known()
         stubs = list(artifacts.read_list_stubs(
             pq.short, pq.date_str, os.environ.get('TWRH_RAW_BUCKET') or None))
-        if not stubs:
-            self.logger.warning(
-                'no list stubs for {} — new seeds fall back to a full House scan'.format(pq.date_str))
-            return [h for h in House.objects.filter(
-                deal_status=enums.DealStatusType.OPENED,
-                detail_crawled_at__isnull=True,
-            ).values_list('vendor_house_id', flat=True) if h not in already]
-        hids = sorted(seeding.latest_fingerprints(stubs))
-        state = {}
-        for i in range(0, len(hids), 1000):
-            for hid, status, crawled in House.objects.filter(
-                    vendor=pq.vendor, vendor_house_id__in=hids[i:i + 1000],
-            ).values_list('vendor_house_id', 'deal_status', 'detail_crawled_at'):
-                state[hid] = seeding.HouseState(
-                    open=status == enums.DealStatusType.OPENED, detail_crawled_at=crawled)
-        self.logger.info('new seeds: {} in-list houses from {} stubs'.format(len(hids), len(stubs)))
-        return sorted(h for h in seeding.select_new_seeds(stubs, state) if h not in already)
-
-    def gen_diff_seeds(self):
-        '''L-C(6)(7)：list diff 驅動的 detail 種子（docs/dx-roadmap.md）。
-
-        skip 謂詞＝在今日 list ∧ OPENED ∧ 指紋未變 ∧ 距上次 detail < N 天；
-        不滿足者入 queue，狀態變更永遠由 detail 判定：
-
-        - stale／新物件：detail 從未爬過或超過 refresh_days（週期強制刷新
-          兜底 update_time 不跳的暗改；新物件 detail_crawled_at 為 null）
-        - fingerprint：list 指紋（price/title）在上次 detail 之後變過
-        - absent：連續 ≥2 天不在 list（L-B 重測：單日缺席是暫時抖動、
-          立即重掃絕大多數現身，連續缺席判準才把誤殺壓到個位數）
-        - returned：缺席後回到 list（含關閉後回列）且本輪未 detail 過
-          （12h 窗口＝同輪 pipeline 防重排，production 單輪 < 6h）
-
-        「在今日 list」以 HouseTS 該日 bucket 的 list_crawled_at 判定，
-        與 TWRH_TARGET_DATE／--start-early 的日期分桶一致。
-        '''
-        ts = self.persist_queue.ts
-        today = date(ts['y'], ts['m'], ts['d'])
-        yesterday = today - timedelta(days=1)
-        now = timezone.now()
-
-        def list_ids(day):
-            return set(HouseTS.objects.filter(
-                year=day.year, month=day.month, day=day.day,
-                list_crawled_at__isnull=False,
-            ).values_list('vendor_house_id', flat=True))
-
-        in_list_today = list_ids(today)
-        in_list_yesterday = list_ids(yesterday)
-
-        open_qs = House.objects.filter(deal_status=enums.DealStatusType.OPENED)
-        open_ids = set(open_qs.values_list('vendor_house_id', flat=True))
-
-        stale = {
-            hid for hid, crawled in open_qs.values_list(
-                'vendor_house_id', 'detail_crawled_at').iterator(chunk_size=20000)
-            if seeding.is_stale(hid, crawled, now, self.refresh_days, self.refresh_jitter)}
-
-        fingerprint = set(open_qs.filter(
-            detail_crawled_at__isnull=False,
-            list_fingerprint_changed_at__gt=F('detail_crawled_at'),
-        ).values_list('vendor_house_id', flat=True)) & in_list_today
-
-        absent = open_ids - in_list_today - in_list_yesterday
-
-        fresh_this_run = set(open_qs.filter(
-            detail_crawled_at__gte=now - timedelta(hours=12),
-        ).values_list('vendor_house_id', flat=True))
-        returned = ((open_ids & in_list_today) - in_list_yesterday) - fresh_this_run
-
-        seeds = stale | fingerprint | absent | returned
-        skipped = len(open_ids & in_list_today) - len(seeds & in_list_today)
-        self.logger.info(
-            'diff seeds: stale/new %d, fingerprint %d, absent>=2d %d, '
-            'returned %d -> union %d (open %d, in-list %d, skipped %d)',
-            len(stale), len(fingerprint), len(absent), len(returned),
-            len(seeds), len(open_ids), len(in_list_today), skipped)
-        # stamp 給 seedcheck 釘同一個 now（見 seeding.seed_stamp_path）
-        seeding.write_seed_stamp(today, now, {
-            'stale': len(stale), 'fingerprint': len(fingerprint),
-            'absent': len(absent), 'returned': len(returned)}, len(seeds))
-        return sorted(seeds)
+        self.logger.info('new seeds: {} stubs today'.format(len(stubs)))
+        return sorted(h for h in seeding.select_new_seeds(stubs, k.state) if h not in already)
 
     def parse_detail_and_done (self, response):
         for item in self.default_parse_detail(response):
@@ -287,18 +175,12 @@ class Detail591Spider(Rental591Spider):
                 'queue empty and progress file exists — resume with nothing to do')
         elif not self.persist_queue.has_request():
             if self.seed_mode == 'diff':
-                # S1：TWRH_SEED_SOURCE=snapshot 時判準改走檔案（純函數）；材料不齊
-                # 或未啟用就退回 DB 判準。回退鈕＝把這個環境變數拿掉／設 db
-                house_ids = None
-                if not house_db() or os.environ.get('TWRH_SEED_SOURCE', 'db') == 'snapshot':
-                    house_ids = self.gen_snapshot_seeds()
-                if house_ids is None and not house_db():
-                    # S3b：沒有 DB 判準可退。材料不齊（昨日 snapshot／今日 stub 缺）就排
-                    # 全量——多爬一晚，不漏；gen_snapshot_seeds 已經把原因 log 成 warning
-                    self.logger.error('snapshot seeds unavailable and house DB is off — full seeds')
-                    house_ids = self.gen_full_seeds_from_files()
+                house_ids = self.gen_snapshot_seeds()
                 if house_ids is None:
-                    house_ids = self.gen_diff_seeds()
+                    # 材料不齊（昨日 snapshot／今日 stub 缺）就排全量——多爬一晚，不漏；
+                    # gen_snapshot_seeds 已經把原因 log 成 warning
+                    self.logger.error('snapshot seeds unavailable — full seeds')
+                    house_ids = self.gen_full_seeds_from_files()
             elif self.seed_mode == 'new':
                 house_ids = self.gen_new_seeds()
             else:
@@ -307,16 +189,11 @@ class Detail591Spider(Rental591Spider):
             self.logger.info('generating request: {} (mode: {}, append: {})'.format(
                 len(house_ids), self.seed_mode, self.append))
 
-            # queue 在 DB 記帳時整批種子包一個 transaction；S4b 後種子寫檔案，
-            # 不必為此開 DB 連線（S5 之後也沒有 DB 可連）
-            from contextlib import nullcontext
-            from rental import filequeue
-            with (transaction.atomic() if filequeue.db_bookkeeping() else nullcontext()):
-                try:
-                    for house_id in house_ids:
-                        self.persist_queue.gen_persist_request({'id': house_id})
-                except:
-                    traceback.print_exc()
+            try:
+                for house_id in house_ids:
+                    self.persist_queue.gen_persist_request({'id': house_id})
+            except:
+                traceback.print_exc()
         
         # Initialize progress tracking
         total = self.persist_queue.init_progress_tracking()

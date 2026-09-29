@@ -138,7 +138,7 @@ class RawExport(Export):
         # S3a：改讀 4c 的 snapshot 分區，不碰 House
         if only_big6:
             raise NotImplementedError('snapshot 路徑尚未支援 -b6（月包不用它）')
-        vendor = vendor_registry.get('591 租屋網', orm=False)
+        vendor = vendor_registry.get('591 租屋網')
         window = snapshot_source.SnapshotWindow(
             from_date, to_date, vendor='591',
             vendor_id=vendor.id if vendor else None,
