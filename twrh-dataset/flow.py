@@ -105,12 +105,57 @@ class Ctx:
         return cmd
 
 
+class _MemPopen(subprocess.Popen):
+    '''wait 時改用 os.wait4，留下子行程（含它已收掉的後代——`poetry run` 起的 python）的
+    峰值 RSS。2026-09-30 snapshot-prov 被 OOM 殺之後要逐 stage 看峰值；Container Insights
+    一分鐘一筆會把十幾秒的尖峰抹平，這裡是 kernel 記的真峰值、零成本。'''
+    maxrss_kb = None
+
+    def _try_wait(self, wait_flags):
+        try:
+            pid, sts, usage = os.wait4(self.pid, wait_flags)
+        except ChildProcessError:
+            return self.pid, 0
+        if pid:
+            self.maxrss_kb = usage.ru_maxrss
+        return pid, sts
+
+
+def _mem_run(cmd, label, **kwargs):
+    '''subprocess.run 的等價物（本檔用到的 capture_output／text／env／input），多印一行
+    `[mem] <label> <峰值> MB`。'''
+    if kwargs.pop('capture_output', False):
+        kwargs['stdout'] = kwargs['stderr'] = subprocess.PIPE
+    stdin_data = kwargs.pop('input', None)
+    if stdin_data is not None:
+        kwargs['stdin'] = subprocess.PIPE
+    with _MemPopen(cmd, **kwargs) as proc:
+        out, err = proc.communicate(stdin_data)
+    if proc.maxrss_kb is not None:
+        print('[mem] {} {} MB'.format(label, proc.maxrss_kb // 1024), flush=True)
+    return subprocess.CompletedProcess(cmd, proc.returncode, out, err)
+
+
+def _mem_label(cmd):
+    '''`poetry run python -m twrhctl snapshotfold --only final` → `snapshotfold --only final`；
+    scrapy → `crawl <spider> <-a …>`。'''
+    parts = list(cmd)
+    for head in ('twrhctl', 'manage.py'):
+        for i, part in enumerate(parts):
+            if part.endswith(head):
+                return ' '.join(parts[i + 1:i + 4])
+    if 'crawl' in parts:
+        i = parts.index('crawl')
+        return ' '.join(p for p in parts[i:i + 4] if not p.startswith('stop_marker'))
+    return ' '.join(parts[:4])
+
+
 def run(cmd, **kwargs):
     print('+ {}'.format(' '.join(cmd)), flush=True)
     if DRY_RUN:
         return subprocess.CompletedProcess(cmd, 0, '', '')
     check = kwargs.pop('check', True)
-    result = subprocess.run(cmd, cwd=BASE, **kwargs)
+    result = _mem_run(cmd, _mem_label(cmd), cwd=BASE, **kwargs)
     if result.returncode:
         # 非零一律留痕（負數＝訊號，-9＝OOM SIGKILL）：advisory stage 的 check=False
         # 以前把退出碼吞掉，2026-09-11 seedcheck 被 OOM 殺掉在 log 上完全無痕
@@ -258,7 +303,7 @@ def consume_loop(ctx, batch_size, extra_env=None, tag='detail'):
         print('+ {}'.format(' '.join(cmd)))
         if DRY_RUN:
             return
-        result = subprocess.run(cmd, cwd=BASE, env=env)
+        result = _mem_run(cmd, 'detail batch {}'.format(n), cwd=BASE, env=env)
         if result.returncode != 0:
             raise StageFailed('detail batch {} exited {}'.format(
                 n, result.returncode))

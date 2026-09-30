@@ -170,7 +170,8 @@ def seeds_from_files(short, day, now, refresh_days=7, refresh_jitter_days=0, buc
         return None, {'reason': 'yesterday stubs empty for {}'.format(y_str)}
     yesterday_ids = set(latest_fingerprints(y_stubs))
 
-    rows = artifacts.read_snapshot(short, y_str, bucket)
+    # 只讀 state_from_snapshot 用到的欄：整份讀（含 vendor_extra）峰值 2 GB，這樣 < 0.5 GB（2026-09-30 量測）
+    rows = artifacts.read_snapshot(short, y_str, bucket, columns=STATE_COLUMNS)
     if not rows:
         return None, {'reason': 'no snapshot for {}'.format(y_str)}
     state = state_from_snapshot(rows, seen_today=latest_fingerprints(today_stubs))
@@ -190,6 +191,7 @@ def select_new_seeds(today_stubs, state):
 
 
 OPENED = 0   # enums.DealStatusType.OPENED；這裡不 import Django
+STATE_COLUMNS = ['vendor_house_id', 'deal_status', 'last_detail_at', 'fingerprint_at_last_detail']
 
 
 def state_from_snapshot(rows, seen_today=()):

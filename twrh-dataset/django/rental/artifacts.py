@@ -205,6 +205,108 @@ def read_snapshot(vendor_short, date_str, bucket=None, columns=None):
     return pq.read_table(path, columns=columns).to_pylist()
 
 
+
+# ---- 大欄不進 dict（vendor_extra）------------------------------------------------
+# snapshot／parsed 的 vendor_extra 是整份 detail_dict 的 JSON 字串：8 萬列讀成 Python str
+# 要 ~450 MB（中文 JSON 在 Python 是 UCS-2／4，arrow 裡是 UTF-8），fold 卻從不看內容——
+# 只做「None 不蓋值」與整值搬移。所以 dict 列裡只放代號 ExtraRef，字串留在 arrow，
+# write_snapshot 以 take 接回：產物逐 byte 不變，snapshotfold 峰值約減半（2026-09-30 量測）。
+LEAN_COLUMNS = ('vendor_extra',)
+SNAPSHOT_WRITE_ROWS = 25000
+
+
+class ExtraRef:
+    '''ExtraStore 裡一格的代號；fold 對它是不透明值（非 None 即「有值」）。'''
+    __slots__ = ('slot',)
+
+    def __init__(self, slot):
+        self.slot = slot
+
+
+class ExtraStore:
+    '''收 vendor_extra 的 arrow 欄；column() 依列上的代號（或少數仍是字串的值）組回輸出欄。'''
+
+    def __init__(self):
+        self.chunks = []
+        self.size = 0
+
+    def add(self, array):
+        base = self.size
+        self.chunks.append(array)
+        self.size += len(array)
+        return base
+
+    def _combined(self, arrow_type):
+        # 只合併一次（每批 take 共用）；總量逼近 int32 offset 上限才改 large_string
+        import pyarrow as pa
+        if getattr(self, '_cache', None) is None:
+            total = sum(c.nbytes for c in self.chunks)
+            wide = pa.large_string() if total > 2**31 - 2**26 else arrow_type
+            chunks = [c if c.type == wide else c.cast(wide) for c in self.chunks]
+            self._cache = pa.concat_arrays(chunks) if chunks else pa.array([], type=wide)
+            self.chunks = None   # 已併進 _cache，放掉原 chunk
+        return self._cache
+
+    def column(self, values, arrow_type):
+        import pyarrow as pa
+        import pyarrow.compute as pc
+        combined = self._combined(arrow_type)
+        idx, strays = [], []
+        for value in values:
+            if value is None:
+                idx.append(None)
+            elif isinstance(value, ExtraRef):
+                idx.append(value.slot)
+            else:   # 例：find_closed_rows 退路讀進來的整列（仍是字串）；罕見
+                value = contracts.coerce_value(value, contracts.JSON)
+                if value is None:
+                    idx.append(None)
+                else:
+                    idx.append(self.size + len(strays))
+                    strays.append(value)
+        if strays:
+            combined = pa.concat_arrays([combined, pa.array(strays, type=combined.type)])
+        taken = combined.take(pa.array(idx, type=pa.int64()))
+        # coerce_value 的約定：空字串＝None
+        taken = pc.if_else(pc.equal(taken, ''), pa.scalar(None, taken.type), taken)
+        return taken if taken.type == arrow_type else taken.cast(arrow_type)
+
+def _lean_rows(path, store):
+    import pyarrow as pa
+    import pyarrow.compute as pc
+    import pyarrow.parquet as pq
+    have = pq.read_schema(path).names
+    lean = [name for name in LEAN_COLUMNS if name in have]
+    refs = {}
+    for name in lean:
+        col = pq.read_table(path, columns=[name]).column(name).combine_chunks()
+        base = store.add(col)
+        valid = pc.is_valid(col).to_pylist()
+        refs[name] = [ExtraRef(base + i) if ok else None for i, ok in enumerate(valid)]
+        del col
+    rows = pq.read_table(path, columns=[c for c in have if c not in lean]).to_pylist()
+    pa.default_memory_pool().release_unused()
+    for name, col_refs in refs.items():
+        for row, ref in zip(rows, col_refs):
+            row[name] = ref
+    return rows
+
+
+def read_snapshot_lean(vendor_short, date_str, store, bucket=None):
+    '''同 read_snapshot，但 LEAN_COLUMNS 以 ExtraRef 代號放進 dict、字串留在 store。'''
+    path = _fetch_snapshot(vendor_short, date_str, bucket)
+    if path is None:
+        return None
+    return _lean_rows(path, store)
+
+
+def read_parsed_rows_lean(vendor_short, date_str, store, bucket=None):
+    '''同 read_parsed_rows，但 vendor_extra 走 store（見 ExtraStore）。'''
+    rows = []
+    for path in partition_files('parsed', vendor_short, date_str, bucket):
+        rows.extend(_lean_rows(path, store))
+    return rows
+
 # ---- S3c 總表 ------------------------------------------------------------------
 
 def latest_path(vendor_short, date_str):
@@ -442,28 +544,35 @@ def find_closed_rows(vendor_short, hids, before_date, days, bucket=None):
     return found
 
 
-def write_snapshot(rows, vendor_short, date_str):
-    '''摺疊結果 → snapshot/<vendor>/<date>.parquet（tmp＋rename）。回傳 (path, n_rows)。'''
+def write_snapshot(rows, vendor_short, date_str, extras=None):
+    '''摺疊結果 → snapshot/<vendor>/<date>.parquet（tmp＋rename）。回傳 (path, n_rows)。
+    extras：讀入時用的 ExtraStore（列上的 vendor_extra 是 ExtraRef 代號時必給）。
+    每 SNAPSHOT_WRITE_ROWS 列一批建 arrow 欄、寫一個 row group：60 欄整份同時建
+    再加上還在的 dict 列，8 萬列要多吃 ~0.5 GB（2026-09-30 量測）。'''
     import pyarrow as pa
     import pyarrow.parquet as pq
     fields = contracts.SNAPSHOT_FIELDS
-    # 逐欄建 array、不先複製成第二份 dict 列表：10 萬列 × 60 欄在 2 GB task 裡
-    # 要省著用（from_pylist 會多一份中間物）
     rows = sorted(rows, key=lambda r: r['vendor_house_id'])
     schema = contracts.arrow_schema(fields)
-    columns = []
-    for (name, kind), arrow_field in zip(fields, schema):
-        columns.append(pa.array(
-            [contracts.coerce_value(r.get(name), kind) for r in rows], type=arrow_field.type))
     n = len(rows)
-    del rows
     path = snapshot_path(vendor_short, date_str)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + '.tmp'
-    pq.write_table(pa.Table.from_arrays(columns, schema=schema), tmp, compression='zstd')
+    with pq.ParquetWriter(tmp, schema, compression='zstd') as writer:
+        for start in range(0, max(n, 1), SNAPSHOT_WRITE_ROWS):
+            batch = rows[start:start + SNAPSHOT_WRITE_ROWS]
+            columns = []
+            for (name, kind), arrow_field in zip(fields, schema):
+                if extras is not None and name in LEAN_COLUMNS:
+                    columns.append(extras.column([r.get(name) for r in batch], arrow_field.type))
+                    continue
+                columns.append(pa.array(
+                    [contracts.coerce_value(r.get(name), kind) for r in batch], type=arrow_field.type))
+            writer.write_table(pa.Table.from_arrays(columns, schema=schema))
+            del batch, columns
+    del rows
     os.replace(tmp, path)
     return path, n
-
 
 def upload_snapshot(bucket, vendor_short, date_str, path):
     '''snapshot 上 S3；同 key 覆寫是設計內的（final 蓋 provisional），印出來讓 log 看得到。'''

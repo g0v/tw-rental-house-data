@@ -166,14 +166,15 @@ class Command(BaseCommand):
         self.upload(bucket, short, day, path)
 
     def fold(self, short, prev_day, day, kind, read_bucket, bucket, allow_empty_prev=False):
-        prev_rows = artifacts.read_snapshot(short, prev_day.isoformat(), read_bucket)
+        extras = artifacts.ExtraStore()   # vendor_extra 不進 dict（見 artifacts.ExtraStore）
+        prev_rows = artifacts.read_snapshot_lean(short, prev_day.isoformat(), extras, read_bucket)
         if prev_rows is None and allow_empty_prev:
             prev_rows = []
         if prev_rows is None:
             raise CommandError('snapshot {} missing, cannot fold {}'.format(prev_day, day))
         date_str = day.isoformat()
         stubs = list(artifacts.read_list_stubs(short, date_str, read_bucket))
-        parsed = artifacts.read_parsed_rows(short, date_str, read_bucket)
+        parsed = artifacts.read_parsed_rows_lean(short, date_str, extras, read_bucket)
         deals = artifacts.read_deal_events(short, date_str, read_bucket)
         n_prev, n_stubs, n_parsed, n_deals = len(prev_rows), len(stubs), len(parsed), len(deals)
         # 昨日 snapshot 沒有、今日又有訊號的戶（關閉多日後才進成交列表；掉出後回列）：
@@ -197,7 +198,7 @@ class Command(BaseCommand):
         by_source = {}
         for r in rows:
             by_source[r['source']] = by_source.get(r['source'], 0) + 1
-        path, n = artifacts.write_snapshot(rows, short, date_str)
+        path, n = artifacts.write_snapshot(rows, short, date_str, extras=extras)
         del rows
         print('=== snapshot {} {} {}: prev {} + stubs {} + parsed {} + deals {} -> {} rows '
               '{} -> {} ({:.1f} MB)'.format(
