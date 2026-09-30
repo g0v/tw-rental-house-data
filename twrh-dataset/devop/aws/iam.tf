@@ -120,7 +120,10 @@ resource "aws_iam_role_policy" "scheduler_run_task" {
       {
         Effect   = "Allow"
         Action   = ["iam:PassRole"]
-        Resource = [aws_iam_role.execution.arn, aws_iam_role.crawler_task.arn]
+        # publisher_task：月度出貨排程要傳它。漏掉的話 RunTask 被拒（AccessDenied、Scheduler
+        # 判不可重試直接丟），2026-10-01 07:00 首個排程出貨就這樣沒跑（8 月與 9/25 演練都是
+        # 人工 run-task，沒走到這條）
+        Resource = [aws_iam_role.execution.arn, aws_iam_role.crawler_task.arn, aws_iam_role.publisher_task.arn]
       },
     ]
   })
