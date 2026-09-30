@@ -3613,8 +3613,11 @@ class HouseDbOffTests(QueueTestMixin, TestCase):
         from contextlib import redirect_stdout
         import flow
         names = flow.RUN_STAGE_NAMES
-        self.assertLess(names.index('snapshot'), names.index('export'))
+        # 1 日月包：緊接 snapshotfinal／latest、爬取之前（2026-10-01）——flow 中途被擋也有月包
         self.assertLess(names.index('snapshotfinal'), names.index('export'))
+        self.assertLess(names.index('latest'), names.index('export'))
+        self.assertLess(names.index('export'), names.index('seed'))
+        self.assertLess(names.index('export'), names.index('detail'))
         with mock.patch.object(flow, 'DRY_RUN', True):
             out = {}
             for name in ('seedcheck', 'parsedcheck', 'synthts', 'sync', 'snapshotcheck',
@@ -3627,6 +3630,40 @@ class HouseDbOffTests(QueueTestMixin, TestCase):
             self.assertIn('skip (house DB off', out[name], name)
             self.assertNotIn('+ ', out[name], name)
         self.assertIn('export -p --source snapshot', out['export'])
+
+    def test_export_on_first_refuses_without_final_snapshot(self):
+        # snapshotfinal 是 advisory：失敗時磁碟上上月最後一天是 provisional，1 日月包寧可不出
+        import io
+        import tempfile
+        from contextlib import redirect_stdout
+        from types import SimpleNamespace
+        import flow
+        calls = []
+        ok = SimpleNamespace(returncode=0)
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(flow, 'manage', side_effect=lambda *a, **k: calls.append(a) or ok):
+            ctx = SimpleNamespace(date='2026-10-01', state_dir=os.path.join(tmp, 'st'))
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                flow.stage_export(ctx)                    # 沒有 final 標記
+            self.assertIn('!!! export skipped', buf.getvalue())
+            self.assertEqual(calls, [])
+            flow.stage_snapshotfinal(ctx)                 # 成功 → 留標記
+            self.assertTrue(os.path.exists(flow.snapshotfinal_marker(ctx)))
+            flow.stage_export(ctx)
+            self.assertEqual(calls[-1], ('export', '-p', '--source', 'snapshot'))
+            # 再跑一次 snapshotfinal 失敗 → 標記清掉、export 又拒跑
+            fail = SimpleNamespace(returncode=1)
+            with mock.patch.object(flow, 'manage', return_value=fail), redirect_stdout(io.StringIO()):
+                flow.stage_snapshotfinal(ctx)
+            self.assertFalse(os.path.exists(flow.snapshotfinal_marker(ctx)))
+            n = len(calls)
+            with redirect_stdout(io.StringIO()):
+                flow.stage_export(ctx)
+            self.assertEqual(len(calls), n)
+            # 非 1 日：export -p 自判不出貨，照常呼叫、不看標記
+            flow.stage_export(SimpleNamespace(date='2026-10-02', state_dir=ctx.state_dir))
+            self.assertEqual(calls[-1], ('export', '-p', '--source', 'snapshot'))
 
     def test_snapshotfold_replays_from_last_snapshot_when_two_nights_missing(self):
         from django.core.management import call_command

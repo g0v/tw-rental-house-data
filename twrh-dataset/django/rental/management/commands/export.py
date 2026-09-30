@@ -257,9 +257,9 @@ class Command(BaseCommand):
         today = self.target_now()
 
         # 每月 1 日出「上個月」（2026-09-07）。S3a 起來源是 snapshot 分區、日期顯式，
-        # flow 把它排在 snapshot stage 之後：要的是上月最後一天的 final snapshot，
-        # 那一份在 1 日這場的 snapshotfinal stage 才摺出來（含最後一天全天的 sweep）。
-        # DB 路徑（回退）讀的是 House 現況，排在爬取之後會混進 1 日的狀態——回退期間
+        # flow 把它排在 snapshotfinal／latest 之後、爬取之前（2026-10-01）：要的是上月最後一天
+        # 的 final snapshot，那一份在 1 日這場的 snapshotfinal stage 才摺出來（含最後一天全天
+        # 的 sweep）。DB 路徑（回退）讀的是 House 現況，此刻已含 1 日的 list——回退期間
         # 剛好跨月時要手動 -f/-t 補。
         if today.day != 1:
             return

@@ -48,8 +48,8 @@ poetry run python django/manage.py loaddata vendors   # required: pipeline looks
 ```bash
 # Full crawl pipeline（D6b 起唯一編排：flow.py；go.sh／gobg.sh／orchestrate.sh／sweep.sh 已退役 2026-09-07）
 poetry run python flow.py run [--date YYYY-MM-DD] [--from STAGE] [--executor local|ecs] [--append] [--vendor 591] [--dry-run]
-#   run stages：list→liststubs→snapshotfinal→latest→seed→seedcheck→detail→deals→queuefinalize→filequeuecheck→rawpack→parsed→dealevents→parsedcheck→snapshot→export→synthts→sync→snapshotcheck→exportcheck→manifest→quality→logs
-#   （S3b 起 house／house_ts 停寫：seedcheck／parsedcheck／synthts／sync／snapshotcheck／exportcheck 自印 skip；export 讀 snapshot、排在 snapshot 之後。回退＝TWRH_HOUSE_DB=1）
+#   run stages：list→liststubs→snapshotfinal→latest→export→seed→seedcheck→detail→deals→queuefinalize→filequeuecheck→rawpack→parsed→dealevents→parsedcheck→snapshot→synthts→sync→snapshotcheck→exportcheck→manifest→quality→logs
+#   （S3b 起 house／house_ts 停寫：seedcheck／parsedcheck／synthts／sync／snapshotcheck／exportcheck 自印 skip；export 讀 snapshot、排在 latest 之後爬取之前（10/1 起；1 日 snapshotfinal 沒成功就拒跑）。回退＝TWRH_HOUSE_DB=1）
 #   （snapshotfinal＝昨日 final snapshot 重摺，必須在 seed 之前：S1 種子判準讀它；2026-09-19 首夜讀到 provisional 多播 3,625 戶）
 poetry run python flow.py sweep [--date YYYY-MM-DD] [--vendor 591] [--dry-run]   # 前緣掃描：busy→frontier→liststubs→newdetail→queuefinalize→filequeuecheck→rawpack→parsed→logs
 poetry run python flow.py status [--date YYYY-MM-DD]                             # 日跑 stage 與各輪 sweep 的完成狀態
@@ -82,7 +82,7 @@ poetry run python django/manage.py seedcheck [--date] [--strict]   # 4a 驗收�
 poetry run python django/manage.py parsedcheck [--date] [--strict] # 4b 驗收：當日 parsed parquet 逐欄對 HouseTS（DB Point 約定 x=lat／y=lng；parquet NULL 而 DB 有值另計，不算錯）
 poetry run python django/manage.py filequeuecheck [--date] [--strict]  # 4e 雙軌：檔案 queue（artifacts/queue/<vendor>/<date>/<type>/seeds｜terminals）對 request_ts 逐型計數
 poetry run python django/manage.py snapshotcheck [--date] [--strict]   # 4c 驗收：snapshot parquet 逐戶逐欄對 HouseTS（parsed＋狀態欄）與 House（carry 欄，只在檢查當日；過去日只對 TS 可推的 last_seen_at／days_absent）；flow 對昨日 final（記 snapshotcheck-final）與今日 provisional 各跑一次
-poetry run python django/manage.py export -p           # periodic export：每月 1 日出上月（flow run 第一個 stage，爬取前）
+poetry run python django/manage.py export -p           # periodic export：每月 1 日出上月（flow run 的 latest 之後、爬取前）
 poetry run python django/manage.py export --help       # manual export: -f/-t dates, -u, -j, -b6
 poetry run python django/manage.py monthreport         # 月報 quality gate：疊 manifest 出月窗（0=綠、2=紅）
 poetry run python django/manage.py invalidate          # flag suspicious/unstable listing data

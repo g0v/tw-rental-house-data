@@ -11,7 +11,7 @@ stamp 檔（DB 型 stage，Phase 4 檔案化後逐一改 artifact）。
     poetry run python flow.py sweep [--date YYYY-MM-DD] [--vendor 591] [--dry-run]
     poetry run python flow.py status [--date YYYY-MM-DD]
 
-`run`＝日跑（每月 1 日第一個 stage 先出上月 export）；`sweep`＝前緣掃描
+`run`＝日跑（每月 1 日在 snapshotfinal／latest 之後、爬取之前出上月 export）；`sweep`＝前緣掃描
 （白天每數小時：list 前緣 → 新物件 detail → 對帳 → 日包聯集），同一天多
 次 run，各自的 stamp 落在 `logs/flow/<date>/sweep-<HHMM>/`。雲上 sweep 的
 detail 與日跑同一套多 worker 模型（profile `sweep_workers`，0＝行程內兩趟）。起跑先問
@@ -371,15 +371,27 @@ def stage_dealevents(_ctx):
     _artifactpack('deals')
 
 
-def stage_snapshotfinal(_ctx):
+def stage_snapshotfinal(ctx):
     # 4c／S1：昨日 final ＝ fold(前日 snapshot, 昨日全部分區)，**排在 seed 之前**——
     # S1 的種子判準讀昨日 snapshot 的 carry 欄；留在 snapshot stage（seed 之後 75 分鐘）
     # 才摺，seed 讀到的永遠是昨日的 provisional，昨日 sweep 抓過的戶整列不在、被當
     # 「從未 detail」重播（2026-09-19 首夜多播 3,625 戶）。只依賴昨日分區，此刻已齊。
     # 前日缺＝昨日由 DB bootstrap。advisory：失敗大聲講、不擋 pipeline（seed 會退回 DB 判準）
+    marker = None if DRY_RUN else snapshotfinal_marker(ctx)
+    if marker and os.path.exists(marker):
+        os.unlink(marker)
     result = manage('snapshotfold', '--only', 'final', check=False)
     if result.returncode != 0:
         print('!!! snapshotfold --only final failed (seed 將退回 DB 判準或讀到 provisional)')
+    elif marker:
+        # export（1 日月包）靠它確認上月最後一天是 final 而不是昨天留下的 provisional
+        os.makedirs(ctx.state_dir, exist_ok=True)
+        with open(marker, 'w'):
+            pass
+
+
+def snapshotfinal_marker(ctx):
+    return os.path.join(ctx.state_dir, 'snapshotfinal.ok')
 
 
 def stage_latest(_ctx):
@@ -503,12 +515,20 @@ def _nodjango_shadow(ctx):
             print('!!! checks.json upload failed: {}'.format(err), flush=True)
 
 
-def stage_export(_ctx):
-    # S3a：月包改讀 snapshot 分區。排在 snapshot stage 之後（見 RUN_STAGES 的說明）
+def stage_export(ctx):
+    # 每月 1 日出上月（export -p 自判）。排在 latest 之後、seed 之前（見 RUN_STAGES 的說明）
     if house_db():
         manage('export', '-p')
-    else:
-        manage('export', '-p', '--source', 'snapshot')
+        return
+    if not DRY_RUN and datetime.strptime(ctx.date, '%Y-%m-%d').day == 1 \
+            and not os.path.exists(snapshotfinal_marker(ctx)):
+        # snapshotfinal 是 advisory、失敗不擋 flow；此刻磁碟上上月最後一天那份是昨天的
+        # provisional（缺當晚最後幾輪 sweep）。月包寧可不出、也不拿它默默出貨——
+        # 07:00 publisher 會因找不到 zip 紅，補法見 devop/aws/README.md「1 日 export 補跑」
+        print('!!! export skipped: snapshotfinal 沒成功，上月最後一天不是 final snapshot；'
+              '先補 twrhctl snapshotfold --only final，再 twrhctl export -p', flush=True)
+        return
+    manage('export', '-p', '--source', 'snapshot')
 
 
 def stage_logs(ctx):
@@ -661,6 +681,14 @@ RUN_STAGES = [
     ('snapshotfinal', stage_snapshotfinal, None),
     # S3c 總表(昨日)：吃剛摺好的昨日 final（2026-09-19 上線）
     ('latest', stage_latest, None),
+    # export（每月 1 日出上月，export -p 自判）：讀 snapshot 分區，日期是顯式的，當日爬取
+    # 動不到上月的檔；唯一的依賴是上月最後一天的 **final** snapshot（本場 snapshotfinal
+    # 才摺出來）。所以緊接在 snapshotfinal／latest 之後、爬取之前——排在全量後面的話，
+    # flow 中途被擋（queuefinalize 紅、detail 熔斷）就沒有月包、07:00 出貨跟著紅
+    #（2026-10-01 維護者拍板；S3a 起原本排在 snapshot stage 之後）。snapshotfinal 失敗時
+    # 1 日的 export 拒跑（見 stage_export）。回退 TWRH_HOUSE_DB=1 走 DB 路徑：此刻 House
+    # 已含當日 list——只有「回退期間剛好跨月」才踩得到，屆時手動 export -f/-t 補
+    ('export', stage_export, None),
     ('seed', stage_seed, None),
     ('seedcheck', stage_seedcheck, None),
     ('detail', stage_detail, None),
@@ -672,12 +700,6 @@ RUN_STAGES = [
     ('dealevents', stage_dealevents, None),
     ('parsedcheck', stage_parsedcheck, None),
     ('snapshot', stage_snapshot, None),
-    # export（每月 1 日出上月，export -p 自判）：S3a 起讀 snapshot 分區，日期是顯式的，
-    # 「排最前、趁 DB 還沒被當日爬取動過」的理由消失；要的是上月最後一天的 **final**
-    # snapshot，它在本場的 snapshotfinal stage 才摺出來，所以排在 snapshot 之後
-    # （2026-09-17 記在階梯表 S3a 列）。回退 TWRH_HOUSE_DB=1 時走 DB 路徑、此刻 House
-    # 已含當日爬取——只有「回退期間剛好跨月」才踩得到，屆時手動 export -f/-t 補
-    ('export', stage_export, None),
     ('synthts', stage_synthts, None),
     ('sync', stage_sync, None),
     ('snapshotcheck', stage_snapshotcheck, None),
