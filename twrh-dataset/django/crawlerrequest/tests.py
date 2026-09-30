@@ -3334,6 +3334,65 @@ class LatestTableTests(TestCase):
         artifacts._write_latest_file(iter(rows), path)
         return path
 
+class SnapshotLeanWriteTests(TestCase):
+    '''snapshotfold 的 vendor_extra 不進 dict（ExtraStore／ExtraRef）＋write_snapshot 分批寫：
+    與整份讀寫逐列相同（2026-09-30 記憶體修正）。'''
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.mkdtemp()
+        self.env = mock.patch.dict(os.environ, {'TWRH_ARTIFACT_DIR': self.tmp})
+        self.env.start()
+
+    def tearDown(self):
+        import shutil
+        self.env.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _row(self, hid, extra):
+        from rental import contracts
+        row = {name: None for name, _ in contracts.SNAPSHOT_FIELDS}
+        row.update({'vendor': '591', 'vendor_house_id': hid, 'date': '2026-09-29',
+                    'deal_status': 0, 'monthly_price': 1000, 'vendor_extra': extra})
+        return row
+
+    def test_lean_roundtrip_matches_full_write(self):
+        from rental import artifacts
+        rows = [self._row('h{}'.format(i), None if i % 3 == 0 else '{{"i": {}, "名": "中"}}'.format(i))
+                for i in range(7)]
+        with mock.patch.object(artifacts, 'SNAPSHOT_WRITE_ROWS', 2):
+            artifacts.write_snapshot(rows, '591', '2026-09-29')
+            store = artifacts.ExtraStore()
+            lean = artifacts.read_snapshot_lean('591', '2026-09-29', store)
+            self.assertTrue(all(r['vendor_extra'] is None or isinstance(r['vendor_extra'], artifacts.ExtraRef)
+                                for r in lean))
+            # fold 會做的事：整值搬移（h1 拿 h2 的）、None 不蓋、退路列帶字串、空字串＝None
+            by = {r['vendor_house_id']: r for r in lean}
+            by['h1']['vendor_extra'] = by['h2']['vendor_extra']
+            by['h4']['vendor_extra'] = '{"stray": 1}'
+            by['h5']['vendor_extra'] = ''
+            lean.append(self._row('h7', {'dict': '值'}))
+            artifacts.write_snapshot(list(reversed(lean)), '591', '2026-09-30', extras=store)
+        import pyarrow.parquet as pq
+        path = artifacts.snapshot_path('591', '2026-09-30')
+        self.assertEqual(pq.ParquetFile(path).metadata.num_row_groups, 4)
+        got = {r['vendor_house_id']: r['vendor_extra'] for r in artifacts.read_snapshot('591', '2026-09-30')}
+        self.assertEqual(list(got), ['h{}'.format(i) for i in range(8)])   # 依 id 排序
+        self.assertEqual(got['h0'], None)
+        self.assertEqual(got['h1'], '{"i": 2, "名": "中"}')
+        self.assertEqual(got['h2'], '{"i": 2, "名": "中"}')
+        self.assertEqual(got['h4'], '{"stray": 1}')
+        self.assertEqual(got['h5'], None)
+        self.assertEqual(got['h7'], '{"dict": "值"}')
+
+    def test_state_columns_only(self):
+        from rental import artifacts, seeding
+        artifacts.write_snapshot([self._row('a', '{"big": 1}')], '591', '2026-09-29')
+        rows = artifacts.read_snapshot('591', '2026-09-29', columns=seeding.STATE_COLUMNS)
+        self.assertEqual(set(rows[0]), set(seeding.STATE_COLUMNS))
+        self.assertIn('a', seeding.state_from_snapshot(rows))
+
+
 class ScrapyLogShipTests(TestCase):
     '''spider log 歸檔完立刻 gzip＋上 S3（2026-09-19）：9/17、9/19 兩次 task 死在 logs stage
     之前，那一場的 log 就沒了。讀完（breaker／seed 計數）才 ship，且 ship 在 raise 之前。'''
