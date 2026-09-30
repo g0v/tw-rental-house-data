@@ -252,39 +252,152 @@ def read_latest(vendor_short, date_str, bucket=None, columns=None):
     return pq.read_table(path, columns=columns).to_pylist()
 
 
+def iter_latest_rows(vendor_short, date_str, bucket=None, columns=None):
+    '''某日總表逐列產出（iter_batches，不整張攤成 list）；不存在回 None。'''
+    path = _fetch_latest(vendor_short, date_str, bucket)
+    if path is None:
+        return None
+    import pyarrow.parquet as pq
+
+    def rows():
+        for batch in pq.ParquetFile(path).iter_batches(batch_size=_ROW_BATCH, columns=columns):
+            yield from batch.to_pylist()
+    return rows()
+
+
 def read_latest_rows_for(vendor_short, date_str, hids, bucket=None):
-    '''總表裡這些戶的列 {hid: row}；總表不存在回 None（呼叫端退回掃 snapshot）。'''
+    '''總表裡這些戶的列 {hid: row}；總表不存在回 None（呼叫端退回掃 snapshot）。
+    filter pushdown 逐 row group 過濾，不整張讀進來（總表只增不減，2026-09-30 已 16 萬列）。'''
     path = _fetch_latest(vendor_short, date_str, bucket)
     if path is None:
         return None
     if not hids:
         return {}
-    import pyarrow as pa
+    import pyarrow.parquet as pq
+    table = pq.read_table(path, filters=[('vendor_house_id', 'in', sorted(hids))])
+    return {r['vendor_house_id']: r for r in table.to_pylist()}
+
+
+# 總表的讀寫都串流（2026-09-30 分析：整張 to_pylist 的 latestfold ≈ 0.73 GB＋5.9 KB×列數，
+# 總表每天 +4–6k 列，約 11 月撞 3 GB task）。寫出切 row group，讀回時 iter_batches 才真的逐段。
+LATEST_ROW_GROUP = 50000
+_ROW_BATCH = 10000
+
+
+def latest_file(vendor_short, date_str, bucket=None):
+    '''某日總表的本地檔路徑（必要時從 S3 拉回）；不存在回 None。'''
+    return _fetch_latest(vendor_short, date_str, bucket)
+
+
+def snapshot_file(vendor_short, date_str, bucket=None):
+    '''某日 snapshot 的本地檔路徑（必要時從 S3 拉回）；不存在回 None。'''
+    return _fetch_snapshot(vendor_short, date_str, bucket)
+
+
+def parquet_num_rows(path):
+    import pyarrow.parquet as pq
+    return pq.ParquetFile(path).metadata.num_rows
+
+
+def _sorted_by(pf, key):
+    '''逐批檢查 key 欄非遞減（只讀這一欄、一批一批）。'''
+    import pyarrow.compute as pc
+    last = None
+    for batch in pf.iter_batches(batch_size=_ROW_BATCH * 10, columns=[key]):
+        col = batch.column(0)
+        if len(col) == 0:
+            continue
+        if col.null_count:
+            return False
+        if last is not None and last > col[0].as_py():
+            return False
+        if len(col) > 1 and not pc.all(pc.greater_equal(col.slice(1), col.slice(0, len(col) - 1))).as_py():
+            return False
+        last = col[len(col) - 1].as_py()
+    return True
+
+
+def iter_sorted_rows(path, columns=None, key='vendor_house_id'):
+    '''parquet 依 key 升冪逐列產出 dict（iter_batches，記憶體≈一批）。columns 與檔內
+    實有欄取交集（舊檔可能缺新欄）。檔案若未依 key 排序（總表／snapshot 寫出時都排過，
+    不該發生）就整檔讀進 arrow 做穩定排序再逐批產出，並印 NOTE。'''
     import pyarrow.compute as pc
     import pyarrow.parquet as pq
-    table = pq.read_table(path)
-    mask = pc.is_in(table.column('vendor_house_id'), value_set=pa.array(sorted(hids)))
-    return {r['vendor_house_id']: r for r in table.filter(mask).to_pylist()}
+    pf = pq.ParquetFile(path)
+    if columns is not None:
+        have = set(pf.schema_arrow.names)
+        columns = [c for c in columns if c in have]
+    if _sorted_by(pf, key):
+        for batch in pf.iter_batches(batch_size=_ROW_BATCH, columns=columns):
+            yield from batch.to_pylist()
+        return
+    print('NOTE {} not sorted by {} — sorting in memory'.format(path, key))
+    table = pf.read(columns=columns)
+    table = table.take(pc.sort_indices(table, sort_keys=[(key, 'ascending')]))
+    for batch in table.to_batches(max_chunksize=_ROW_BATCH):
+        yield from batch.to_pylist()
 
 
-def write_latest(rows, vendor_short, date_str):
-    '''總表 → latest/<vendor>/daily/<date>.parquet（tmp＋rename）。回傳 (path, n_rows)。'''
+def _write_latest_file(rows, path):
+    '''依 vendor_house_id 升冪的總表列（可迭代）→ parquet，每 LATEST_ROW_GROUP 列一個
+    row group、邊收邊寫。回傳列數。'''
     import pyarrow as pa
     import pyarrow.parquet as pq
     from rental import latest
     fields = latest.LATEST_FIELDS
-    rows = sorted(rows, key=lambda r: r['vendor_house_id'])
     schema = contracts.arrow_schema(fields)
-    columns = [pa.array([contracts.coerce_value(r.get(name), kind) for r in rows], type=f.type)
-               for (name, kind), f in zip(fields, schema)]
-    n = len(rows)
-    del rows
+    n, buf, last = 0, [], None
+    with pq.ParquetWriter(path, schema, compression='zstd') as writer:
+        def flush():
+            columns = [pa.array([contracts.coerce_value(r.get(name), kind) for r in buf], type=f.type)
+                       for (name, kind), f in zip(fields, schema)]
+            writer.write_table(pa.Table.from_arrays(columns, schema=schema),
+                               row_group_size=LATEST_ROW_GROUP)
+            buf.clear()
+        for row in rows:
+            hid = row['vendor_house_id']
+            if last is not None and hid < last:
+                raise ValueError('latest rows out of order: {} after {}'.format(hid, last))
+            last = hid
+            buf.append(row)
+            n += 1
+            if len(buf) >= LATEST_ROW_GROUP:
+                flush()
+        if buf or n == 0:
+            flush()
+    return n
+
+
+def write_latest(rows, vendor_short, date_str):
+    '''總表 → latest/<vendor>/daily/<date>.parquet（tmp＋rename）。回傳 (path, n_rows)。
+    rows 是 list 就先排序；其他可迭代物必須已依 vendor_house_id 升冪（串流寫、不整張持有）。'''
+    if isinstance(rows, list):
+        rows = sorted(rows, key=lambda r: r['vendor_house_id'])
     path = latest_path(vendor_short, date_str)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + '.tmp'
-    pq.write_table(pa.Table.from_arrays(columns, schema=schema), tmp, compression='zstd')
+    n = _write_latest_file(rows, tmp)
     os.replace(tmp, path)
     return path, n
+
+
+def fold_latest_file(prev_path, snapshot_path, out_path):
+    '''總表 fold 的檔對檔串流版：out ＝ latest.merge_sorted(prev 總表, snapshot)。
+    prev_path 為 None＝空的前日（重放起點）。記憶體≈一批，不隨總表列數成長。
+    回傳 (n_rows, {deal_status: 戶數})。'''
+    from rental import latest
+    by = {}
+
+    def counted(rows):
+        for r in rows:
+            by[r['deal_status']] = by.get(r['deal_status'], 0) + 1
+            yield r
+
+    prev_rows = iter_sorted_rows(prev_path) if prev_path else iter(())
+    snap_rows = iter_sorted_rows(snapshot_path, columns=[name for name, _ in latest.LATEST_FIELDS])
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    n = _write_latest_file(counted(latest.merge_sorted(prev_rows, snap_rows)), out_path)
+    return n, by
 
 
 def upload_latest(bucket, vendor_short, date_str, path, monthly=False):

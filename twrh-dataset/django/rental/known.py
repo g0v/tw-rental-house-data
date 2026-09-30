@@ -45,7 +45,7 @@ def load(vendor_short, date_str, bucket=None, lookback_days=LOOKBACK_DAYS):
     ids, state, base = set(), {}, None
     for back in range(1, lookback_days + 1):
         d = (day - timedelta(days=back)).isoformat()
-        rows = artifacts.read_latest(
+        rows = artifacts.iter_latest_rows(
             vendor_short, d, bucket,
             columns=['vendor_house_id', 'deal_status', 'last_detail_at'])
         if rows is None:

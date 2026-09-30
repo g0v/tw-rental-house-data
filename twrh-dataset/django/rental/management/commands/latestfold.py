@@ -17,13 +17,10 @@ from datetime import date as date_cls, datetime, timedelta
 
 from django.core.management.base import BaseCommand, CommandError
 
-from rental import artifacts, latest
+from rental import artifacts
 from rental.models import Vendor
 from rental.raws import vendor_dirname
 from rental import vendors
-
-_SNAPSHOT_COLUMNS = [name for name, _ in latest.LATEST_FIELDS]
-
 
 class Command(BaseCommand):
     help = 'Fold yesterday final snapshot into the all-houses latest-state table (S3c)'
@@ -55,46 +52,54 @@ class Command(BaseCommand):
             day = datetime.strptime(env, '%Y-%m-%d').date() if env else date_cls.today()
         target = day - timedelta(days=1)
         prev = target - timedelta(days=1)
-        prev_rows = artifacts.read_latest(short, prev.isoformat(), read_bucket)
-        if prev_rows is None:
+        prev_path = artifacts.latest_file(short, prev.isoformat(), read_bucket)
+        if prev_path is None:
             start = self._parse(os.environ.get('TWRH_LATEST_BOOTSTRAP_FROM', '2026-09-10'))
             print('=== latest {} {}: no latest({}) — bootstrap by replaying snapshots {}..{}'.format(
                 short, target, prev, start, target))
             self.replay(short, start, target, read_bucket, bucket)
             return
-        self.fold_one(short, prev_rows, target, read_bucket, bucket)
+        self.fold_one(short, prev_path, target, read_bucket, bucket)
+
+    # fold 一律檔對檔串流（artifacts.fold_latest_file）：總表不整張讀進 dict，
+    # 記憶體不隨總表列數成長（2026-09-30 分析：舊版約 11 月撞 3 GB task）
 
     def replay(self, short, start, end, read_bucket, bucket):
-        table = []
-        day = start
-        while day <= end:
-            rows = artifacts.read_snapshot(short, day.isoformat(), read_bucket, columns=_SNAPSHOT_COLUMNS)
-            if rows is None:
-                raise CommandError('snapshot {} missing, cannot replay latest table'.format(day))
-            table = latest.fold(table, rows)
-            n_snap = len(rows)
-            del rows
-            print('    latest({}) = fold(prev, snapshot {} rows) -> {} rows'.format(day, n_snap, len(table)))
-            day += timedelta(days=1)
-        self.write(short, table, end, bucket)
+        final = artifacts.latest_path(short, end.isoformat())
+        prev_path, by, day = None, {}, start
+        try:
+            while day <= end:
+                snap = artifacts.snapshot_file(short, day.isoformat(), read_bucket)
+                if snap is None:
+                    raise CommandError('snapshot {} missing, cannot replay latest table'.format(day))
+                out = '{}.replay-{}.tmp'.format(final, day.isoformat())
+                n, by = artifacts.fold_latest_file(prev_path, snap, out)
+                if prev_path:
+                    os.remove(prev_path)
+                prev_path = out
+                print('    latest({}) = fold(prev, snapshot {} rows) -> {} rows'.format(
+                    day, artifacts.parquet_num_rows(snap), n))
+                day += timedelta(days=1)
+        except BaseException:
+            if prev_path and os.path.exists(prev_path):
+                os.remove(prev_path)
+            raise
+        os.replace(prev_path, final)
+        self.publish(short, final, n, by, end, bucket)
 
-    def fold_one(self, short, prev_rows, target, read_bucket, bucket):
-        rows = artifacts.read_snapshot(short, target.isoformat(), read_bucket, columns=_SNAPSHOT_COLUMNS)
-        if rows is None:
+    def fold_one(self, short, prev_path, target, read_bucket, bucket):
+        snap = artifacts.snapshot_file(short, target.isoformat(), read_bucket)
+        if snap is None:
             raise CommandError('snapshot {} missing — snapshotfinal stage 沒跑？'.format(target))
-        n_prev, n_snap = len(prev_rows), len(rows)
-        table = latest.fold(prev_rows, rows)
-        del prev_rows, rows
+        final = artifacts.latest_path(short, target.isoformat())
+        tmp = final + '.tmp'
+        n, by = artifacts.fold_latest_file(prev_path, snap, tmp)
+        os.replace(tmp, final)
         print('=== latest {} {}: prev {} + snapshot {} -> {} rows'.format(
-            short, target, n_prev, n_snap, len(table)))
-        self.write(short, table, target, bucket)
+            short, target, artifacts.parquet_num_rows(prev_path), artifacts.parquet_num_rows(snap), n))
+        self.publish(short, final, n, by, target, bucket)
 
-    def write(self, short, table, day, bucket):
-        by = {}
-        for r in table:
-            by[r['deal_status']] = by.get(r['deal_status'], 0) + 1
-        path, n = artifacts.write_latest(table, short, day.isoformat())
-        del table
+    def publish(self, short, path, n, by, day, bucket):
         print('=== latest {} {}: {} rows deal_status {} -> {} ({:.1f} MB)'.format(
             short, day, n, by, path, os.path.getsize(path) / 1e6))
         if bucket:

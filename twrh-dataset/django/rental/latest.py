@@ -53,6 +53,38 @@ def fold(prev_rows, snapshot_rows):
     return [latest[hid] for hid in sorted(latest)]
 
 
+def merge_sorted(prev_rows, snapshot_rows):
+    '''fold 的串流版（產生器）：兩邊都必須依 vendor_house_id 升冪（總表與 snapshot 寫出時
+    都排過；artifacts.iter_sorted_rows 會先驗）。逐戶照 fold 的規則走——前日列先當 cur，
+    再依檔內順序套同一戶的每個 snapshot 列（同 date 時只有觀測不較早的才蓋）；前日同一戶
+    多列時取最後一列（fold 的 dict 語意）。只持有一戶的列，記憶體不隨總表列數成長。'''
+    prev_it, snap_it = iter(prev_rows), iter(snapshot_rows)
+    _end = object()
+    p, s = next(prev_it, _end), next(snap_it, _end)
+    last = None
+    while p is not _end or s is not _end:
+        if s is _end or (p is not _end and p['vendor_house_id'] <= s['vendor_house_id']):
+            hid = p['vendor_house_id']
+        else:
+            hid = s['vendor_house_id']
+        if last is not None and hid <= last:
+            raise ValueError('merge_sorted: input not sorted by vendor_house_id ({} after {})'.format(
+                hid, last))
+        last = hid
+        cur = None
+        while p is not _end and p['vendor_house_id'] == hid:
+            cur = p
+            p = next(prev_it, _end)
+        while s is not _end and s['vendor_house_id'] == hid:
+            new = strip(s)
+            s = next(snap_it, _end)
+            if cur is not None and cur.get('date') == new.get('date') \
+                    and _order_key(cur) > _order_key(new):
+                continue
+            cur = new
+        yield cur
+
+
 def _order_key(row):
     return (row.get('date') or '', str(row.get('last_detail_at') or ''),
             str(row.get('last_seen_at') or ''))

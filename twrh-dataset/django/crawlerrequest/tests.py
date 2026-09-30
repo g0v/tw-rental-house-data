@@ -3258,6 +3258,82 @@ class LatestTableTests(TestCase):
         self.assertTrue(all('vendor_extra' not in r for r in rows))
 
 
+    def _random_case(self, seed):
+        import random
+        rnd = random.Random(seed)
+        ids = ['h{:04d}'.format(i) for i in range(60)]
+        prev = [self._row(h, rnd.choice(['2026-09-08', '2026-09-09', '2026-09-10']),
+                          monthly_price=rnd.randint(1, 9) * 1000, vendor_extra=None)
+                for h in rnd.sample(ids, 35)]
+        prev = [{k: v for k, v in r.items() if k != 'vendor_extra'} for r in prev]
+        snap = []
+        for h in rnd.sample(ids, 30):
+            for _ in range(rnd.choice([1, 1, 1, 2, 3])):     # 偶有同戶多列（防呆路徑）
+                snap.append(self._row(h, rnd.choice(['2026-09-10', '2026-09-10', '2026-09-09']),
+                                      monthly_price=rnd.randint(1, 9) * 1000,
+                                      last_detail_at=rnd.choice([None, '2026-09-10T01:00', '2026-09-10T02:00']),
+                                      last_seen_at=rnd.choice([None, '2026-09-10T03:00'])))
+        return prev, snap
+
+    def test_merge_sorted_matches_fold(self):
+        '''串流版與 dict 版逐列相同：前日有／snapshot 有／兩邊都有、同戶多列、同 date 比觀測。'''
+        from rental import latest
+        key = lambda r: r['vendor_house_id']  # noqa: E731
+        for seed in range(30):
+            prev, snap = self._random_case(seed)
+            prev_sorted, snap_sorted = sorted(prev, key=key), sorted(snap, key=key)  # 穩定排序
+            self.assertEqual(list(latest.merge_sorted(prev_sorted, snap_sorted)),
+                             latest.fold(prev_sorted, snap_sorted), seed)
+
+    def test_merge_sorted_rejects_unsorted_input(self):
+        from rental import latest
+        with self.assertRaises(ValueError):
+            list(latest.merge_sorted([], [self._row('b', '2026-09-10'), self._row('a', '2026-09-10')]))
+
+    def test_fold_latest_file_streams_across_batches(self):
+        '''檔對檔：批次與 row group 切得比資料小（跨批次同戶、跨 row group），結果＝fold；
+        未排序的 snapshot 檔退回 arrow 排序；read_latest_rows_for 走 pushdown。'''
+        import tempfile
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+        from rental import artifacts, contracts, latest
+        tmp = tempfile.mkdtemp()
+        key = lambda r: r['vendor_house_id']  # noqa: E731
+        with mock.patch.dict(os.environ, {'TWRH_ARTIFACT_DIR': tmp}), \
+                mock.patch.object(artifacts, '_ROW_BATCH', 3), \
+                mock.patch.object(artifacts, 'LATEST_ROW_GROUP', 4):
+            prev, snap = self._random_case(7)
+            artifacts.write_latest(list(prev), '591', '2026-09-09')
+            prev_path = artifacts.latest_path('591', '2026-09-09')
+            self.assertGreater(pq.ParquetFile(prev_path).metadata.num_row_groups, 1)
+            # snapshot 檔故意不排序寫出（檔內順序＝穩定排序前的順序）
+            schema = contracts.arrow_schema(contracts.SNAPSHOT_FIELDS)
+            cols = [pa.array([contracts.coerce_value(r.get(n), k) for r in snap], type=f.type)
+                    for (n, k), f in zip(contracts.SNAPSHOT_FIELDS, schema)]
+            snap_path = os.path.join(tmp, 'snap-unsorted.parquet')
+            pq.write_table(pa.Table.from_arrays(cols, schema=schema), snap_path)
+            out = os.path.join(tmp, 'out.parquet')
+            with mock.patch('sys.stdout', new_callable=io.StringIO) as stdout:
+                n, by = artifacts.fold_latest_file(prev_path, snap_path, out)
+            self.assertIn('not sorted', stdout.getvalue())
+            got = pq.read_table(out).to_pylist()
+            want = latest.fold(pq.read_table(prev_path).to_pylist(),
+                               sorted(pq.read_table(snap_path).to_pylist(), key=key))
+            self.assertEqual(got, pq.read_table(self._written(artifacts, want, tmp)).to_pylist())
+            self.assertEqual(n, len(want))
+            self.assertEqual(sum(by.values()), n)
+            # pushdown 查幾戶
+            artifacts.write_latest(want, '591', '2026-09-10')
+            picked = artifacts.read_latest_rows_for('591', '2026-09-10', {'h0003', 'h0042', 'nope'})
+            self.assertEqual(picked, {r['vendor_house_id']: r for r in got
+                                      if r['vendor_house_id'] in ('h0003', 'h0042')})
+
+    @staticmethod
+    def _written(artifacts, rows, tmp):
+        path = os.path.join(tmp, 'want.parquet')
+        artifacts._write_latest_file(iter(rows), path)
+        return path
+
 class ScrapyLogShipTests(TestCase):
     '''spider log 歸檔完立刻 gzip＋上 S3（2026-09-19）：9/17、9/19 兩次 task 死在 logs stage
     之前，那一場的 log 就沒了。讀完（breaker／seed 計數）才 ship，且 ship 在 raise 之前。'''
