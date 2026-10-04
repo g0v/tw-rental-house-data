@@ -1,5 +1,6 @@
 '''snapshot fold（rental/snapshot.py）、成交段（rental/deals.py）、總表（rental/latest.py）
 與 twrhctl snapshotfold／latestfold。'''
+import io
 import os
 import unittest
 from datetime import date, datetime, timedelta
@@ -279,6 +280,142 @@ class LatestTableTests(unittest.TestCase):
         rows = latest.delta([self._row('b', '2026-09-12'), self._row('a', '2026-09-12')])
         self.assertEqual([r['vendor_house_id'] for r in rows], ['a', 'b'])
         self.assertTrue(all('vendor_extra' not in r for r in rows))
+
+
+    def _random_case(self, seed):
+        import random
+        rnd = random.Random(seed)
+        ids = ['h{:04d}'.format(i) for i in range(60)]
+        prev = [self._row(h, rnd.choice(['2026-09-08', '2026-09-09', '2026-09-10']),
+                          monthly_price=rnd.randint(1, 9) * 1000, vendor_extra=None)
+                for h in rnd.sample(ids, 35)]
+        prev = [{k: v for k, v in r.items() if k != 'vendor_extra'} for r in prev]
+        snap = []
+        for h in rnd.sample(ids, 30):
+            for _ in range(rnd.choice([1, 1, 1, 2, 3])):     # 偶有同戶多列（防呆路徑）
+                snap.append(self._row(h, rnd.choice(['2026-09-10', '2026-09-10', '2026-09-09']),
+                                      monthly_price=rnd.randint(1, 9) * 1000,
+                                      last_detail_at=rnd.choice([None, '2026-09-10T01:00', '2026-09-10T02:00']),
+                                      last_seen_at=rnd.choice([None, '2026-09-10T03:00'])))
+        return prev, snap
+
+    def test_merge_sorted_matches_fold(self):
+        '''串流版與 dict 版逐列相同：前日有／snapshot 有／兩邊都有、同戶多列、同 date 比觀測。'''
+        from rental import latest
+        key = lambda r: r['vendor_house_id']  # noqa: E731
+        for seed in range(30):
+            prev, snap = self._random_case(seed)
+            prev_sorted, snap_sorted = sorted(prev, key=key), sorted(snap, key=key)  # 穩定排序
+            self.assertEqual(list(latest.merge_sorted(prev_sorted, snap_sorted)),
+                             latest.fold(prev_sorted, snap_sorted), seed)
+
+    def test_merge_sorted_rejects_unsorted_input(self):
+        from rental import latest
+        with self.assertRaises(ValueError):
+            list(latest.merge_sorted([], [self._row('b', '2026-09-10'), self._row('a', '2026-09-10')]))
+
+    def test_fold_latest_file_streams_across_batches(self):
+        '''檔對檔：批次與 row group 切得比資料小（跨批次同戶、跨 row group），結果＝fold；
+        未排序的 snapshot 檔退回 arrow 排序；read_latest_rows_for 走 pushdown。'''
+        import tempfile
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+        from rental import artifacts, contracts, latest
+        tmp = tempfile.mkdtemp()
+        key = lambda r: r['vendor_house_id']  # noqa: E731
+        with mock.patch.dict(os.environ, {'TWRH_ARTIFACT_DIR': tmp}), \
+                mock.patch.object(artifacts, '_ROW_BATCH', 3), \
+                mock.patch.object(artifacts, 'LATEST_ROW_GROUP', 4):
+            prev, snap = self._random_case(7)
+            artifacts.write_latest(list(prev), '591', '2026-09-09')
+            prev_path = artifacts.latest_path('591', '2026-09-09')
+            self.assertGreater(pq.ParquetFile(prev_path).metadata.num_row_groups, 1)
+            # snapshot 檔故意不排序寫出（檔內順序＝穩定排序前的順序）
+            schema = contracts.arrow_schema(contracts.SNAPSHOT_FIELDS)
+            cols = [pa.array([contracts.coerce_value(r.get(n), k) for r in snap], type=f.type)
+                    for (n, k), f in zip(contracts.SNAPSHOT_FIELDS, schema)]
+            snap_path = os.path.join(tmp, 'snap-unsorted.parquet')
+            pq.write_table(pa.Table.from_arrays(cols, schema=schema), snap_path)
+            out = os.path.join(tmp, 'out.parquet')
+            with mock.patch('sys.stdout', new_callable=io.StringIO) as stdout:
+                n, by = artifacts.fold_latest_file(prev_path, snap_path, out)
+            self.assertIn('not sorted', stdout.getvalue())
+            got = pq.read_table(out).to_pylist()
+            want = latest.fold(pq.read_table(prev_path).to_pylist(),
+                               sorted(pq.read_table(snap_path).to_pylist(), key=key))
+            self.assertEqual(got, pq.read_table(self._written(artifacts, want, tmp)).to_pylist())
+            self.assertEqual(n, len(want))
+            self.assertEqual(sum(by.values()), n)
+            # pushdown 查幾戶
+            artifacts.write_latest(want, '591', '2026-09-10')
+            picked = artifacts.read_latest_rows_for('591', '2026-09-10', {'h0003', 'h0042', 'nope'})
+            self.assertEqual(picked, {r['vendor_house_id']: r for r in got
+                                      if r['vendor_house_id'] in ('h0003', 'h0042')})
+
+    @staticmethod
+    def _written(artifacts, rows, tmp):
+        path = os.path.join(tmp, 'want.parquet')
+        artifacts._write_latest_file(iter(rows), path)
+        return path
+
+
+class SnapshotLeanWriteTests(unittest.TestCase):
+    '''snapshotfold 的 vendor_extra 不進 dict（ExtraStore／ExtraRef）＋write_snapshot 分批寫：
+    與整份讀寫逐列相同（2026-09-30 記憶體修正）。'''
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.mkdtemp()
+        self.env = mock.patch.dict(os.environ, {'TWRH_ARTIFACT_DIR': self.tmp})
+        self.env.start()
+
+    def tearDown(self):
+        import shutil
+        self.env.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _row(self, hid, extra):
+        from rental import contracts
+        row = {name: None for name, _ in contracts.SNAPSHOT_FIELDS}
+        row.update({'vendor': '591', 'vendor_house_id': hid, 'date': '2026-09-29',
+                    'deal_status': 0, 'monthly_price': 1000, 'vendor_extra': extra})
+        return row
+
+    def test_lean_roundtrip_matches_full_write(self):
+        from rental import artifacts
+        rows = [self._row('h{}'.format(i), None if i % 3 == 0 else '{{"i": {}, "名": "中"}}'.format(i))
+                for i in range(7)]
+        with mock.patch.object(artifacts, 'SNAPSHOT_WRITE_ROWS', 2):
+            artifacts.write_snapshot(rows, '591', '2026-09-29')
+            store = artifacts.ExtraStore()
+            lean = artifacts.read_snapshot_lean('591', '2026-09-29', store)
+            self.assertTrue(all(r['vendor_extra'] is None or isinstance(r['vendor_extra'], artifacts.ExtraRef)
+                                for r in lean))
+            # fold 會做的事：整值搬移（h1 拿 h2 的）、None 不蓋、退路列帶字串、空字串＝None
+            by = {r['vendor_house_id']: r for r in lean}
+            by['h1']['vendor_extra'] = by['h2']['vendor_extra']
+            by['h4']['vendor_extra'] = '{"stray": 1}'
+            by['h5']['vendor_extra'] = ''
+            lean.append(self._row('h7', {'dict': '值'}))
+            artifacts.write_snapshot(list(reversed(lean)), '591', '2026-09-30', extras=store)
+        import pyarrow.parquet as pq
+        path = artifacts.snapshot_path('591', '2026-09-30')
+        self.assertEqual(pq.ParquetFile(path).metadata.num_row_groups, 4)
+        got = {r['vendor_house_id']: r['vendor_extra'] for r in artifacts.read_snapshot('591', '2026-09-30')}
+        self.assertEqual(list(got), ['h{}'.format(i) for i in range(8)])   # 依 id 排序
+        self.assertEqual(got['h0'], None)
+        self.assertEqual(got['h1'], '{"i": 2, "名": "中"}')
+        self.assertEqual(got['h2'], '{"i": 2, "名": "中"}')
+        self.assertEqual(got['h4'], '{"stray": 1}')
+        self.assertEqual(got['h5'], None)
+        self.assertEqual(got['h7'], '{"dict": "值"}')
+
+    def test_state_columns_only(self):
+        from rental import artifacts, seeding
+        artifacts.write_snapshot([self._row('a', '{"big": 1}')], '591', '2026-09-29')
+        rows = artifacts.read_snapshot('591', '2026-09-29', columns=seeding.STATE_COLUMNS)
+        self.assertEqual(set(rows[0]), set(seeding.STATE_COLUMNS))
+        self.assertIn('a', seeding.state_from_snapshot(rows))
 
 
 class SnapshotFoldCommandTests(TempEnvTestCase):

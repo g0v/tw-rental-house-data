@@ -140,7 +140,7 @@ def _mem_label(cmd):
     '''`poetry run python -m twrhctl snapshotfold --only final` → `snapshotfold --only final`；
     scrapy → `crawl <spider> <-a …>`。'''
     parts = list(cmd)
-    for head in ('twrhctl', 'manage.py'):
+    for head in ('twrhctl',):
         for i, part in enumerate(parts):
             if part.endswith(head):
                 return ' '.join(parts[i + 1:i + 4])

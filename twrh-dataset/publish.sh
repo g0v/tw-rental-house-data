@@ -77,27 +77,8 @@ import json,os
 p='$STATE'; d=json.load(open(p)) if os.path.exists(p) else {}
 d['$1']=True; json.dump(d,open(p,'w'),indent=1)"; state_push "$STATE" "$YM.state.json"; }
 
-# S6：月報與通知走 twrhctl（無 Django；2026-10-01 起預設）。回退＝TWRH_ENTRY=django
-ENTRY=${TWRH_ENTRY:-twrhctl}
-
 notify() {  # notify <emoji+text>（webhook 缺就跳過；雙態都發）
-  if [ "$ENTRY" = twrhctl ]; then
-    NOTIFY_TEXT="$1" poetry run python -m twrhctl notify || echo '(slack notify skipped)'
-    return
-  fi
-  # 走 manage.py shell 取 settings（與 statscheck 同路）——cwd 底下的 django/
-  # 專案目錄會遮蔽同名套件，直接 import django 必炸（2026-08-31 實踩，通知
-  # 因此靜默跳過了一整輪出貨）
-  NOTIFY_TEXT="$1" poetry run python django/manage.py shell -c '
-import os, requests
-from django.conf import settings
-hook = getattr(settings, "SLACK_WEBHOOK_URL", "") or os.environ.get("SLACK_WEBHOOK_URL", "")
-if not hook:
-    print("(no SLACK_WEBHOOK_URL, notify skipped)")
-else:
-    requests.post(hook, json={"blocks": [{"type": "section", "text": {
-        "type": "mrkdwn", "text": os.environ["NOTIFY_TEXT"]}}]}, timeout=10).raise_for_status()
-' || echo '(slack notify skipped)'
+  NOTIFY_TEXT="$1" poetry run python -m twrhctl notify || echo '(slack notify skipped)'
 }
 
 echo "=== publish $YM (resume=$RESUME dry-run=$DRYRUN) ==="
@@ -148,12 +129,7 @@ if ! step_done verify; then
   ( cd "$AGG" && ./check.sh "$OLDPWD/$DEDUP_ZIP" ) | tail -8
   mark_done verify
 fi
-if [ "$ENTRY" = twrhctl ]; then
-  MONTHREPORT=(poetry run python -m twrhctl monthreport)
-else
-  MONTHREPORT=(poetry run python django/manage.py monthreport)
-fi
-"${MONTHREPORT[@]}" --month "$YM" -o "$STATE_DIR" \
+poetry run python -m twrhctl monthreport --month "$YM" -o "$STATE_DIR" \
   && VERDICT=green || { [ $? -eq 2 ] && VERDICT=red || exit 1; }
 state_push "$STATE_DIR/$YM.report.json" "$YM.report.json"
 echo "gate verdict: $VERDICT"
