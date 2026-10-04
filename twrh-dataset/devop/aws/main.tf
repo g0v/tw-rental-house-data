@@ -103,9 +103,8 @@ resource "aws_efs_mount_target" "shared" {
 # ---- SSM 機密佔位（value 人工填，terraform 不管內容）----
 resource "aws_ssm_parameter" "secrets" {
   # github-deploy-key：publisher 雲化（2026-09-05）——publish.sh 步驟 5 以此 clone／push
-  # db-password：RDS 已 destroy（S5），task def 不再引用；留著是為了萬一要從 twrh-final 還原
-  # （還原的 instance 沿用原 master 密碼），十月刪 twrh-final 時一起拿掉
-  for_each = toset(["db-password", "slack-webhook", "sentry-dsn", "github-deploy-key"])
+  # db-password 已移除（2026-10-04：RDS 與 twrh-final 快照皆刪、task def 不再引用）
+  for_each = toset(["slack-webhook", "sentry-dsn", "github-deploy-key"])
   name     = "/twrh/${each.value}"
   type     = "SecureString"
   value    = "CHANGEME"

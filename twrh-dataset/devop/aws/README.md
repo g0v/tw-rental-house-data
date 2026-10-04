@@ -25,10 +25,8 @@ terraform apply -var region=ap-northeast-3
 Apply 後仍需人工做的事：
 
 1. SSM SecureString 填值（terraform 只建佔位）：
-   `/twrh/db-password`、`/twrh/slack-webhook`、`/twrh/sentry-dsn`。
-   **填完 db-password 才可開 RDS**：`terraform apply -var region=us-west-2
-   -var enable_rds=true`（rds.tf；master 密碼建立時讀該參數一次，之後輪替
-   人工、terraform 不追；deletion_protection 常開）。
+   `/twrh/slack-webhook`、`/twrh/sentry-dsn`、`/twrh/github-deploy-key`
+   （S6 起無 DB：RDS、`/twrh/db-password` 皆已移除）。
 2. Push image：`docker build --target crawler -t <ecr>/twrh-crawler .`（repo 根目錄
    Dockerfile；正式由 GitHub Actions 做，A6）。
 3. 排程已預設開啟（A4 上線 2026-08-29；時間等 per-env 參數見 terraform.tfvars，
