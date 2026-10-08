@@ -420,6 +420,14 @@ def stage_export(ctx):
     manage('export', '-p', '--source', 'snapshot')
 
 
+def stage_prune(_ctx):
+    # EFS 保留規則（2026-10-08）：早於 7 天、且 S3 上同 key 同大小的本地分區檔才刪；
+    # snapshot 另留上月 1 日起（export 只讀本地）。advisory：失敗只是沒省到空間
+    result = manage('localprune', check=False)
+    if result.returncode != 0:
+        print('!!! localprune failed (advisory; EFS 只是沒清)')
+
+
 def stage_logs(ctx):
     # 收尾：各 stage 已由 ship_scrapy_log 逐檔 gzip＋上 S3，這裡只撿漏（沒 ship 到的
     # .log、上傳失敗留下的 .gz）
@@ -587,6 +595,8 @@ RUN_STAGES = [
     ('snapshot', stage_snapshot, None),
     ('manifest', stage_manifest, manifest_artifacts),
     ('quality', stage_quality, None),
+    # 本地（EFS）舊分區清理：只在日跑、排最後——前面的 stage 都可能讀前幾天的檔
+    ('prune', stage_prune, None),
     ('logs', stage_logs, None),
 ]
 RUN_STAGE_NAMES = [name for name, _, _ in RUN_STAGES]

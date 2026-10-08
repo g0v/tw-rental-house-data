@@ -132,6 +132,14 @@ class FlowStageTests(unittest.TestCase):
             flow.stage_export(SimpleNamespace(date='2026-10-02', state_dir=ctx.state_dir))
             self.assertEqual(calls[-1], ('export', '-p', '--source', 'snapshot'))
 
+    def test_prune_runs_last_in_daily_run_only(self):
+        # EFS 清理（2026-10-08）：前面的 stage 都可能讀前幾天的本地檔；sweep 不清
+        import flow
+        names = flow.RUN_STAGE_NAMES
+        self.assertEqual(names[-2:], ['prune', 'logs'])
+        self.assertNotIn('prune', flow.SWEEP_STAGE_NAMES)
+        self.assertIn('-m twrhctl localprune', self.dry(flow.stage_prune)[1][0])
+
     def test_db_era_stages_are_gone(self):
         import flow
         for gone in ('seedcheck', 'parsedcheck', 'synthts', 'sync', 'snapshotcheck',

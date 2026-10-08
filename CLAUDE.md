@@ -45,7 +45,7 @@ cp .env.example .env                                # proxy / UA / perf、SENTRY
 ```bash
 # Full crawl pipeline（唯一編排：flow.py）
 poetry run python flow.py run [--date YYYY-MM-DD] [--from STAGE] [--executor local|ecs] [--append] [--vendor 591] [--dry-run]
-#   run stages：list→liststubs→snapshotfinal→latest→export→seed→detail→deals→queuefinalize→rawpack→parsed→dealevents→snapshot→manifest→quality→logs
+#   run stages：list→liststubs→snapshotfinal→latest→export→seed→detail→deals→queuefinalize→rawpack→parsed→dealevents→snapshot→manifest→quality→prune→logs
 #   （snapshotfinal＝昨日 final snapshot 重摺，必須在 seed 之前：種子判準讀它；2026-09-19 首夜讀到 provisional 多播 3,625 戶）
 #   （export 每月 1 日出上月，讀 snapshot 分區；只依賴上月最後一天的 final，所以緊接 latest、爬取之前——flow 中途被擋也有月包；
 #     1 日 snapshotfinal 沒成功就印 !!! 拒跑，不拿 provisional 出貨，補法見 devop/aws/README.md「1 日 export 補跑」）
@@ -73,6 +73,7 @@ poetry run python -m twrhctl snapshotfold [--date] [--only final|provisional]  #
 poetry run python -m twrhctl latestfold [--date] [--bootstrap --from D1 --to D2]  # S3c：總表(昨日)＝fold(總表(前日), 昨日 final) → latest/<vendor>/daily/<date>.parquet；每月 1 日另存 monthly/；兩邊依 id 排序串流合併，記憶體不隨總表列數長
 poetry run python -m twrhctl manifest            # manifests/<date>/{list,detail,deals,snapshot}.json（由分區檔算，source: partitions）
 poetry run python -m twrhctl qualitycheck        # quality/assertions.yaml × manifest 斷言，單一 Slack 通道（錯誤也進 Sentry）
+poetry run python -m twrhctl localprune [--dry-run]  # EFS 清理（prune stage）：早於 7 天且 S3 同 key 同大小才刪；snapshot 留上月 1 日起（export 只讀本地）；不碰 queue
 poetry run python -m twrhctl export -p           # periodic export：每月 1 日出上月（讀 snapshot 分區；flow 裡排在 latest 之後、爬取前）；-f/-t YYYYMMDD 區間、-o 輸出名
 poetry run python -m twrhctl monthreport         # 月報 quality gate：疊 manifest 出月窗（0=綠、2=紅）
 poetry run python -m twrhctl notify --text …     # Slack 通知（publish.sh 用）
