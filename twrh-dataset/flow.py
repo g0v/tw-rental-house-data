@@ -222,6 +222,37 @@ def stage_list(ctx):
     ship_scrapy_log(log)
     if tripped:
         raise StageFailed('list breaker tripped (error_rate_exceeded)')
+    retry_failed_list(ctx, 'list')
+
+
+# list 頁失敗（偶發 504）的重試輪數：加原本那次＝TWRH_QUEUE_MAX_ATTEMPTS（3），
+# 最後一輪仍失敗即轉 dead、queuefinalize 照綠（done＋dead＝seeds）
+LIST_RETRY_PASSES = 2
+
+
+def retry_failed_list(ctx, tag, *spider_args):
+    '''list 重試輪：只認領當日可重試的 failed，不生種子（list591 -a retry_only=True）。
+    list／deal 沒有 detail 那種 mop-up，單頁 failed 會留到 queuefinalize：10/28 日跑因 2 頁
+    504 整條中止（之後 stage 沒跑、當日 deals 分區晚了一天、final snapshot 缺成交），
+    10/30 08:01 sweep 因 3 頁 504 紅。本輪沒東西可重試（takes 0）即停。'''
+    for n in range(1, LIST_RETRY_PASSES + 1):
+        run(ctx.crawl(ctx.vendor.list_spider, *spider_args, '-a', 'retry_only=True'),
+            check=True)
+        log = archive_scrapy_log(ctx, '{}-retry.{}'.format(tag, n))
+        taken = None
+        if not DRY_RUN and os.path.exists(log):
+            with open(log, errors='replace') as f:
+                for line in f:
+                    m = re.search(r'file queue: worker \S+ takes (\d+) item', line)
+                    if m:
+                        taken = int(m.group(1))
+        tripped = breaker_tripped(log)
+        ship_scrapy_log(log)
+        if tripped:
+            raise StageFailed('{} retry breaker tripped at pass {}'.format(tag, n))
+        if DRY_RUN or not taken:
+            return
+        print('{} retry pass {}: {} failed page(s) retried'.format(tag, n, taken), flush=True)
 
 
 def stage_seed(ctx):
@@ -479,6 +510,8 @@ def stage_frontier(ctx):
     ship_scrapy_log(log)
     if tripped:
         raise StageFailed('sweep list breaker tripped')
+    retry_failed_list(ctx, 'sweep-list',
+                      '-a', 'frontier_pages={}'.format(ctx.vendor.frontier_pages))
 
 
 def stage_newdetail(ctx):

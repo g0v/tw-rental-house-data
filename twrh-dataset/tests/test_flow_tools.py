@@ -211,7 +211,50 @@ class ScrapyLogShipTests(unittest.TestCase):
         calls, err, files, stamp = self.run_stage_list({'TWRH_CLUSTER': ''}, 'INFO: fine\n')
         self.assertIsNone(err)
         self.assertEqual(files, ['{}.list.log.gz'.format(stamp)])
-        self.assertEqual(len(calls), 1)                 # 沒有 ship_logs
+        # list＋一輪重試（沒有 log＝沒東西可重試即停）；沒有 ship_logs
+        self.assertEqual(len(calls), 2)
+        self.assertIn('retry_only=True', calls[1])
+
+
+class ListRetryTests(unittest.TestCase):
+    '''list 單頁 failed（504）在 queuefinalize 前補重試（2026-10-28 日跑因 2 頁 504 中止）。'''
+
+    def run_retry(self, takes_per_pass, *spider_args):
+        import flow
+        tmp = tempfile.mkdtemp(prefix='twrh-listretry-')
+        self.addCleanup(__import__('shutil').rmtree, tmp, True)
+        calls = []
+        takes = list(takes_per_pass)
+
+        def fake_run(cmd, **kwargs):
+            calls.append(' '.join(cmd))
+            if takes:
+                with open(os.path.join(tmp, 'scrapy.log'), 'w') as f:
+                    f.write('INFO: file queue: worker 0/1 takes {} item(s) of 591 '
+                            '2026-10-28 list (run run)\n'.format(takes.pop(0)))
+            return subprocess.CompletedProcess(cmd, 0, '', '')
+
+        class Opts:
+            date = '2026-10-28'
+            vendor = '591'
+        with mock.patch.dict(os.environ, {'TWRH_CLUSTER': ''}, clear=False), \
+                mock.patch.object(flow, 'DRY_RUN', False), \
+                mock.patch.object(flow, 'BASE', tmp), \
+                mock.patch.object(flow, 'LOGS_DIR', os.path.join(tmp, 'logs')), \
+                mock.patch.object(flow, 'run', fake_run):
+            flow.retry_failed_list(flow.Ctx(Opts, 'run'), 'list', *spider_args)
+        return calls
+
+    def test_stops_when_nothing_left(self):
+        calls = self.run_retry([2, 0])
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(all('list591' in c and 'retry_only=True' in c for c in calls))
+
+    def test_bounded_by_max_passes(self):
+        # 原本那次＋兩輪重試＝attempts 上限 3：仍失敗就轉 dead，不再重跑
+        calls = self.run_retry([3, 3, 3], '-a', 'frontier_pages=30')
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(all('frontier_pages=30' in c for c in calls))
 
 
 class CompareExportTests(unittest.TestCase):

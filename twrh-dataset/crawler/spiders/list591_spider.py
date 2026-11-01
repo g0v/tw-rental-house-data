@@ -10,7 +10,7 @@ from .item_hygiene import strip_list_item
 class List591Spider(Rental591Spider):
     name = 'list591'
 
-    def __init__(self, append=False, start_early=False, frontier_pages=0, **kwargs):
+    def __init__(self, append=False, start_early=False, frontier_pages=0, retry_only=False, **kwargs):
         # scrapy -a target_cities=A,B 傳進來是字串，直接迭代會變成逐字比對
         if isinstance(kwargs.get('target_cities'), str):
             kwargs['target_cities'] = kwargs['target_cities'].split(',')
@@ -29,6 +29,9 @@ class List591Spider(Rental591Spider):
         # -a seed_mode=new 補抓新物件的 detail（devop/sweep.sh）。
         self.frontier_pages = int(frontier_pages)
         self.frontier_new = 0
+        # 重試輪（flow 在 list 之後補跑）：不生種子，只認領當日可重試的 failed——
+        # 單頁 504 留下的 failed 不收就是 queuefinalize 紅、日跑整條中止（2026-10-28）
+        self.retry_only = retry_only == 'True' or retry_only == True
 
         self.persist_queue = PersistQueue(
             vendor='591 租屋網',
@@ -75,7 +78,7 @@ class List591Spider(Rental591Spider):
         # In append mode, always regenerate seeds.
         # In normal mode, generate per city — has_record() must be scoped to the
         # city, or a same-day run for city B is silently skipped after city A.
-        for city in self.target_cities:
+        for city in ([] if self.retry_only else self.target_cities):
             # 前緣掃描永遠重生種子（同日多輪是它的本意）
             if not self.append and not self.frontier_pages and self.ran_today(city):
                 continue
